@@ -11,7 +11,7 @@ sys.path.insert(0, str(HERE.parent / "env_lib"))
 from envlib import C, Pix, deliver  # noqa: E402
 
 CANE = [C["ink"], C["br0"], C["br1"], C["rust"]]   # shadow, stem, lit stem, glint
-THORN = [C["red0"], C["red"]]
+THORN = [C["red0"], C["red"], C["hot"]]   # base, shaft, tip - bright tips survive the night tint
 
 
 def bez(p0, p1, p2, n=40):
@@ -52,15 +52,15 @@ def cane(p, pts, back=False):
         up = (i // step) % 2 == 0
         dx = 1 if (seen[i + 1][0] - seen[i - 1][0]) >= 0 else -1
         if back:
-            p.px(x, y - 1, THORN[0])
+            p.px(x, y - 1, THORN[1] if (i // step) % 2 else THORN[0])
             continue
         if up:
             p.px(x, y - 2, THORN[0])
-            p.px(x + dx, y - 3, THORN[0])
-            p.px(x + dx, y - 4, THORN[1])
+            p.px(x + dx, y - 3, THORN[1])
+            p.px(x + dx, y - 4, THORN[2])
         else:
-            p.px(x, y + 2, THORN[0])
-            p.px(x - dx, y + 3, THORN[1])
+            p.px(x, y + 2, THORN[1])
+            p.px(x - dx, y + 3, THORN[2])
     return seen
 
 

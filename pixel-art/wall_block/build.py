@@ -16,11 +16,17 @@ LEAF = [C["g0"], C["g1"], C["g2"], C["g3"]]
 def wall():
     p = Pix(32, 48, seed=1001)
     # broken top profile (y of the top-face front edge per column)
-    prof = [17, 16, 15, 15, 13, 13, 12, 12, 11, 13, 14, 12, 10, 9, 9, 10, 13, 14, 13, 15,
-            17, 16, 15, 15, 18, 19, 19, 21, 23, 23, 24, 24]
-    depth = 6  # wall thickness as seen from above
+    # sharp broken peaks, a deep V notch, a snapped-off right end stepping down: no smooth
+    # arch, so it reads as a shattered wall and not a headstone
+    prof = [16, 14, 13, 13, 10, 9, 9, 10, 14, 15, 11, 8, 7, 7, 8, 12, 17, 18, 15, 14,
+            14, 19, 22, 21, 20, 23, 25, 25, 27, 28, 28, 28]
+    # broken top surface: thickness seen from above varies column to column (chunky
+    # plateaus between the breaks, thin on the slopes)
+    dep = [5, 5, 6, 6, 5, 6, 6, 5, 4, 4, 5, 5, 5, 5, 5, 4, 3, 3, 4, 5,
+           5, 4, 3, 4, 4, 3, 4, 4, 3, 3, 3, 3]
     for x in range(1, 31):
         top = prof[x]
+        depth = dep[x]
         # top face (lit)
         for y in range(top - depth, top):
             p.px(x, y, C["sl3"])
@@ -49,7 +55,7 @@ def wall():
     for x, y in ((6, 29), (16, 29), (24, 29), (6, 40), (16, 40)):
         p.px(x, y, C["sl0"])
     # blown-out hole showing brick infill
-    hole = Pix.ellipse_pts(11, 20, 5, 4)
+    hole = Pix.ellipse_pts(10, 29, 5, 4)
     for x, y in hole:
         p.px(x, y, C["br0"], only=(C["sl2"], C["sl3"]))
     for x, y in hole:
@@ -60,13 +66,14 @@ def wall():
             if p.get(x - 1, y) in (C["sl2"], C["sl3"]) or p.get(x, y - 1) in (C["sl2"], C["sl3"]):
                 p.px(x, y, C["ink"])
     # cracks
-    p.path([(20, 15), (21, 19), (20, 23), (22, 27), (21, 31)], C["sl0"])
+    p.path([(16, 20), (17, 23), (16, 27), (18, 31), (17, 34)], C["sl0"])
+    p.path([(21, 24), (22, 27)], C["sl0"])
     p.path([(4, 33), (7, 36), (6, 39)], C["sl0"])
     # rebar sticking up out of the break
-    for x0, y0, x1, y1 in ((13, 9, 12, 3), (16, 9, 18, 4), (23, 13, 25, 8)):
+    for x0, y0, x1, y1 in ((12, 4, 11, 1), (17, 15, 19, 10), (24, 17, 26, 12)):
         p.line(x0, y0, x1, y1, C["br1"])
         p.px(x1, y1, C["rust"])
-    p.line(13, 22, 16, 21, C["rust"])
+    p.line(12, 30, 15, 29, C["rust"])
     # rust weeping from the rebar
     for y in range(26, 33):
         if y % 2:
@@ -78,7 +85,11 @@ def wall():
             p.px(x, y, LEAF[2] if p.rng.random() < 0.6 else LEAF[1])
     for x in range(3, 9):
         p.px(x, prof[x] - 2, LEAF[3] if x % 2 else LEAF[2])
-    vine(p, 4, 15, 22, LEAF, leaves=0.6)
+    # chipped front lip: dark bites along the broken edge
+    for x in (3, 9, 14, 18, 23):
+        p.px(x, prof[x], C["sl0"])
+        p.px(x, prof[x] - 1, C["sl1"])
+    vine(p, 4, 10, 26, LEAF, leaves=0.6)
     vine(p, 26, 17, 14, LEAF, leaves=0.6)
     # weeds at the foot
     for x in (3, 9, 18, 27):

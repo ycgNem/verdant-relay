@@ -98,17 +98,18 @@ def pod(bob, glow):
     for k, (x, dy) in enumerate(seeds):
         y = cy + dy
         hot = (k + glow) % 2 == 0
-        # oval 4x3 seed, hot core, glowing from within
-        pxs(s, [(x + 1, y), (x + 2, y)], E["amber"])
-        pxs(s, [(x, y + 1), (x + 2, y + 1)], E["amber"])
+        # oval 4x3 seed glowing from within - pushed toward yellow so it stays a warm
+        # beacon under the #9fb4e8 night multiply (amber only on the shaded underside)
+        pxs(s, [(x + 1, y), (x + 2, y)], E["yellow"])
+        pxs(s, [(x, y + 1), (x + 2, y + 1)], E["yellow"])
         s.px(x + 1, y + 1, E["yellow"])
-        s.px(x + 3, y + 1, E["orange"])
-        pxs(s, [(x + 1, y + 2), (x + 2, y + 2)], E["orange"])
+        s.px(x + 3, y + 1, E["amber"])
+        pxs(s, [(x + 1, y + 2), (x + 2, y + 2)], E["amber"])
         if hot:
-            s.px(x + 1, y, E["yellow"])
-            s.px(x + 2, y + 1, E["yellow"])
-            if k == 2:
-                s.px(x + 1, y + 1, E["white"])
+            s.px(x + 1, y + 1, E["white"])
+            s.px(x + 2, y + 2, E["yellow"])
+        else:
+            s.px(x + 2, y + 1, E["amber"])
     # torn pod lips folding back on either side of the slit (lighter skin edge)
     for x in range(8, 28):
         t = (x - 17) / 10.5

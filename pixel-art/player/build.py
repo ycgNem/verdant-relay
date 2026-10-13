@@ -247,17 +247,42 @@ def frame_walk(i):
     return c.outline()
 
 
-def muzzle_flash(c, x, y, big=True):
+def muzzle_flash(c, mx, y, big=True):
+    """Star-burst muzzle flash. mx = the barrel's last pixel: it is swallowed by the white
+    core (visible barrel 1px shorter) so the burst gets the full 5 columns to the frame
+    edge. Bright white/yellow core, amber spikes forward, up, down and on both forward
+    diagonals, orange tips; a dark rim keeps it readable on pale stone floors."""
     if big:
-        pts = [(x + 2, y - 3, "F"), (x + 1, y - 2, "F"), (x + 2, y - 2, "y"),
-               (x, y - 1, "F"), (x + 1, y - 1, "y"), (x + 2, y - 1, "y"),
-               (x, y, "y"), (x + 1, y, "w"), (x + 2, y, "w"),
-               (x, y + 1, "F"), (x + 1, y + 1, "y"), (x + 2, y + 1, "y"),
-               (x + 1, y + 2, "F"), (x + 2, y + 2, "y"), (x + 2, y + 3, "F")]
+        pts = [  # core
+               (0, 0, "w"), (1, 0, "w"), (0, -1, "y"), (1, -1, "y"), (0, 1, "y"), (1, 1, "y"),
+               # forward spike
+               (2, 0, "y"), (3, 0, "F"), (4, 0, "f"),
+               # up / down spikes
+               (0, -2, "F"), (0, -3, "f"), (0, 2, "F"), (0, 3, "f"),
+               # forward diagonals
+               (2, -2, "F"), (3, -3, "f"), (2, 2, "F"), (3, 3, "f"),
+               # fill between the spikes so the burst has a round fireball body
+               (2, -1, "F"), (2, 1, "F"), (1, -2, "f"), (1, 2, "f"),
+               # small back-flare hugging the muzzle
+               (-1, -1, "F"), (-1, 1, "F")]
+        smoke = []
     else:
-        pts = [(x, y, "M"), (x + 1, y - 1, "L"), (x + 1, y, "M"), (x + 2, y - 2, "M")]
-    for px_, py_, ch in pts:
-        c.px(px_, py_, ch)
+        # follow-through: the burst collapses to a warm ember with a smoke puff drifting up
+        pts = [(0, 0, "y"), (1, 0, "F"), (0, -1, "F"), (1, -1, "y"), (0, 1, "f"), (1, 1, "f")]
+        smoke = [(2, -2, "L"), (3, -2, "M"), (2, -3, "M"), (3, -3, "L"), (3, -4, "M"), (4, -4, "L")]
+    c.px(mx, y, None)
+    drawn = []
+    for dx, dy, ch in pts + smoke:
+        x, yy = mx + dx, y + dy
+        if 0 <= x < c.w and 0 <= yy < c.h:
+            c.px(x, yy, ch)
+            drawn.append((x, yy))
+    # rim only around the new pixels (the body is already outlined)
+    for x, yy in drawn:
+        for ox, oy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + ox, yy + oy
+            if 0 <= nx < c.w and 0 <= ny < c.h and c.get(nx, ny) is None:
+                c.px(nx, ny, "#")
 
 
 def frame_attack(i):
@@ -267,7 +292,7 @@ def frame_attack(i):
         # recoil: gun kicks back 2px, shoulders rock back 1, flash at the muzzle
         upper(c, bob=0, tail=0, gun=(-2, -1), head_d=(-1, 0))
         c.outline()
-        muzzle_flash(c, 28, 21)
+        muzzle_flash(c, 27, 21)
         c.px(16, 17, "F")   # spent casing flying up
         c.px(15, 16, "y")
     else:

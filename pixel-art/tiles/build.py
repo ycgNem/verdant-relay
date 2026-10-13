@@ -95,6 +95,34 @@ def coverage(t, seed, edge=0.35):
     return m
 
 
+def patchy(seed, amount=0.5, cells=(4, 8, 16), weights=(0.3, 0.5, 0.2), edge=0.06):
+    """Even, organic patch mask for alt tiles: periodic multi-octave noise thresholded to
+    `amount` coverage. No centre bias, so the tile carries several small clusters (some
+    wrapping across the edges) instead of one blob that grids when alt cells cluster. A
+    thin edge taper (`edge`) only trims patches cut by the border so a lone alt cell
+    against plain floor does not show a straight moss line."""
+    f = Tile(0, seed=seed).field(cells, weights)
+    v = []
+    for y in range(32):
+        for x in range(32):
+            d = min(x, 31 - x, y, 31 - y)          # 0 at the border row
+            v.append(f[y][x] - (edge * (3 - d) / 3 if d < 3 else 0.0))
+    th = sorted(v)[int(len(v) * (1 - amount))]
+    return [[v[y * 32 + x] > th for x in range(32)] for y in range(32)]
+
+
+def cushions(t, spots, rough=0.3):
+    """Mask of small rough blobs (cx, cy, rx, ry), wrapping across the tile edges."""
+    m = [[False] * 32 for _ in range(32)]
+    for cx, cy, rx, ry in spots:
+        for y in range(-ry - 1, ry + 2):
+            for x in range(-rx - 1, rx + 2):
+                d = (x / (rx + 0.4)) ** 2 + (y / (ry + 0.4)) ** 2
+                if d <= 1.0 + t.rng.uniform(-rough, rough) * (d > 0.5):
+                    m[(cy + y) % 32][(cx + x) % 32] = True
+    return m
+
+
 def rim(m):
     """Floor-side pixels touching the patch mask (where a lip/shadow goes)."""
     out = []
@@ -159,22 +187,39 @@ def market_alt():
     alt cells read as organic moss patches rather than green squares."""
     t = market_floor()
     t.rng.seed(12)
-    m = coverage(t, 12, edge=0.3)
+    # nine moss cushions of mixed size on a loose jittered 3x3 layout (two wrap the edges),
+    # so a cluster of alt cells reads as even moss texture with no repeated motif
+    m = cushions(t, [(5, 4, 3, 2), (16, 8, 2, 2), (26, 3, 3, 2), (9, 16, 4, 3), (22, 17, 3, 2),
+                     (31, 12, 2, 1), (4, 27, 3, 2), (15, 26, 2, 1), (25, 28, 4, 2),
+                     # satellite lobes so cushions read as spreading mats, not round pads
+                     (8, 6, 2, 1), (12, 19, 2, 1), (24, 15, 1, 1), (19, 2, 1, 1), (2, 13, 1, 1),
+                     (28, 25, 2, 1), (19, 29, 1, 1)])
     for y in range(32):
         for x in range(32):
             if m[y][x]:
                 t.px(x, y, C["g2"])
-    for x, y in rim(m):                       # moss edge: shadowed lip on the floor side
-        if t.rng.random() < 0.6:
-            t.px(x, y, C["g1"], only=(C["sl2"], C["sl3"]))
-    t.scatter(9, lambda x, y: t.blob(x, y, t.rng.randint(1, 2), 1, C["g1"], rough=0.5, only=C["g2"]))
-    def tf(x, y):
-        if m[y % 32][x % 32]:
-            tuft(t, x, y, C["g3"], C["g2"], C["g1"])
-    t.scatter(14, tf)
-    t.speckle(C["g3"], 0.02, only=C["g2"])
-    for _ in range(2):
-        t.px(t.rng.randint(0, 31), t.rng.randint(0, 31), C["yellow"], only=C["g2"])
+    # moss threads running out along the grout joints between cushions
+    for y in range(32):
+        for x in range(32):
+            if t.get(x, y) == C["sl1"] and not m[y][x]:
+                near = any(m[(y + dy) % 32][(x + dx) % 32] for dx in (-3, 0, 3) for dy in (-2, 0, 2))
+                if near and t.rng.random() < 0.75:
+                    t.px(x, y, C["g1"])
+    # lit top-left lip on each cushion, shadow on its bottom-right (light from the top-left)
+    for y in range(32):
+        for x in range(32):
+            if m[y][x]:
+                if not m[(y - 1) % 32][x] or not m[y][(x - 1) % 32]:
+                    if t.rng.random() < 0.6:
+                        t.px(x, y, C["g3"])
+                elif not m[(y + 1) % 32][x] or not m[y][(x + 1) % 32]:
+                    t.px(x, y, C["g1"])
+    for x, y in rim(m):                       # cushion casts a thin shadow onto the paving
+        if (m[(y - 1) % 32][x] or m[y][(x - 1) % 32]) and t.get(x, y) in (C["sl2"], C["sl3"]):
+            t.px(x, y, C["sl1"])
+    t.speckle(C["g1"], 0.06, only=C["g2"])
+    for x, y in ((9, 15), (25, 27)):          # a couple of tiny flowers
+        t.px(x, y, C["yellow"], only=C["g2"])
     return t
 
 
@@ -320,15 +365,16 @@ def transit_wall():
 # look floor #265c42 (leaf litter) / alt #3e8948 (lush moss + blooms) / wall #193c3e (hedge)
 @reg("floor_canopy_greenhouse")
 def green_floor():
+    """Leaf litter, kept calm: one base green, soft shade hollows, a sparse even scatter
+    of lit leaves (no bright tips) so props and creatures read on top of it."""
     t = Tile(C["g1"], seed=31)
-    for _ in range(6):
-        t.blob(t.rng.randint(0, 31), t.rng.randint(0, 31), t.rng.randint(2, 4), t.rng.randint(1, 3),
+    for _ in range(4):
+        t.blob(t.rng.randint(0, 31), t.rng.randint(0, 31), t.rng.randint(2, 3), t.rng.randint(1, 2),
                C["g0"], rough=0.5)
-    t.speckle(C["g0"], 0.05, only=C["g1"])
-    t.scatter(16, lambda x, y: leaf(t, x, y, C["g2"], C["g0"]))
-    t.scatter(2, lambda x, y: leaf(t, x, y, C["br1"], C["g0"]))
-    # a few lit leaf tips
-    t.speckle(C["g3"], 0.03, only=C["g2"])
+    t.speckle(C["g1"], 0.25, only=C["g0"])    # break the hollows up so they never read as holes
+    t.speckle(C["g0"], 0.025, only=C["g1"])
+    t.scatter(9, lambda x, y: leaf(t, x, y, C["g2"], C["g0"]))
+    t.scatter(1, lambda x, y: leaf(t, x, y, C["br1"], C["g0"]))
     return t
 
 
@@ -337,7 +383,10 @@ def green_alt():
     """Lush clover/moss bed with pollen blooms over the leaf-litter floor."""
     t = green_floor()
     t.rng.seed(32)
-    m = coverage(t, 32, edge=0.38)
+    # several clover clumps over the whole tile (wrapping), not one central bed
+    m = cushions(t, [(4, 5, 4, 3), (17, 4, 3, 2), (27, 8, 3, 3), (10, 15, 3, 2), (22, 18, 4, 3),
+                     (2, 23, 3, 2), (13, 27, 4, 2), (27, 28, 3, 2), (8, 9, 2, 1), (18, 11, 1, 1),
+                     (30, 19, 1, 1), (19, 24, 2, 1)])
     for y in range(32):
         for x in range(32):
             if m[y][x]:
@@ -346,7 +395,7 @@ def green_alt():
         if t.rng.random() < 0.5:
             t.px(x, y, C["g0"], only=C["g1"])
     t.scatter(8, lambda x, y: t.blob(x, y, t.rng.randint(1, 2), 1, C["g1"], rough=0.5, only=C["g2"]))
-    t.scatter(16, lambda x, y: leaf(t, x, y, C["g3"], C["g1"], only=(C["g2"], C["g1"])))
+    t.scatter(16, lambda x, y: leaf(t, x, y, C["g3"], C["g1"], only=C["g2"]))
     def bloom(x, y):
         if not m[y % 32][x % 32]:
             return
@@ -524,31 +573,56 @@ def data_floor():
 
 @reg("floor_alt_data_center")
 def data_alt():
+    """Steel mesh grating panel: a square mesh (2x2 holes, 1px bars) inside a lit frame,
+    cables snaking diagonally underneath. Reads as grating, not shelving: no long slots,
+    no repeated vertical rails."""
     t = Tile(C["sl1"], seed=52)
-    # steel grating: slots in rows, rails every 16px
+    holes = set()
     for y in range(32):
         for x in range(32):
-            if y % 3 == 1 and x % 16 not in (0, 1, 15):
-                t.px(x, y, C["ink"])
-    for x in (0, 16):
-        t.vline(x, 0, 31, C["sl2"])
-        t.vline(x + 1, 0, 31, C["sl1"])
-        t.vline(x - 1, 0, 31, C["sl0"])
-    # what lies below: a cable bundle glimpsed through the slots
-    cable = {5: C["bl0"], 6: C["bl0"], 8: C["g1"], 9: C["g1"],
-             22: C["sl0"], 23: C["sl0"], 25: C["bl0"]}
-    for y in range(32):
-        for x in range(32):
-            if t.get(x, y) == C["ink"] and x in cable and (y < 20 if x < 16 else y > 8):
-                t.px(x, y, cable[x])
-    # lit bar tops between slots
-    for y in range(32):
-        for x in range(32):
-            if y % 3 == 2 and t.get(x, y) == C["sl1"] and t.rng.random() < 0.25:
+            if 2 <= x <= 29 and 2 <= y <= 29 and (x - 2) % 3 != 2 and (y - 2) % 3 != 2:
+                holes.add((x, y))
+                # the bar above-left shades the hole's top-left corner; the rest is the dim void
+                tl = (x - 2) % 3 == 0 and (y - 2) % 3 == 0
+                t.px(x, y, C["ink"] if tl else C["sl0"])
+    # what lies below: two cable runs crossing diagonally, glimpsed through the holes
+    def under(path, c):
+        for i in range(len(path) - 1):
+            (x0, y0), (x1, y1) = path[i], path[i + 1]
+            n = max(abs(x1 - x0), abs(y1 - y0))
+            for k in range(n + 1):
+                x = x0 + (x1 - x0) * k // max(n, 1)
+                y = y0 + (y1 - y0) * k // max(n, 1)
+                for dx in (0, 1):
+                    if (x + dx, y) in holes:
+                        t.px(x + dx, y, c)
+    under([(3, 24), (8, 20), (13, 21), (18, 18), (22, 19)], C["bl0"])
+    under([(17, 4), (20, 8), (26, 9), (28, 13)], C["bl0"])
+    under([(5, 6), (7, 11), (12, 12)], C["g1"])
+    under([(22, 26), (28, 27)], C["g0"])
+    # bars: top face catches the light (top-left), bottom edge of each bar in shadow
+    for y in range(2, 30):
+        for x in range(2, 30):
+            if (x, y) not in holes and (x, y + 1) in holes and (x + 1, y) in holes:
                 t.px(x, y, C["sl2"])
-    for x, y in ((12, 6), (27, 20)):
+    # panel frame: lit top/left lip, shadowed bottom/right lip, seam to the next panel
+    t.hline(0, 31, 0, C["sl0"])
+    t.vline(0, 0, 31, C["sl0"])
+    t.hline(1, 30, 1, C["sl2"])
+    t.vline(1, 1, 30, C["sl2"])
+    t.px(1, 1, C["sl3"])
+    t.px(2, 1, C["sl3"])
+    t.hline(1, 31, 30, C["sl1"])
+    t.vline(30, 1, 31, C["sl1"])
+    t.hline(2, 31, 31, C["sl1"])
+    t.vline(31, 2, 31, C["sl1"])
+    for x, y in ((1, 30), (30, 1)):           # frame corners
+        t.px(x, y, C["sl1"])
+    # bolts in the frame and a rust stain where water pooled
+    for x, y in ((3, 1), (28, 1), (1, 28), (16, 1)):
+        t.px(x, y, C["sl3"])
+    for x, y in ((24, 30), (25, 30), (25, 29)):
         t.px(x, y, C["br1"])
-        t.px(x + 1, y, C["br1"])
     return t
 
 
@@ -616,29 +690,42 @@ def def_floor():
 
 @reg("floor_alt_defense")
 def def_alt():
-    """Cracked old plaza slab surfacing through the meadow (edges = floor_defense)."""
+    """Stony meadow: broken plaza stones and pebbles scattered through the grass (edges =
+    floor_defense). Many small stones of different sizes spread over the whole tile (some
+    wrapping across the edges) - no single slab that grids."""
     t = def_floor()
     t.rng.seed(72)
-    m = coverage(t, 72, edge=0.28)
-    for y in range(32):
-        for x in range(32):
-            if m[y][x]:
-                t.px(x, y, C["sl1"])
-    for x, y in rim(m):
-        t.px(x, y, C["g0"], only=(C["g1"], C["g2"]))
-    t.hline(0, 31, 13, C["sl0"], only=C["sl1"])
-    t.hline(0, 31, 14, C["sl2"], only=C["sl1"])
-    t.vline(17, 0, 12, C["sl0"], only=C["sl1"])
-    t.vline(18, 0, 12, C["sl2"], only=C["sl1"])
-    crack(t, 8, 16, 9, C["sl0"], only=C["sl1"])
-    t.speckle(C["sl2"], 0.05, only=C["sl1"])
-    t.speckle(C["g1"], 0.18, only=C["sl1"])
-    t.speckle(C["g2"], 0.05, only=C["sl1"])
-    def tf(x, y):
-        if m[y % 32][x % 32]:
-            t.px(x, y, C["g2"])
-            t.px(x + 1, y, C["g1"])
-    t.scatter(6, tf)
+    # (cx, cy, rx, ry) hand-placed on a loose jittered layout so sizes vary and no
+    # stone dominates; two cross the tile edges so alt clusters join up.
+    stones = [(5, 5, 3, 2), (19, 3, 2, 1), (27, 12, 3, 2), (12, 14, 2, 2), (3, 22, 2, 1),
+              (21, 21, 3, 2), (13, 28, 2, 1), (30, 28, 2, 1)]
+    for cx, cy, rx, ry in stones:
+        pts = set()
+        for y in range(-ry - 1, ry + 2):
+            for x in range(-rx - 1, rx + 2):
+                d = (x / (rx + 0.4)) ** 2 + (y / (ry + 0.4)) ** 2
+                if d <= 1.0 + t.rng.uniform(-0.25, 0.15) * (d > 0.5):
+                    pts.add((x, y))
+        for x, y in pts:                      # cast shadow into the grass (down-right)
+            if (x + 1, y + 1) not in pts:
+                t.px(cx + x + 1, cy + y + 1, C["g0"])
+        for x, y in pts:
+            t.px(cx + x, cy + y, C["sl2"])
+        for x, y in pts:                      # lit top-left rim, shadowed bottom-right face
+            if (x, y - 1) not in pts or (x - 1, y) not in pts:
+                t.px(cx + x, cy + y, C["sl3"])
+            elif (x, y + 1) not in pts or (x + 1, y) not in pts:
+                t.px(cx + x, cy + y, C["sl1"])
+        if rx >= 3:                           # a crack or lichen fleck on the big ones
+            t.px(cx + 1, cy, C["sl1"])
+            t.px(cx + 1, cy + 1, C["sl1"])
+            t.px(cx - 1, cy + 1, C["g2"])
+    for x, y in ((10, 6), (16, 9), (25, 4), (8, 18), (29, 20), (17, 25), (6, 30), (24, 30)):
+        t.px(x, y, C["sl3"])                 # pebbles
+        t.px(x + 1, y + 1, C["g0"])
+    # grass tufts growing back over a few stone edges
+    for x, y in ((7, 6), (26, 13), (22, 22), (12, 15)):
+        tuft(t, x, y, C["g3"], C["g2"], None)
     return t
 
 

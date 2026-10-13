@@ -18,8 +18,10 @@ W, H = 96, 112
 G = 110                                    # ground row (outline lands on 111)
 s = new_sprite(W, H)
 
-BARKF = [E["out"], E["plum"], E["plum"], E["brown"], E["tan"]]           # far-side bark (in shadow)
-BARKN = [E["plum"], E["brown"], E["tan"], E["khaki"]]          # near-side bark
+# 5-step bark (plain BARK + a skin highlight) and a lifted far-side ramp: more of the body
+# lands on tan/khaki so the #9fb4e8 night multiply doesn't crush the browns into mud
+BARKF = [E["out"], E["plum"], E["brown"], E["brown"], E["tan"]]          # far-side bark (in shadow)
+BARKN = [E["plum"], E["brown"], E["tan"], E["khaki"], E["skin"]]          # near-side bark
 PLATE = [E["out"], E["plum"], E["brown"], E["tan"], E["khaki"]]
 LEAF = [E["abyss"], E["forest"], E["green"], E["lime"]]
 LEAF_FAR = [E["out"], E["abyss"], E["forest"], E["green"]]

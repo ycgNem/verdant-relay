@@ -215,28 +215,26 @@ def draw_circuits(s, f):
 
 
 def draw_biofiber(s, f):
-    # a sheaf of fibre strands running bottom-left -> top-right, pinched by a twine tie.
-    # c = across-bundle stripe (x+y-11), u = along-bundle position (x-y)
-    cols = {-2: MOSS2, -1: MOSS1, 0: MOSS2, 1: MOSS1, 2: MOSS0}
-    for y in range(1, 11):
-        for x in range(1, 11):
-            c, u = x + y - 11, x - y
-            if abs(u) > 9:
-                continue
-            width = 1 if abs(u) <= 2 else 2
-            if abs(c) > width:
-                continue
-            if abs(u) >= 7 and c % 2:             # frayed, fanned tips
-                continue
-            s.px(x, y, cols[c])
-    # tie (twine) wrapped across the waist
-    for (x, y) in ((4, 6), (5, 5), (5, 7), (6, 6), (4, 7) , (6, 5)):
-        pass
-    pts(s, WOOD3, [(4, 6), (5, 6), (5, 5)])
-    pts(s, BONE, [(4, 5)])
-    pts(s, WOOD1, [(6, 6), (5, 7), (6, 7)])
+    # a tied sheaf of plant fibre: stems gathered and bound with twine at the waist, three
+    # strands fanning out above (left / centre / right) with gaps between them, cut stem
+    # ends splayed below. Lit edges on the left of each strand (top-left light).
+    rows = [
+        "............",
+        ".c....c...c.",
+        ".cb..cb..cb.",
+        "..cb.cb.cba.",
+        "..cbacbacb..",
+        "...cbcbab...",
+        "..wttttTT...",
+        "...cbcba....",
+        "...cbcba....",
+        "..cbcbaba...",
+        "..c.b.a.a...",
+        "............",
+    ]
+    bitmap(s, 0, 0, rows, {"a": MOSS0, "b": MOSS1, "c": MOSS2, "t": WOOD3, "T": WOOD1, "w": BONE})
     if f == 1:
-        glint(s, 8, 3)
+        glint(s, 9, 2)
 
 
 def draw_intel(s, f):

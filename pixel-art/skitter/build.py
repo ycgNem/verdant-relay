@@ -54,18 +54,21 @@ def shell(c, bx, by, eye="shut", jaw="shut"):
 
 def leg(c, hip, knee, tip, far=False):
     """1px jointed leg; near legs get a dark underside line + lit knee."""
-    pts = []
-    for (x0, y0), (x1, y1) in ((hip, knee), (knee, tip)):
+    # a touch brighter than the shell's dark purple so the legs survive the #9fb4e8 night
+    # multiply: near femur in the lit magenta, shin in purple, pink knee glint; far legs purple
+    pts, seg = [], []
+    for si, ((x0, y0), (x1, y1)) in enumerate(((hip, knee), (knee, tip))):
         n = max(abs(x1 - x0), abs(y1 - y0), 1)
         for i in range(n + 1):
             pts.append((round(x0 + (x1 - x0) * i / n), round(y0 + (y1 - y0) * i / n)))
-    col = "n" if far else "p"
-    for x, y in pts:
+            seg.append(si)
+    for (x, y), si in zip(pts, seg):
+        col = "p" if far else ("P" if si == 0 else "p")
         c.px(x, y, col, only="empty")
     if not far:
         for x, y in pts:
             c.px(x, y + 1, "#", only="empty")
-        c.px(knee[0], knee[1], "P")
+        c.px(knee[0], knee[1], "k")
     c.px(tip[0], tip[1], "n" if far else "#")
 
 

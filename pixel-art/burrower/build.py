@@ -8,12 +8,15 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 os.chdir(HERE)
 from kit import *  # noqa: E402,F403
+from pixelstudio import hex2rgba  # noqa: E402
 
 W, H = 32, 28
 s = new_sprite(W, H)
 G = 26                                   # ground row (outline lands on 27)
 
-FUR = [E["plum"], E["brown"], E["tan"], E["khaki"]]
+# 5-step fur ramp (plain bark + a skin highlight): more of the body lands on tan/khaki so the
+# #9fb4e8 night multiply doesn't crush it to mud; plum stays only in the deepest shadow
+FUR = [E["plum"], E["brown"], E["tan"], E["khaki"], E["skin"]]
 CLAW = [E["khaki"], E["peach"], E["cream"]]
 DRILL = [E["ink"], E["steel"], E["slate"], E["grey"], E["silver"], E["white"]]
 SOIL = [E["plum"], E["brown"], E["tan"], E["khaki"], E["peach"]]
@@ -82,7 +85,7 @@ def mole(bob, phase, step):
     for (x, y) in ((6, 15), (7, 16), (10, 17), (11, 18), (5, 19), (14, 16)):
         c = s.get(x, y + b)
         if c is not None:
-            darker = {(194, 133, 105): FUR[2], (184, 111, 80): FUR[1], (115, 62, 57): FUR[0]}
+            darker = {hex2rgba(FUR[k])[:3]: FUR[k - 1] for k in range(1, len(FUR))}
             s.px(x, y + b, darker.get(c[:3], c))
     # tail nub
     pxs(s, [(2, 17 + b), (3, 17 + b), (2, 18 + b)], FUR[1])

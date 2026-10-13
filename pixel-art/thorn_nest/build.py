@@ -21,10 +21,13 @@ LV = {
     1: dict(rim=31, rx=9, ry=3, bot=39, brx=6,
             main=[(-152, 6, 3, -6), (-120, 9, 3, -3), (-93, 12, 3, 0), (-62, 9, 3, 3), (-30, 6, 3, 6)],
             small=[(-138, 5, 2, -4), (-76, 6, 2, 2)], side=1),
+    # L2: two rings - the outer ring splays out low and wide, and a second inner crown of
+    # tall upright sap-stained thorns rises out of the pool (clear silhouette step over L1)
     2: dict(rim=30, rx=10, ry=3, bot=39, brx=7,
-            main=[(-155, 7, 3, -7), (-125, 10, 3, -4), (-97, 13, 3, -1), (-72, 11, 3, 2), (-45, 9, 3, 5),
-                  (-22, 6, 3, 7)],
-            small=[(-140, 6, 2, -5), (-84, 8, 2, 1), (-58, 6, 2, 4)], side=2),
+            main=[(-160, 7, 3, -7), (-132, 9, 3, -5), (-108, 8, 3, -2), (-74, 8, 3, 2), (-48, 9, 3, 5),
+                  (-20, 7, 3, 7)],
+            small=[(-146, 6, 2, -6), (-34, 6, 2, 6)], side=2,
+            crown=[(-114, 13, 3, -3), (-91, 17, 3, 0), (-68, 13, 3, 3), (-102, 10, 2, -1), (-79, 10, 2, 2)]),
     3: dict(rim=27, rx=12, ry=4, bot=39, brx=8,
             main=[(-158, 9, 4, -9), (-132, 12, 4, -6), (-108, 15, 4, -3), (-86, 17, 4, 0), (-64, 14, 4, 3),
                   (-40, 11, 4, 6), (-18, 8, 3, 9)],
@@ -147,6 +150,12 @@ def frame(lv, mode, k):
     tip = "#e43b44" if not sap else (SAP[2] if not glow else SAP[3])
     tips = []
     sway = (1 if (mode == "idle" and k == 1) else 0)
+    # inner crown ring (L2): drawn first so the outer ring overlaps its roots
+    CROWN = ("#3e2731", "#68386c", "#b55088")
+    for i, (ang, L, w, ox) in enumerate(p.get("crown", [])):
+        da = (2 if i % 2 else -2) * sway
+        tips.append(spike(c, CX - 0.5 + ox, rim_y - 1, ang + da, L + grow, w, CROWN, tip=SAP[3],
+                          tip_n=2, upper=BONE, split=0.5))
     for (ang, L, w, ox) in p["small"]:
         tips.append(spike(c, CX - 0.5 + ox, rim_y, ang - 3 * sway, L + grow, w, THORN, tip=tip, tip_n=1,
                           upper=BONE, split=0.45))
