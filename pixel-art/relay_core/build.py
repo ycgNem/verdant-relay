@@ -218,43 +218,93 @@ def mast(c, p, k):
     for x in (71, 88):
         c.vline(x, ya + 2, ya + 4, "#c0cbdc")
         c.px(x, ya + 5, WHITE)
-    # parabolic dish facing up-left, with feed arm and horn
-    c.pattern(63, 24, [
-        "....aaa....",
-        "..aabbba...",
-        ".abbbccca..",
-        "abbcccccdd.",
-        "abcccccdd..",
-        "abccccdd...",
-        ".acccdd....",
-        "..dddd.....",
-    ], {"a": STEEL[1], "b": STEEL[4], "c": STEEL[3], "d": STEEL[0]})
-    c.line(70, 30, 76, 33, STEEL[2])       # mount to the mast
-    c.line(67, 28, 64, 25, STEEL[2])       # feed arm
-    c.px(63, 24, STEEL[4])
+    # parabolic dish turned toward the viewer's left: lit concave face, tripod feed
+    dx, dy = 66, 29
+    c.ell(dx, dy, 6, 6, STEEL[1])
+    c.ell(dx - 1, dy - 1, 5, 5, STEEL[3])
+    c.ell(dx - 2, dy - 2, 3, 3, STEEL[4])
+    for a2, b2, y in ell_rows(dx - 1, dy - 1, 5, 5):
+        if y > dy + 1:
+            c.hline(max(a2, dx - 1), b2, y, STEEL[2])
+    # tripod struts to the feed horn
+    c.line(dx - 6, dy - 1, dx - 2, dy - 1, STEEL[1])
+    c.line(dx, dy - 6, dx - 2, dy - 2, STEEL[1])
+    c.line(dx + 3, dy + 3, dx - 1, dy, STEEL[1])
+    c.rect(dx - 3, dy - 2, dx - 2, dy - 1, INK)
+    c.px(dx - 3, dy - 2, STEEL[2])
+    c.line(dx + 5, dy, 76, dy + 2, STEEL[2])        # mount arm to the mast
+    c.line(dx + 5, dy + 1, 76, dy + 3, STEEL[0])
     # top spike + aviation light
     c.vline(79, 1, top, STEEL[3])
 
 
+def station_lamp(c, p, k):
+    """Old platform lamp post behind the transformer with a hanging station board."""
+    px0 = 11
+    c.vline(px0, 30, 55, STEEL[3])
+    c.vline(px0 + 1, 30, 55, STEEL[1])
+    c.px(px0, 29, STEEL[4])
+    # curved arm and lamp hood
+    c.pts([(px0 + 1, 29), (px0 + 2, 28), (px0 + 3, 28), (px0 + 4, 28), (px0 + 5, 28), (px0 + 6, 29)], STEEL[3])
+    c.pts([(px0 + 2, 29), (px0 + 3, 29), (px0 + 4, 29), (px0 + 5, 29)], STEEL[1])
+    c.rect(px0 + 5, 30, px0 + 9, 31, STEEL[2])
+    c.hline(px0 + 5, px0 + 8, 30, STEEL[3])
+    c.hline(px0 + 6, px0 + 8, 32, "#feae34")
+    c.px(px0 + 7, 32, "#fee761")
+    # hanging station board (chains + plate)
+    c.pts([(px0 - 1, 34), (px0 - 6, 34)], STEEL[1])
+    c.hline(px0 - 7, px0 - 1, 33, STEEL[2])
+    c.rect(px0 - 9, 35, px0, 40, "#124e89")
+    c.hline(px0 - 9, px0, 35, "#0099db")
+    c.hline(px0 - 9, px0, 40, "#262b44")
+    c.vline(px0, 35, 40, "#262b44")
+    c.hline(px0 - 7, px0 - 4, 37, WHITE)
+    c.hline(px0 - 3, px0 - 2, 37, "#c0cbdc")
+    c.hline(px0 - 8, px0 - 1, 39, "#feae34")
+    # ivy on the post
+    c.pts([(px0, 44), (px0 + 1, 45), (px0, 46), (px0 - 1, 47), (px0, 49), (px0 + 1, 50)], MOSS[2])
+    c.pts([(px0 - 1, 45), (px0 + 1, 48)], MOSS[3])
+
+
+CR_TOP, CR_BOT, CR_RX, CR_RY = 67, 78, 15, 4
+
+
 def cradle(c, p, k):
-    """Round steel cradle on the plinth holding the crystal; clamp arms."""
-    cy = 76
-    c.drum(CX, cy - 4, cy, 15, 4, STEEL, top=STEEL[2])
-    # top face of the cradle: recessed ring with glow
-    c.ell(CX, cy - 4, 12, 3, STEEL[1])
+    """Round steel socket on the plinth that the crystal sits in (back + glowing interior)."""
+    c.drum(CX, CR_TOP, CR_BOT, CR_RX, CR_RY, STEEL, top=STEEL[2])
+    c.ell(CX, CR_TOP, CR_RX - 2, CR_RY - 1, STEEL[0])
     glow = [CYAN[0], CYAN[1], CYAN[2], CYAN[1]][k]
-    c.ell(CX, cy - 4, 10, 2, glow)
-    # bolts around the rim
-    for (bx, by) in ((CX - 14, cy - 3), (CX - 8, cy), (CX + 7, cy), (CX + 13, cy - 3)):
-        c.px(bx, by, STEEL[4])
-        c.px(bx + 1, by + 1, STEEL[0])
-    # hazard band on the drum
-    for x in range(CX - 15, CX + 15):
-        y = cy + 1 + (1 if abs(x - CX + 0.5) > 11 else 0) - (0)
-        if ((x // 2) % 2) == 0:
-            c.px(x, cy + 2, "#feae34" if x < CX + 6 else "#f77622")
-        else:
-            c.px(x, cy + 2, INK)
+    c.ell(CX, CR_TOP + 1, CR_RX - 4, CR_RY - 2, glow)
+
+
+def cradle_front(c, p, k):
+    """Front lip + body of the socket, drawn over the crystal's foot."""
+    rows = ell_rows(CX, CR_TOP, CR_RX, CR_RY)
+    front = {}
+    for a, b, y in rows:
+        for x in range(a, b + 1):
+            front[x] = max(front.get(x, -1), y)
+    x0 = min(front)
+    x1 = max(front)
+    w = x1 - x0 + 1
+    bot_rows = {x: y for a, b, y in ell_rows(CX, CR_BOT, CR_RX, CR_RY) for x in range(a, b + 1) if y >= CR_BOT}
+    for x in range(x0, x1 + 1):
+        yb = max(bot_rows.get(x, CR_BOT), CR_BOT)
+        lip = front[x]
+        for y in range(lip - 1, yb + 1):
+            c.px(x, y, shade_col(x - x0, w, STEEL))
+        c.px(x, lip - 1, STEEL[4] if x < CX - 4 else STEEL[3] if x < CX + 6 else STEEL[2])
+        c.px(x, lip, STEEL[2] if x < CX + 6 else STEEL[1])
+    # hazard band
+    for x in range(x0, x1 + 1):
+        y = front[x] + 4
+        c.px(x, y, ("#feae34" if x < CX + 6 else "#f77622") if ((x // 2) % 2 == 0) else INK)
+    # bolts
+    for x in range(x0 + 3, x1 - 1, 5):
+        y = front[x] + 2
+        c.px(x, y, STEEL[4])
+        c.px(x + 1, y + 1, STEEL[0])
+    c.pts([(CX + 8, front[CX + 8] + 5), (CX + 8, front[CX + 8] + 6)], "#733e39")
 
 
 def crystal(c, p, k):
@@ -313,7 +363,7 @@ def crystal(c, p, k):
 
 def clamps(c, p, k):
     """Steel arms from the cradle rim gripping the crystal, with a clamp band."""
-    for (x0, y0, x1, y1, lit) in ((35, 73, 38, 58, True), (61, 73, 58, 58, False)):
+    for (x0, y0, x1, y1, lit) in ((35, 70, 38, 58, True), (61, 70, 58, 58, False)):
         c.line(x0, y0, x1, y1, STEEL[3] if lit else STEEL[1])
         c.line(x0 + 1, y0, x1 + 1, y1, STEEL[2] if lit else STEEL[0])
         c.rect(x1 - 1, y1 - 2, x1 + 1, y1, STEEL[2])
@@ -327,10 +377,6 @@ def clamps(c, p, k):
     for x in (40, 48, 56):
         c.px(x, by + 1, STEEL[4])
         c.px(x + 1, by + 1, STEEL[0])
-    # upper collar (thin band) catching cyan light
-    c.hline(39, 57, 40, STEEL[1])
-    c.hline(39, 46, 40, STEEL[3])
-    c.px(38, 40, STEEL[2]); c.px(58, 40, STEEL[0])
 
 
 def cables(c, p, k):
@@ -367,10 +413,12 @@ def frame(k):
     plinth(c, p)
     sign(c, p)
     mast(c, p, k)
+    station_lamp(c, p, k)
     transformer(c, p)
     cabinet(c, p, k)
     cradle(c, p, k)
     crystal(c, p, k)
+    cradle_front(c, p, k)
     clamps(c, p, k)
     cables(c, p, k)
     moss(c)

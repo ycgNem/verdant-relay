@@ -102,7 +102,10 @@ export class Run {
 
   /** The primary objective for a district today (seeded). */
   objectiveFor(districtKey) {
-    return this.rng('objective', districtKey).pick(PRIMARY_KEYS);
+    // The two districts on offer always get different objectives (a seeded shuffle dealt in order).
+    const i = this.districtChoices().indexOf(districtKey);
+    if (i < 0) return this.rng('objective', districtKey).pick(PRIMARY_KEYS);
+    return this.rng('objectives').shuffle(PRIMARY_KEYS)[i];
   }
 
   /** What tonight's wave looks like if this district is chosen. */

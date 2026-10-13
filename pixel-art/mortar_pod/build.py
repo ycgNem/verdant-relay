@@ -20,9 +20,9 @@ POD = ["#193c3e", "#265c42", "#3e8948", "#63c74d"]
 FIRE = ["#be4a2f", "#f77622", "#feae34", "#fee761"]
 
 LV = {
-    1: dict(cy=32, rx=9, ry=7, blen=8, bth=6, ang=-45),
-    2: dict(cy=31, rx=10, ry=8, blen=9, bth=7, ang=-45),
-    3: dict(cy=30, rx=11, ry=9, blen=10, bth=8, ang=-45),
+    1: dict(cy=32, rx=9, ry=7, blen=9, bth=6, ang=-45),
+    2: dict(cy=31, rx=10, ry=8, blen=10, bth=7, ang=-45),
+    3: dict(cy=30, rx=11, ry=9, blen=11, bth=8, ang=-45),
 }
 
 
@@ -42,16 +42,21 @@ def pod(c, lv, squash=0, swell=0, burn=False, hot=True):
     p = LV[lv]
     cy, rx, ry = p["cy"] + squash, p["rx"] + swell + (1 if squash else 0), p["ry"] - squash + swell
     # body: shifted-shape shading (dark full, mid offset, light offset more)
-    c.ell(CX, cy, rx, ry, POD[1])
-    c.ell(CX - 1, cy - 1, rx - 1, ry - 1, POD[2], only="opaque")
-    c.ell(CX - 3, cy - 3, rx - 4, ry - 4, POD[3], only="opaque")
-    # bottom-right core shadow
+    # brighter than the green defense floor so the pod separates by value at night
+    c.ell(CX, cy, rx, ry, POD[2])
+    c.ell(CX - 1, cy - 1, rx - 1, ry - 1, POD[3], only="opaque")
+    # shadow crescent on the right/bottom, core shadow at the base
     for a, b, y in ell_rows(CX, cy, rx, ry):
-        if y > cy + ry // 2:
-            c.hline(max(a, CX - 2), b, y, POD[1])
+        if y > cy + ry // 3:
+            c.hline(max(a, CX + 1 - (y - cy) // 2), b, y, POD[2])
+        if y > cy + ry // 2 + 1:
+            c.hline(max(a + 1, CX + 3 - (y - cy) // 2), b, y, POD[1])
     for a, b, y in ell_rows(CX, cy, rx, ry):
         if y >= cy + ry - 1:
             c.hline(a + 2, b, y, POD[0])
+    for a, b, y in ell_rows(CX, cy, rx, ry):
+        if cy - ry // 2 < y < cy + ry // 2:
+            c.px(b, y, POD[1])
     # two soft husk seams + gourd speckles (lighter dots) -- not cactus ribs
     for off in (-4, 4):
         for y in range(cy - ry + 3, cy + ry - 2):
@@ -59,6 +64,8 @@ def pod(c, lv, squash=0, swell=0, burn=False, hot=True):
             x = int(round(CX + off * math.sqrt(max(0, 1 - t * t)) - 0.5))
             cur = c.get(x, y)
             col = POD[2] if (cur and cur[:3] == hex_rgb(POD[3])) else POD[1]
+            if y < cy - ry // 2 and off < 0:
+                col = POD[2]
             c.px(x, y, col)
     # small leafy bracts at the base, left and right
     by = cy + ry - 2

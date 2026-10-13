@@ -1,0 +1,392 @@
+{
+  "scrap_turret": {
+    "file": "scrap_turret.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 2,
+      "attack": 10
+    }
+  },
+  "scrap_turret_2": {
+    "file": "scrap_turret_2.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 2,
+      "attack": 10
+    }
+  },
+  "scrap_turret_3": {
+    "file": "scrap_turret_3.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 2,
+      "attack": 10
+    }
+  },
+  "thorn_nest": {
+    "file": "thorn_nest.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 3,
+      "attack": 10
+    }
+  },
+  "thorn_nest_2": {
+    "file": "thorn_nest_2.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 3,
+      "attack": 10
+    }
+  },
+  "thorn_nest_3": {
+    "file": "thorn_nest_3.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 3,
+      "attack": 10
+    }
+  },
+  "arc_spire": {
+    "file": "arc_spire.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 6,
+      "attack": 10
+    }
+  },
+  "arc_spire_2": {
+    "file": "arc_spire_2.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 6,
+      "attack": 10
+    }
+  },
+  "arc_spire_3": {
+    "file": "arc_spire_3.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 6,
+      "attack": 10
+    }
+  },
+  "snare_vine": {
+    "file": "snare_vine.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 2,
+      "attack": 8
+    }
+  },
+  "snare_vine_2": {
+    "file": "snare_vine_2.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 2,
+      "attack": 8
+    }
+  },
+  "snare_vine_3": {
+    "file": "snare_vine_3.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 2,
+      "attack": 8
+    }
+  },
+  "mortar_pod": {
+    "file": "mortar_pod.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 2,
+      "attack": 8
+    }
+  },
+  "mortar_pod_2": {
+    "file": "mortar_pod_2.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 2,
+      "attack": 8
+    }
+  },
+  "mortar_pod_3": {
+    "file": "mortar_pod_3.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 2,
+      "attack": 8
+    }
+  },
+  "pulse_beacon": {
+    "file": "pulse_beacon.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 6
+    }
+  },
+  "pulse_beacon_2": {
+    "file": "pulse_beacon_2.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 6
+    }
+  },
+  "pulse_beacon_3": {
+    "file": "pulse_beacon_3.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 6
+    }
+  },
+  "relay_core": {
+    "file": "relay_core.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 5
+    }
+  },
+  "tower_base": {
+    "file": "tower_base.png",
+    "ppu": 32,
+    "frames": 1,
+    "flat": true,
+    "shadow": 0
+  },
+  "beacon": {
+    "file": "beacon.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ]
+    },
+    "animFps": {
+      "idle": 3
+    }
+  }
+}
