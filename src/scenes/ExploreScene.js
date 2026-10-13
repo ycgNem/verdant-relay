@@ -121,6 +121,7 @@ export class ExploreScene {
     this.medFullT = 0;
 
     this._spawnThings();
+    this._initPropLights();
     this._buildExtraction();
     this.minimap = new Minimap(this.map, this.world);
     this._buildHud();
@@ -1440,7 +1441,46 @@ export class ExploreScene {
     this.toast('Emergency beacon is up at the start room', 'amber', 3.5);
   }
 
+  /** Pooled lamp-post / beacon point lights (JUICE.propLights), all added up front. */
+  _initPropLights() {
+    const P = JUICE.propLights;
+    this.lampSpots = this.decor.filter((v) => v.name === 'lamp_post').map((v, i) => ({ x: v.position.x, z: v.position.z, seed: i * 1.7 }));
+    const mk = (c) => {
+      const l = new THREE.PointLight(c.color, 0, c.distance, 1);
+      l.position.set(0, -50, 0);
+      this.three.add(l);
+      return l;
+    };
+    this.propLights = Array.from({ length: P.max }, () => mk(P.lamp));
+    this.beaconLight = mk(P.beacon);
+    this._lampT = 0;
+  }
+
+  _updatePropLights(dt) {
+    const P = JUICE.propLights;
+    const f = this.camFocus;
+    // Re-pick the nearest lamps a few times a second (cheap; maps have a handful of lamps).
+    this._lampT -= dt;
+    if (this._lampT <= 0 || !this._lampNear) {
+      this._lampT = 0.25;
+      this._lampNear = this.lampSpots.slice().sort((a, b) => Math.hypot(a.x - f.x, a.z - f.z) - Math.hypot(b.x - f.x, b.z - f.z)).slice(0, P.max);
+    }
+    this.propLights.forEach((l, i) => {
+      const s = this._lampNear[i];
+      if (!s) { l.intensity = 0; return; }
+      l.position.set(s.x, P.lamp.y, s.z);
+      const fl = Math.sin(this.time * 9 + s.seed) * Math.sin(this.time * 2.3 + s.seed * 3);
+      l.intensity = P.lamp.intensity * (1 - P.lamp.flicker * 0.5 + P.lamp.flicker * 0.5 * fl);
+    });
+    if (this.beacon) {
+      const v = this.beacon.vis.position;
+      this.beaconLight.position.set(v.x, P.beacon.y, v.z);
+      this.beaconLight.intensity = P.beacon.intensity * (1 - P.beacon.pulse * (0.5 + 0.5 * Math.sin(this.time * 6)));
+    }
+  }
+
   _updateProps(dt) {
+    this._updatePropLights(dt);
     for (const v of this.decor) updateVisual(v, dt);
     for (const it of this.interactables) if (it.vis) updateVisual(it.vis, dt);
     for (const s of this.spores) {
@@ -1550,6 +1590,8 @@ export class ExploreScene {
     h.prompt = el('div.x-prompt', {}, h.card, el('div.x-ptext', {}, h.promptRing, h.promptText, h.promptTime));
     h.arrowObj = el('div.x-edge.obj', {}, el('span', '▲'));
     h.arrowExt = el('div.x-edge.ext', {}, el('span', '▲'));
+    // Pooled threat arrows (enemies winding up an attack off-screen).
+    h.threatArrows = Array.from({ length: JUICE.threatArrows.max }, () => el('div.x-edge.threat', { style: { display: 'none' } }, el('span', '▲')));
     h.vignette = el('div.x-vignette');
     // Big map overlay
     h.big = el('canvas.x-bigcanvas');
@@ -1559,7 +1601,7 @@ export class ExploreScene {
         el('span.x-leg', {}, el('i', { style: { background: t.color } }), t.label)));
     h.bigmap = el('div.x-bigmap', { style: { display: 'none' } },
       el('div.x-bigbox.x-panel', {}, el('div.x-bigtitle', {}, el('b', this.D.name), el('span.muted', ` · ${this.objDef.name}`), el('span.muted.x-bigclose', 'Tab / Esc to close')), h.big, legend));
-    h.root = el('div.x-hud', {}, h.vignette, tl, loot, timer, tr, h.prompt, h.arrowObj, h.arrowExt, h.bigmap);
+    h.root = el('div.x-hud', {}, h.vignette, tl, loot, timer, tr, h.prompt, h.arrowObj, h.arrowExt, ...h.threatArrows, h.bigmap);
     h.panels = [tl, loot, timer, tr];
     ui.append(h.root);
     this.hud = h;
@@ -1670,6 +1712,7 @@ export class ExploreScene {
     const objT = this._objectiveTarget();
     this._edgeArrow(h.arrowObj, !this.objectiveDone && !this.ending ? objT : null);
     this._edgeArrow(h.arrowExt, !this.ending ? exit : null);
+    this._threatArrows();
 
     this._fadeHudOverThreats();
 
@@ -1746,6 +1789,31 @@ export class ExploreScene {
     for (const it of this.interactables) if (it.kind === 'primary' && !it.done && it.step === this.objStep) consider(it);
     for (const e of this.enemies) if (e.objective && !e.dead) consider(e);
     return best;
+  }
+
+  /** Red arrows clamped to the screen edge for enemies winding up (or mid-attack) off-screen. */
+  _threatArrows() {
+    const T = JUICE.threatArrows, nodes = this.hud.threatArrows;
+    const W = this.game.stage.clientWidth, H = this.game.stage.clientHeight;
+    const inset = T.inset * W / 960;
+    const v = this._taV || (this._taV = new THREE.Vector3());
+    let n = 0;
+    if (!this.ending && !this.paused) {
+      for (const e of this.enemies) {
+        if (n >= nodes.length) break;
+        if (e.dead || (e.state !== 'windup' && e.state !== 'attack')) continue;
+        if (Math.hypot(e.x - this.player.pos.x, e.z - this.player.pos.z) > T.range) continue;
+        const p = this.game.project(v.set(e.x, 0.4, e.z), this.camera);
+        if (p.x >= 0 && p.x <= W && p.y >= 0 && p.y <= H) continue;   // on screen: its own telegraph shows
+        // Clamp the ray from the screen centre to the enemy onto the inset rectangle.
+        const dx = p.x - W / 2, dy = p.y - H / 2;
+        const t = Math.min((W / 2 - inset) / Math.max(1e-3, Math.abs(dx)), (H / 2 - inset) / Math.max(1e-3, Math.abs(dy)));
+        const node = nodes[n++];
+        node.style.display = '';
+        node.style.transform = `translate(${(W / 2 + dx * t).toFixed(0)}px, ${(H / 2 + dy * t).toFixed(0)}px) translate(-50%, -50%) rotate(${Math.atan2(dy, dx) + Math.PI / 2}rad)`;
+      }
+    }
+    for (; n < nodes.length; n++) if (nodes[n].style.display !== 'none') nodes[n].style.display = 'none';
   }
 
   _edgeArrow(node, target) {

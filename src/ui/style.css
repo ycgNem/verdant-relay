@@ -14,11 +14,9 @@
   --amber: #feae34;
   --leaf: #3e8948;
   /* Pixel fonts (Google Fonts, linked in index.html); the monospace stack is the offline fallback. */
-  --font: 'Tiny5', 'Consolas', 'Courier New', monospace;            /* body + HUD: clean at 9–13 px */
+  --font: 'Tiny5', 'Consolas', 'Courier New', monospace;            /* body + HUD (8 px grid) */
   --font-display: 'Silkscreen', 'Tiny5', 'Consolas', monospace;      /* logo + headlines (chunky caps) */
-  --font-label: 'Silkscreen', 'Tiny5', 'Consolas', monospace;        /* tiny uppercase labels */
-  /* Smallest text allowed when the stage shrinks (800×450 would otherwise give 6–8 px labels). */
-  --fmin: 9px;
+  --font-label: 'Silkscreen', 'Tiny5', 'Consolas', monospace;        /* small uppercase labels (8 px grid) */
 }
 
 * { box-sizing: border-box; }
@@ -36,7 +34,14 @@ html, body {
 
 body { display: flex; align-items: center; justify-content: center; }
 
-#stage { position: relative; --u: 1px; font-size: calc(var(--u) * 13); overflow: hidden; }
+/* Pixel-font grid. Tiny5 and Silkscreen are both drawn on an 8-unit em (cap height 5 px at 8 px), so a glyph
+   is only crisp when font-size is a whole multiple of 8 DEVICE px — anything else drops or doubles pixel rows
+   ("Finish" losing the F's top bar). Game.fit sets --fq = 8 px / devicePixelRatio, and every font-size is
+     max(var(--fq), round(calc(var(--u) * N - 0.01px), var(--fq)))
+   i.e. the design size N (px on a 960-wide stage) rounded to the nearest crisp size (ties go down), at least 1×.
+   Letter-spacing is round(X em, var(--fpx)) (whole device px) so glyphs stay on the pixel grid.
+   Don't use em/% font sizes. */
+#stage { position: relative; --u: 1px; --fq: 8px; --fpx: 1px; font-size: max(var(--fq), round(calc(var(--u) * 13 - 0.01px), var(--fq))); overflow: hidden; }
 
 #view {
   display: block;
@@ -50,7 +55,7 @@ body { display: flex; align-items: center; justify-content: center; }
 
 #flash { position: absolute; inset: 0; pointer-events: none; background: var(--danger); opacity: 0; transition: opacity 0.35s; }
 
-.loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 20px; }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 16px; }
 
 /* ---------------------------------------------------------------- building blocks */
 
@@ -61,8 +66,8 @@ body { display: flex; align-items: center; justify-content: center; }
   padding: calc(var(--u) * 10) calc(var(--u) * 12);
   border-radius: calc(var(--u) * 3);
 }
-.panel h2 { margin: 0 0 calc(var(--u) * 8); font-size: calc(var(--u) * 18); color: var(--good); letter-spacing: 0.06em; }
-.panel h3 { margin: calc(var(--u) * 6) 0 calc(var(--u) * 4); font-size: calc(var(--u) * 14); color: var(--amber); }
+.panel h2 { margin: 0 0 calc(var(--u) * 8); font-size: max(var(--fq), round(calc(var(--u) * 18 - 0.01px), var(--fq))); color: var(--good); letter-spacing: round(0.06em, var(--fpx)); }
+.panel h3 { margin: calc(var(--u) * 6) 0 calc(var(--u) * 4); font-size: max(var(--fq), round(calc(var(--u) * 14 - 0.01px), var(--fq))); color: var(--amber); }
 .panel p { margin: calc(var(--u) * 4) 0; line-height: 1.35; }
 
 .muted { color: var(--muted); }
@@ -70,8 +75,8 @@ body { display: flex; align-items: center; justify-content: center; }
 .bad { color: var(--danger); }
 .amber { color: var(--amber); }
 .accent { color: var(--accent); }
-.small { font-size: calc(var(--u) * 11); }
-.big { font-size: calc(var(--u) * 18); }
+.small { font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); }
+.big { font-size: max(var(--fq), round(calc(var(--u) * 18 - 0.01px), var(--fq))); }
 
 .row { display: flex; gap: calc(var(--u) * 8); align-items: center; flex-wrap: wrap; }
 .row.end { justify-content: flex-end; }
@@ -82,7 +87,7 @@ body { display: flex; align-items: center; justify-content: center; }
 .btn {
   font-family: var(--font);
   font-variant-ligatures: none;
-  font-size: calc(var(--u) * 13);
+  font-size: max(var(--fq), round(calc(var(--u) * 13 - 0.01px), var(--fq)));
   color: var(--text);
   background: linear-gradient(#3a4466, #262b44);
   border: calc(var(--u) * 2) solid #5a6988;
@@ -104,13 +109,12 @@ body { display: flex; align-items: center; justify-content: center; }
 .btn.disabled { opacity: 0.45; cursor: not-allowed; filter: grayscale(0.6); }
 .btn.disabled:hover { background: linear-gradient(#3a4466, #262b44); }
 .btn .hotkey {
-  margin-left: calc(var(--u) * 8); font-size: max(var(--fmin), calc(var(--u) * 10)); color: var(--muted);
+  margin-left: calc(var(--u) * 8); font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); color: var(--muted);
   border: 1px solid var(--muted); padding: 0 calc(var(--u) * 3); border-radius: calc(var(--u) * 2);
 }
-.btn.big { font-size: calc(var(--u) * 17); padding: calc(var(--u) * 9) calc(var(--u) * 18); }
+.btn.big { font-size: max(var(--fq), round(calc(var(--u) * 17 - 0.01px), var(--fq))); padding: calc(var(--u) * 9) calc(var(--u) * 18); }
 
 .res { display: inline-flex; align-items: center; gap: calc(var(--u) * 3); color: var(--c); white-space: nowrap; }
-.res .glyph { font-size: 1.05em; }
 /* Sprite icon (pick_* strips are 2 frames of 12×12; --ri is a whole multiple of 12 px, see ui.js). */
 .ricon {
   display: inline-block; flex: none; vertical-align: middle; width: var(--ri, 12px); height: var(--ri, 12px);
@@ -119,7 +123,7 @@ body { display: flex; align-items: center; justify-content: center; }
 }
 .float .ricon { margin-right: 0.15em; }
 .res b { color: var(--text); }
-.res .lbl { color: var(--c); font-size: 0.85em; opacity: 0.9; }
+.res .lbl { color: var(--c); opacity: 0.9; }
 .res.short-of b, .res.short-of .lbl { color: var(--danger); }
 .resrow { display: flex; gap: calc(var(--u) * 12); flex-wrap: wrap; }
 .cost { display: inline-flex; gap: calc(var(--u) * 8); }
@@ -130,7 +134,7 @@ body { display: flex; align-items: center; justify-content: center; }
   border: calc(var(--u) * 2) solid #3a4466; border-radius: calc(var(--u) * 2); overflow: hidden; min-width: calc(var(--u) * 80);
 }
 .bar .fill { position: absolute; left: 0; top: 0; bottom: 0; transition: width 0.15s; }
-.bar .barlbl { position: absolute; inset: 0; display: grid; place-items: center; font-size: max(var(--fmin), calc(var(--u) * 10)); color: #fff; text-shadow: 1px 1px 0 #000; }
+.bar .barlbl { position: absolute; inset: 0; display: grid; place-items: center; line-height: 1; font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); color: #fff; text-shadow: 1px 1px 0 #000; }
 
 .toasts { position: absolute; top: calc(var(--u) * 64); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 4); pointer-events: none; z-index: 30; }
 .toast {
@@ -147,29 +151,29 @@ body { display: flex; align-items: center; justify-content: center; }
 
 .float {
   position: absolute; left: 0; top: 0; pointer-events: none; font-weight: 700; white-space: nowrap; line-height: 1;
-  font-size: max(var(--fmin), calc(var(--u) * 12)); z-index: 5; will-change: transform;
+  font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); z-index: 5; will-change: transform;
   /* hard 1-px pixel outline (no blur) so numbers read over any floor */
   text-shadow: 1px 0 0 #181425, -1px 0 0 #181425, 0 1px 0 #181425, 0 -1px 0 #181425, 1px 1px 0 #181425, -1px 1px 0 #181425, 1px -1px 0 #181425, -1px -1px 0 #181425, 0 2px 0 #000;
 }
-.float.big { font-size: calc(var(--u) * 16); }
-.float.crit { font-size: calc(var(--u) * 16); color: var(--amber); }
-.float.elite { font-size: calc(var(--u) * 15); }
+.float.big { font-size: max(var(--fq), round(calc(var(--u) * 16 - 0.01px), var(--fq))); }
+.float.crit { font-size: max(var(--fq), round(calc(var(--u) * 16 - 0.01px), var(--fq))); color: var(--amber); }
+.float.elite { font-size: max(var(--fq), round(calc(var(--u) * 15 - 0.01px), var(--fq))); }
 
 .hint {
   position: absolute; background: rgba(24, 20, 37, 0.92); border: calc(var(--u) * 2) solid var(--amber);
   color: var(--text); padding: calc(var(--u) * 6) calc(var(--u) * 10); border-radius: calc(var(--u) * 3);
-  max-width: calc(var(--u) * 300); font-size: calc(var(--u) * 12); line-height: 1.35; z-index: 20;
+  max-width: calc(var(--u) * 300); font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); line-height: 1.35; z-index: 20;
 }
 .hint b { color: var(--amber); }
 
 .key {
   display: inline-block; border: 1px solid var(--muted); border-bottom-width: calc(var(--u) * 2); padding: 0 calc(var(--u) * 4);
-  border-radius: calc(var(--u) * 2); font-size: 0.9em; color: var(--text); background: #262b44; margin: 0 1px;
+  border-radius: calc(var(--u) * 2); color: var(--text); background: #262b44; margin: 0 1px;
 }
 
 .screen { position: absolute; inset: 0; display: flex; flex-direction: column; padding: calc(var(--u) * 24); gap: calc(var(--u) * 12); }
-.title-logo { font-size: calc(var(--u) * 56); letter-spacing: 0.14em; color: var(--good); text-shadow: calc(var(--u) * 3) calc(var(--u) * 3) 0 var(--ink), 0 0 calc(var(--u) * 18) rgba(99, 199, 77, 0.35); margin: 0; }
-.tagline { font-size: calc(var(--u) * 16); color: var(--text); text-shadow: 2px 2px 0 var(--ink); }
+.title-logo { font-size: max(var(--fq), round(calc(var(--u) * 56 - 0.01px), var(--fq))); letter-spacing: round(0.14em, var(--fpx)); color: var(--good); text-shadow: calc(var(--u) * 3) calc(var(--u) * 3) 0 var(--ink), 0 0 calc(var(--u) * 18) rgba(99, 199, 77, 0.35); margin: 0; }
+.tagline { font-size: max(var(--fq), round(calc(var(--u) * 16 - 0.01px), var(--fq))); color: var(--text); text-shadow: 2px 2px 0 var(--ink); }
 
 .scroll { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #5a6988 #181425; }
 
@@ -178,14 +182,17 @@ body { display: flex; align-items: center; justify-content: center; }
 /* ---------------------------------------------------------------- pixel typography */
 /* Headings and the logo use the display face; small uppercase labels use Silkscreen (built for tiny caps). */
 .title-logo, .logo-big, .headline, .res-headline, .df-bannertitle, .x-banner-t, .x-time { font-family: var(--font-display); }
-.x-title, .df-lbl, .df-phase, .df-tag, .dc-k, .skill-branch, .df-role, .df-new, .badge { font-family: var(--font-label); letter-spacing: 0.02em; font-weight: 400; }
+.x-title, .df-lbl, .df-phase, .df-tag, .dc-k, .skill-branch, .df-role, .df-new, .badge { font-family: var(--font-label); letter-spacing: round(0.02em, var(--fpx)); font-weight: 400; }
 b, strong { font-weight: 700; }
+/* Tiny5 has no bold: the browser fakes one by smearing stems ~1 px, which turns 8 px (1×) text to mush.
+   Small stages (most text at 1×) drop the fake bold; Silkscreen has a real 700 and is unaffected. */
+@media (max-width: 959px), (max-height: 539px) { #stage { font-synthesis-weight: none; font-synthesis: none; } }
 
 /* Pause menus (explore + defense): one column, Resume on top, the destructive choice at the bottom. */
 .x-pause .modal .row.end { flex-direction: column; align-items: stretch; gap: calc(var(--u) * 6); }
 .x-pause .modal .row.end .btn { text-align: center; }
 .x-pause .modal .row.end .btn.danger { margin-top: calc(var(--u) * 8); }
 /* Silkscreen is already wide: the logo needs far less tracking than the old monospace did. */
-.title-logo.logo-big { letter-spacing: 0.02em; font-weight: 700; }
-.logo-big .logo-b { letter-spacing: 0.12em; }
-.headline, .res-headline, .df-bannertitle, .x-banner-t { letter-spacing: 0.04em; }
+.title-logo.logo-big { letter-spacing: round(0.02em, var(--fpx)); font-weight: 700; }
+.logo-big .logo-b { letter-spacing: round(0.12em, var(--fpx)); }
+.headline, .res-headline, .df-bannertitle, .x-banner-t { letter-spacing: round(0.04em, var(--fpx)); }

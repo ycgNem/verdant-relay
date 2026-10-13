@@ -791,6 +791,8 @@ export class DefenseScene {
     this.sideBody = el('div.df-body.scroll');
     this.sideFoot = el('div.df-foot');
     this.side = el('div.df-side.panel.ui-block', {}, this.sideHead, this.sideBody, this.sideFoot);
+    // Fade the bottom edge while more content sits below the scroll fold.
+    this.sideBody.addEventListener('scroll', () => this._sideMore());
 
     // ---- boss bar, banner, lane tags
     this.bossBar = bar('df-bossbar', 'linear-gradient(#ff0044, #a22633)');
@@ -802,6 +804,9 @@ export class DefenseScene {
       root.append(n);
       return n;
     });
+    // Boss entry marker: a pulsing arrow at the lane mouth while the boss walks in from off-screen.
+    this.bossArrow = el('div.df-bossarrow', { style: { display: 'none' } }, '☠ ▶▶');
+    root.append(this.bossArrow);
 
     root.append(this.top, this.side, this.bossBox);
     game.ui.append(root);
@@ -827,8 +832,9 @@ export class DefenseScene {
     this._listen(window, 'pointerdown', track, true);
   }
 
-  _iconFor(kind, key, px = 22) {
-    const css = this.game.assets.iconStyle(key, px);
+  /** Icon for a tower / enemy, at most `size` stage units (N px on a 960-wide stage), integer-scaled. */
+  _iconFor(kind, key, size = 22) {
+    const css = this.game.assets.iconStyle(key, size * this.game.stage.clientWidth / 960);
     if (css) return el('span.df-ico', { style: css });
     if (kind === 'tower') {
       const ic = TOWERS[key].icon || { glyph: '?', color: '#8b9bb4' };
@@ -911,6 +917,12 @@ export class DefenseScene {
     else if (mode === 'tower') this._renderTower(t, head, body);
     else this._renderPreview(head, body);
     this._renderFoot(foot);
+    this._sideMore();
+  }
+
+  _sideMore() {
+    const b = this.sideBody;
+    b.classList.toggle('df-more', b.scrollTop + b.clientHeight < b.scrollHeight - 2);
   }
 
   _renderBuild(head, body) {
@@ -1072,7 +1084,8 @@ export class DefenseScene {
     // District threat and boons first: they're what makes tonight different.
     const thr = tn.threat;
     if (thr) {
-      body.append(el('div.df-threat', {}, el('div.df-tag.bad', `⚠ Threat · ${DISTRICTS[this.district]?.name || 'District'}`), el('div.small', thr.text)));
+      // Tag kept short: wide pixel caps would wrap a district name onto 2–3 lines.
+      body.append(el('div.df-threat', { title: `Threat from ${DISTRICTS[this.district]?.name || 'the district'}` }, el('div.df-tag.bad', '⚠ Threat tonight'), el('div.small', thr.text)));
     }
     const boons = tn.boons || [];
     if (boons.length) {
@@ -1097,7 +1110,7 @@ export class DefenseScene {
       for (const [type, c] of m) {
         const d = DEFENSE_ENEMIES[type];
         box.append(el(`div.df-erow${d.boss ? '.boss' : ''}`, { title: `${d.name} (${d.role}): ${d.note || ''}` },
-          this._iconFor('enemy', type, 18),
+          el(`span.df-icoslot${d.boss ? '.boss' : ''}`, {}, this._iconFor('enemy', type, d.boss ? 28 : 18)),
           el('span.df-ename', d.name),
           night > 1 && isNewType(type, night) && !inWave ? el('span.df-new', 'NEW') : null,
           el('span.grow'),
@@ -1167,24 +1180,31 @@ export class DefenseScene {
           title: `Sabotage: spend ${I.sabotageCost} Intel to make tonight's wave ${cut}% smaller (once per night).${sReason ? ` ${sReason}.` : ''}`,
         })));
     }
+    // Repair and Emergency Patch: side by side as half buttons when both show (keeps the footer short
+    // so the wave preview above keeps its room), full width otherwise.
+    const patchOn = run.hasSkill('emergency_patch') && (prep || DEFENSE.emergencyPatchInWave) && (this.phase === 'prep' || this.phase === 'wave');
+    const halves = prep && patchOn;
+    const pair = halves ? el('div.df-intel') : foot;
     if (prep) {
       const full = run.relayHp >= run.relayMax;
       const cost = run.repairCost();
       const reason = full ? 'Relay at full health' : run.missing(cost);
-      const label = full ? el('span', {}, 'Repair (Relay full)') : el('span', {}, `Repair +${run.repairAmount()} HP `, costLine(cost, run.res));
-      foot.append(button(label, () => this._repair(), {
-        disabled: !!reason, hotkey: full ? null : 'R', cls: 'df-wide',
-        title: `${CONFIG.relay.repairScrap} Scrap restores ${CONFIG.relay.repairAmount} HP; near full health you pay only for the HP restored.${reason ? ` ${reason}.` : ''}`,
+      const label = halves
+        ? (full ? el('span', {}, 'Repair', el('span.muted', ' Relay full')) : el('span', {}, `Repair +${run.repairAmount()} HP `, costLine(cost, run.res)))
+        : (full ? el('span', {}, 'Repair (Relay full)') : el('span', {}, `Repair +${run.repairAmount()} HP `, costLine(cost, run.res)));
+      pair.append(button(label, () => this._repair(), {
+        disabled: !!reason, hotkey: full || halves ? null : 'R', cls: halves ? 'df-half' : 'df-wide',
+        title: `${CONFIG.relay.repairScrap} Scrap restores ${CONFIG.relay.repairAmount} HP; near full health you pay only for the HP restored (R).${reason ? ` ${reason}.` : ''}`,
       }));
     }
-    if (run.hasSkill('emergency_patch') && (prep || DEFENSE.emergencyPatchInWave)) {
+    if (patchOn) {
       const used = run.tonight.emergencyPatchUsed;
       const full = run.relayHp >= run.relayMax;
       const reason = used ? 'Already used tonight' : full ? 'Relay at full health' : null;
-      if (this.phase === 'prep' || this.phase === 'wave') {
-        foot.append(button('Emergency Patch +15 (free)', () => this._patch(), { disabled: !!reason, reason, cls: 'df-wide', title: SKILLS.emergency_patch.desc }));
-      }
+      const label = halves ? el('span', {}, 'Patch +15', el('span.good', ' free')) : 'Emergency Patch +15 (free)';
+      pair.append(button(label, () => this._patch(), { disabled: !!reason, reason, cls: halves ? 'df-half' : 'df-wide', title: `Emergency Patch: ${SKILLS.emergency_patch.desc}` }));
     }
+    if (halves) foot.append(pair);
     if (prep) {
       foot.append(button(el('span', {}, '▶ Start Wave'), () => this.startWave(), { hotkey: 'Space', cls: 'primary big df-wide df-start' }));
     } else if (this.phase === 'wave') {
@@ -1424,6 +1444,7 @@ export class DefenseScene {
       this.game.sfx.play('alarm');
       this.game.shake(4, 0.4);
       toast(this.game.ui, `☠ The ${DEFENSE_ENEMIES[type].name} approaches on the ${this.lanes[lane].name}!`, 'bad', 3);
+      this._bossEntry = { lane, until: this.game.time + DEFENSE.bossEntry };
     }
     return e;
   }
@@ -1833,24 +1854,37 @@ export class DefenseScene {
       if (ht && ht.stats) this._showRange(ht.pos.x, ht.pos.z, ht.stats, '#ead4aa', false);
     }
 
-    // Lane tags at the field entrance.
+    // Lane tags at the field entrance. While the boss walks in from off-screen its lane's tag and an
+    // arrow at the lane mouth pulse red (until it is on the field or DEFENSE.bossEntry runs out).
     const tagPos = new THREE.Vector3();
+    let bossEntry = this._bossEntry;
+    if (bossEntry && (game.time > bossEntry.until || !this.boss || this.boss.removed || this.boss.dead || this.boss.pos.x > 1.2)) bossEntry = this._bossEntry = null;
     this.lanes.forEach((lane, i) => {
       const n = this.laneTags[i];
       let count;
       if (this.phase === 'prep') { count = 0; for (const c of this.wave.perLane[i].values()) count += c; }
       else if (this.events) { count = 0; for (let j = this.spawnIdx; j < this.events.length; j++) if (this.events[j].lane === i) count++; }
-      const txt = this.phase === 'prep' ? `${lane.short} ▸ ${count}` : count > 0 ? `${lane.short} ▸ ${count} more` : '';
+      const bossHere = bossEntry && bossEntry.lane === i;
+      const txt = bossHere ? `☠ ${lane.short} ▸ Colossus` : this.phase === 'prep' ? `${lane.short} ▸ ${count}` : count > 0 ? `${lane.short} ▸ ${count} more` : '';
       if (n.textContent !== txt) n.textContent = txt;
+      n.classList.toggle('boss', !!bossHere);
       n.style.display = txt ? '' : 'none';
       if (!txt) return;
-      // Under the lane's entry row at the field edge: enemies (and the boss) walk in along the lane
-      // and draw upward from their feet, so a tag below the lane never covers them.
+      // Below the lane's entry row at the field edge, clear of the path: enemies (and the boss) walk in
+      // along the lane and draw upward from their feet, and their jitter + ground ring stay above
+      // DEFENSE.laneTagDrop, so the tag never covers a spawning enemy.
       lane.pointAt(0, tagPos);
-      tagPos.set(0.2, 0, tagPos.z + 0.58);
+      const laneZ = tagPos.z;
+      tagPos.set(0.2, 0, laneZ + DEFENSE.laneTagDrop);
       const p = game.project(tagPos, this.camera);
       n.style.transform = `translate(${p.x.toFixed(0)}px, ${p.y.toFixed(0)}px)`;
+      if (bossHere) {
+        tagPos.set(0.15, 0, laneZ);
+        const a = game.project(tagPos, this.camera);
+        this.bossArrow.style.transform = `translate(${a.x.toFixed(0)}px, ${a.y.toFixed(0)}px) translateY(-50%)`;
+      }
     });
+    if (this.bossArrow.style.display !== (bossEntry ? '' : 'none')) this.bossArrow.style.display = bossEntry ? '' : 'none';
 
     // Boss bar
     if (this.boss && !this.boss.removed) {

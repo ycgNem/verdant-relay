@@ -12,13 +12,13 @@
   box-shadow: 0 0 0 calc(var(--u) * 2) var(--ink);
 }
 .df-night { line-height: 1.05; min-width: calc(var(--u) * 96); }
-.df-night b { color: var(--amber); font-size: calc(var(--u) * 15); letter-spacing: 0.08em; }
-.df-phase { font-size: max(var(--fmin), calc(var(--u) * 10)); color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
-.df-lbl { font-size: max(var(--fmin), calc(var(--u) * 10)); color: var(--muted); letter-spacing: 0.08em; margin-right: calc(var(--u) * 4); }
+.df-night b { color: var(--amber); font-size: max(var(--fq), round(calc(var(--u) * 15 - 0.01px), var(--fq))); letter-spacing: round(0.08em, var(--fpx)); }
+.df-phase { font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); color: var(--muted); text-transform: uppercase; letter-spacing: round(0.08em, var(--fpx)); }
+.df-lbl { font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); color: var(--muted); letter-spacing: round(0.08em, var(--fpx)); margin-right: calc(var(--u) * 4); }
 .df-relay { display: flex; align-items: center; }
 .df-relay .df-lbl { color: var(--accent); }
 .df-relaybar { width: calc(var(--u) * 140); height: calc(var(--u) * 17); }
-.df-relaybar .barlbl { font-size: calc(var(--u) * 11); }
+.df-relaybar .barlbl { font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); }
 .df-relaybar.low { animation: df-blink 0.8s steps(2) infinite; border-color: var(--danger); }
 .df-relaybar.hit { animation: df-hit 0.35s; }
 .df-res .resrow { gap: calc(var(--u) * 10); }
@@ -27,7 +27,7 @@
 .df-wavebar { width: calc(var(--u) * 100); min-width: 0; height: calc(var(--u) * 15); }
 .df-left { min-width: calc(var(--u) * 46); }
 .df-ctrl { display: flex; gap: calc(var(--u) * 4); }
-.btn.df-icon { padding: calc(var(--u) * 3) calc(var(--u) * 7); font-size: calc(var(--u) * 12); min-width: calc(var(--u) * 30); text-align: center; }
+.btn.df-icon { padding: calc(var(--u) * 3) calc(var(--u) * 7); font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); min-width: calc(var(--u) * 30); text-align: center; }
 .btn.df-icon.selected { outline: calc(var(--u) * 2) solid var(--amber); color: var(--amber); }
 
 @keyframes df-blink { 50% { filter: brightness(1.7); } }
@@ -38,14 +38,14 @@
   position: absolute; right: calc(var(--u) * 6); top: calc(var(--u) * 48); bottom: calc(var(--u) * 6); width: calc(var(--u) * 232);
   display: flex; flex-direction: column; gap: calc(var(--u) * 6); padding: calc(var(--u) * 8) calc(var(--u) * 9);
 }
-.df-head h2 { margin: 0; font-size: calc(var(--u) * 16); }
+.df-head h2 { margin: 0; font-size: max(var(--fq), round(calc(var(--u) * 16 - 0.01px), var(--fq))); }
 .df-head .row { flex-wrap: nowrap; }
 .df-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: calc(var(--u) * 6); padding-right: calc(var(--u) * 3); }
-.df-body h3 { margin: calc(var(--u) * 4) 0 0; font-size: calc(var(--u) * 12); }
+.df-body h3 { margin: calc(var(--u) * 4) 0 0; font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 .df-foot { display: flex; flex-direction: column; gap: calc(var(--u) * 5); border-top: calc(var(--u) * 1) solid var(--panel-edge); padding-top: calc(var(--u) * 6); }
-.btn.df-wide { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 6); font-size: calc(var(--u) * 12); }
-.btn.df-wide .cost { font-size: calc(var(--u) * 11); }
-.btn.df-start { justify-content: center; font-size: calc(var(--u) * 16); }
+.btn.df-wide { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 6); font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
+.btn.df-wide .cost { font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); }
+.btn.df-start { justify-content: center; font-size: max(var(--fq), round(calc(var(--u) * 16 - 0.01px), var(--fq))); }
 .df-note { line-height: 1.35; }
 
 /* build cards */
@@ -58,49 +58,49 @@
 .df-card.disabled:hover { border-color: var(--danger); }
 .df-cardicon { position: relative; flex: none; width: calc(var(--u) * 30); display: flex; justify-content: center; padding-top: calc(var(--u) * 2); }
 .df-hk {
-  position: absolute; left: calc(var(--u) * -2); top: calc(var(--u) * 26); font-size: max(var(--fmin), calc(var(--u) * 9)); color: var(--text);
+  position: absolute; left: calc(var(--u) * -2); top: calc(var(--u) * 26); font-size: max(var(--fq), round(calc(var(--u) * 9 - 0.01px), var(--fq))); color: var(--text);
   background: #262b44; border: 1px solid var(--muted); padding: 0 calc(var(--u) * 3); border-radius: calc(var(--u) * 2);
 }
 .df-cardmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: calc(var(--u) * 1); }
 .df-cardtop { display: flex; align-items: baseline; justify-content: space-between; gap: calc(var(--u) * 4); }
-.df-cardtop b { font-size: calc(var(--u) * 12.5); white-space: nowrap; }
+.df-cardtop b { font-size: max(var(--fq), round(calc(var(--u) * 12.5 - 0.01px), var(--fq))); white-space: nowrap; }
 .df-cardcost { display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 4); }
-.df-cardcost .cost { font-size: calc(var(--u) * 11); }
-.df-desc { font-size: max(var(--fmin), calc(var(--u) * 10)); color: var(--muted); line-height: 1.25; }
+.df-cardcost .cost { font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); }
+.df-desc { font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); color: var(--muted); line-height: 1.25; }
 .df-desc.bad { color: var(--danger); }
-.df-stats { font-size: max(var(--fmin), calc(var(--u) * 10)); }
-.df-role { font-size: max(var(--fmin), calc(var(--u) * 9)); color: var(--muted); border: 1px solid #5a6988; padding: 0 calc(var(--u) * 4); border-radius: calc(var(--u) * 2); text-transform: uppercase; letter-spacing: 0.05em; }
+.df-stats { font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); }
+.df-role { font-size: max(var(--fq), round(calc(var(--u) * 9 - 0.01px), var(--fq))); color: var(--muted); border: 1px solid #5a6988; padding: 0 calc(var(--u) * 4); border-radius: calc(var(--u) * 2); text-transform: uppercase; letter-spacing: round(0.05em, var(--fpx)); }
 .df-stats { color: #c0cbdc; }
 .df-role { white-space: nowrap; }
 
 .df-glyph {
   display: inline-grid; place-items: center; flex: none; width: calc(var(--u) * 26); height: calc(var(--u) * 26);
   background: #181425; border: calc(var(--u) * 2) solid var(--c); color: var(--c); border-radius: calc(var(--u) * 4);
-  font-size: calc(var(--u) * 15); font-weight: bold; line-height: 1;
+  font-size: max(var(--fq), round(calc(var(--u) * 15 - 0.01px), var(--fq))); font-weight: bold; line-height: 1;
 }
-.df-glyph.enemy { width: calc(var(--u) * 18); height: calc(var(--u) * 18); font-size: max(var(--fmin), calc(var(--u) * 10)); border-radius: 50%; background: var(--c); color: #181425; border-color: #181425; }
+.df-glyph.enemy { width: calc(var(--u) * 18); height: calc(var(--u) * 18); font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); border-radius: 50%; background: var(--c); color: #181425; border-color: #181425; }
 .df-ico { flex: none; }
 
 /* tower details */
 .df-level { display: flex; align-items: center; gap: calc(var(--u) * 3); }
 .df-pip { display: inline-block; width: calc(var(--u) * 8); height: calc(var(--u) * 8); border: calc(var(--u) * 1.5) solid var(--amber); }
 .df-pip.on { background: var(--amber); }
-.df-statgrid { display: grid; grid-template-columns: auto 1fr; gap: calc(var(--u) * 2) calc(var(--u) * 8); font-size: calc(var(--u) * 11); }
+.df-statgrid { display: grid; grid-template-columns: auto 1fr; gap: calc(var(--u) * 2) calc(var(--u) * 8); font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); }
 .df-targets { gap: calc(var(--u) * 4); flex-wrap: nowrap; }
-.btn.df-tgt { flex: 1; text-align: center; padding: calc(var(--u) * 4) calc(var(--u) * 2); font-size: calc(var(--u) * 11); }
+.btn.df-tgt { flex: 1; text-align: center; padding: calc(var(--u) * 4) calc(var(--u) * 2); font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); }
 
 /* wave preview */
 .df-lane { background: rgba(38, 43, 68, 0.55); border-left: calc(var(--u) * 3) solid var(--amber); padding: calc(var(--u) * 4) calc(var(--u) * 6); border-radius: calc(var(--u) * 2); display: flex; flex-direction: column; gap: calc(var(--u) * 3); }
-.df-lanehead { font-size: calc(var(--u) * 12); }
-.df-erow { display: flex; align-items: center; gap: calc(var(--u) * 6); font-size: calc(var(--u) * 12); }
+.df-lanehead { font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
+.df-erow { display: flex; align-items: center; gap: calc(var(--u) * 6); font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 .df-erow.boss { color: #ff4d6d; font-weight: bold; }
 .df-ename { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.df-new { font-size: max(var(--fmin), calc(var(--u) * 8)); color: #181425; background: var(--amber); padding: 0 calc(var(--u) * 3); border-radius: calc(var(--u) * 2); font-weight: bold; }
+.df-new { font-size: max(var(--fq), round(calc(var(--u) * 8 - 0.01px), var(--fq))); color: #181425; background: var(--amber); padding: 0 calc(var(--u) * 3); border-radius: calc(var(--u) * 2); font-weight: bold; }
 .df-threat, .df-boons, .df-mods { padding: calc(var(--u) * 5) calc(var(--u) * 6); border-radius: calc(var(--u) * 3); display: flex; flex-direction: column; gap: calc(var(--u) * 2); line-height: 1.3; }
 .df-threat { background: rgba(162, 38, 51, 0.22); border: 1px solid rgba(228, 59, 68, 0.6); }
 .df-boons { background: rgba(62, 137, 72, 0.22); border: 1px solid rgba(99, 199, 77, 0.6); }
 .df-mods { background: rgba(38, 43, 68, 0.55); border: 1px solid #3a4466; }
-.df-tag { font-size: max(var(--fmin), calc(var(--u) * 10)); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: bold; }
+.df-tag { font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); text-transform: uppercase; letter-spacing: round(0.08em, var(--fpx)); color: var(--muted); font-weight: bold; }
 .df-tag.bad { color: var(--danger); }
 .df-tag.good { color: var(--good); }
 
@@ -110,14 +110,14 @@
   text-align: center; display: flex; flex-direction: column; gap: calc(var(--u) * 2);
   text-shadow: 1px 1px 0 #000, -1px 1px 0 #000;
 }
-.df-bossname { color: #ff4d6d; font-weight: bold; font-size: calc(var(--u) * 13); letter-spacing: 0.1em; }
+.df-bossname { color: #ff4d6d; font-weight: bold; font-size: max(var(--fq), round(calc(var(--u) * 13 - 0.01px), var(--fq))); letter-spacing: round(0.1em, var(--fpx)); }
 .df-bossbar { height: calc(var(--u) * 16); border-color: #a22633; }
-.df-bossphase { font-size: calc(var(--u) * 11); color: var(--text); min-height: calc(var(--u) * 14); }
+.df-bossphase { font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); color: var(--text); min-height: calc(var(--u) * 14); }
 .df-bossphase.bad { color: #ff4d6d; font-weight: bold; animation: df-blink 0.4s steps(2) infinite; }
 .df-bossphase.good { color: var(--good); }
 
 .df-lanetag {
-  position: absolute; left: 0; top: 0; font-size: calc(var(--u) * 11); white-space: nowrap; pointer-events: none;
+  position: absolute; left: 0; top: 0; font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); white-space: nowrap; pointer-events: none;
   color: var(--amber); background: rgba(24, 20, 37, 0.85); border: 1px solid var(--amber); padding: 0 calc(var(--u) * 5);
   border-radius: calc(var(--u) * 2); z-index: 4;
 }
@@ -130,23 +130,23 @@
 }
 .df-banner.good { border-color: var(--good); }
 .df-banner.bad { border-color: var(--danger); }
-.df-bannertitle { font-size: calc(var(--u) * 34); letter-spacing: 0.14em; font-weight: bold; text-shadow: calc(var(--u) * 3) calc(var(--u) * 3) 0 var(--ink); }
+.df-bannertitle { font-size: max(var(--fq), round(calc(var(--u) * 34 - 0.01px), var(--fq))); letter-spacing: round(0.14em, var(--fpx)); font-weight: bold; text-shadow: calc(var(--u) * 3) calc(var(--u) * 3) 0 var(--ink); }
 .df-banner.good .df-bannertitle { color: var(--good); }
 .df-banner.bad .df-bannertitle { color: var(--danger); }
-.df-bannersub { font-size: calc(var(--u) * 14); margin: calc(var(--u) * 6) 0; }
+.df-bannersub { font-size: max(var(--fq), round(calc(var(--u) * 14 - 0.01px), var(--fq))); margin: calc(var(--u) * 6) 0; }
 @keyframes df-banner-in { from { opacity: 0; transform: translateY(-50%) scaleY(0.2); } to { opacity: 1; transform: translateY(-50%) scaleY(1); } }
 
 /* Intel actions (prep footer): two half-width buttons */
 .df-intel { display: flex; gap: calc(var(--u) * 4); }
-.btn.df-half { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 1); padding: calc(var(--u) * 3) calc(var(--u) * 2); font-size: max(var(--fmin), calc(var(--u) * 10.5)); line-height: 1.15; }
+.btn.df-half { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 1); padding: calc(var(--u) * 3) calc(var(--u) * 2); font-size: max(var(--fq), round(calc(var(--u) * 10.5 - 0.01px), var(--fq))); line-height: 1.15; }
 .btn.df-half > span { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: calc(var(--u) * 3); }
-.btn.df-half .cost { font-size: max(var(--fmin), calc(var(--u) * 10)); }
+.btn.df-half .cost { font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); }
 .df-arrow { color: var(--amber); white-space: nowrap; }
 
 /* Toasts sit bottom-right of the map (scenery rows below both lanes): never over the boss bar, the side
    panel or a pad, and clear of the night hints (bottom-left). Newest at the bottom; at most 3 (ui.js toast). */
 .defense-ui .toasts { left: auto; right: calc(var(--u) * 248); width: calc(var(--u) * 400); top: auto; bottom: calc(var(--u) * 10); align-items: flex-end; }
-.defense-ui .toast { font-size: calc(var(--u) * 12); padding: calc(var(--u) * 4) calc(var(--u) * 10); max-width: 100%; text-align: right; }
+.defense-ui .toast { font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); padding: calc(var(--u) * 4) calc(var(--u) * 10); max-width: 100%; text-align: right; }
 
 /* Sell confirm: shrinking bar shows how long the confirm stays armed */
 .btn.df-sellarmed { position: relative; overflow: hidden; }
@@ -172,3 +172,27 @@
 /* Build cards: the role chip wraps under the cost on narrow stages instead of being clipped. */
 .df-cardcost { flex-wrap: wrap; row-gap: calc(var(--u) * 2); }
 .df-role { flex: none; }
+
+/* Side panel fit: children never shrink (a squeezed overflow:hidden child is how "Confirm sell" got cut),
+   the body scrolls instead, with a fade at the bottom edge while there is more below. Pixel-font line
+   height: 1.25 em = 10 font pixels. */
+.df-body > * { flex-shrink: 0; }
+.df-side { line-height: 1.25; }
+.df-side .df-note, .df-threat, .df-boons, .df-mods { line-height: 1.25; }
+.df-body.df-more { -webkit-mask-image: linear-gradient(#000 calc(100% - var(--u) * 22), rgba(0, 0, 0, 0.15)); mask-image: linear-gradient(#000 calc(100% - var(--u) * 22), rgba(0, 0, 0, 0.15)); }
+.df-lane { gap: calc(var(--u) * 2); padding: calc(var(--u) * 3) calc(var(--u) * 6); }
+
+/* Boss entry: the lane tag turns red and pulses, and an arrow blinks at the lane mouth. */
+.df-lanetag.boss { color: #fff; background: #a22633; border-color: #ff4d6d; animation: df-entry 0.35s steps(2) infinite; z-index: 6; }
+.df-bossarrow {
+  position: absolute; left: 0; top: 0; pointer-events: none; z-index: 6; white-space: nowrap; color: #ff4d6d;
+  font-family: var(--font-display); font-size: max(var(--fq), round(calc(var(--u) * 26 - 0.01px), var(--fq)));
+  text-shadow: 1px 0 0 #181425, -1px 0 0 #181425, 0 1px 0 #181425, 0 -1px 0 #181425, 0 2px 0 #000;
+  animation: df-entry 0.35s steps(2) infinite;
+}
+@keyframes df-entry { 50% { opacity: 0.35; } }
+.defense-ui .hint { line-height: 1.25; }
+.btn.df-start { padding-top: calc(var(--u) * 6); padding-bottom: calc(var(--u) * 6); }
+.df-night { flex: none; }
+.df-icoslot { flex: none; display: inline-flex; justify-content: center; align-items: center; width: calc(var(--u) * 20); }
+.df-icoslot.boss { width: calc(var(--u) * 30); }

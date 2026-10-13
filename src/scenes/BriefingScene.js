@@ -43,7 +43,7 @@ function wavePreview(game, night) {
   const counts = {};
   for (const g of groups) counts[g.type] = (counts[g.type] || 0) + g.count;
   return el('div.wave-mini', {}, Object.entries(counts).map(([k, n]) =>
-    el('span.wave-chip', { title: `${DEFENSE_ENEMIES[k]?.name || k} (${DEFENSE_ENEMIES[k]?.role || ''})` }, iconEl(game, k, 20), el('b', `×${n}`))));
+    el('span.wave-chip', { title: `${DEFENSE_ENEMIES[k]?.name || k} (${DEFENSE_ENEMIES[k]?.role || ''})` }, iconEl(game, k, DEFENSE_ENEMIES[k]?.boss ? 32 : 20), el('b', `×${n}`))));
 }
 
 export class BriefingScene {

@@ -282,19 +282,9 @@ export function iconEl(game, key, size = 28, opts = {}) {
   const box = el('span.vicon', { style: { width: `calc(var(--u) * ${size})`, height: `calc(var(--u) * ${size})` } });
   const info = game.assets.spriteInfo?.(key);
   if (info?.tex?.image) {
-    const img = info.tex.image;
-    const frames = info.def.frames || 1;
-    const fw = img.width / frames;
-    const m = Math.max(fw, img.height);
-    const sprite = el('span.vicon-sprite', {
-      style: {
-        width: `calc(var(--u) * ${(size * fw / m).toFixed(2)})`,
-        height: `calc(var(--u) * ${(size * img.height / m).toFixed(2)})`,
-        backgroundImage: `url(${import.meta.env.BASE_URL}sprites/${info.def.file})`,
-        backgroundSize: `${frames * 100}% 100%`,
-      },
-    });
-    box.append(sprite);
+    // Integer-scaled (Assets.iconScale): the biggest 1×/2×/3× (or even 1/n) that fits the box.
+    const boxPx = size * (game.stage.clientWidth || 960) / 960;
+    box.append(el('span.vicon-sprite', { style: game.assets.iconStyle(key, boxPx) }));
     return box;
   }
   const base = key.replace(/_\d+$/, '');

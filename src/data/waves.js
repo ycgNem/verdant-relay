@@ -30,6 +30,8 @@ export const DEFENSE = {
   damageNumbersMin: 6,                     // hits below this don't show a number (keeps rapid towers readable)
   maxFloatingText: 28,
   sellConfirm: 4,                          // seconds the "Confirm sell" button stays armed
+  bossEntry: 6,                            // seconds the boss's lane entry pulses (tag + arrow) after it spawns, or until it walks on screen
+  laneTagDrop: 0.78,                       // lane tags sit this many tiles below the lane centre (clear of enemy rings and the path)
 };
 
 export const WAVES = [

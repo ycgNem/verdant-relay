@@ -160,7 +160,26 @@ export class Assets {
     return k ? { tex: this.textures[k], def: this.manifest[k] } : null;
   }
 
-  /** CSS for a DOM icon of a sprite's first frame, or null. */
+  /**
+   * CSS px per texel for a sprite icon sized for a `boxPx` CSS px slot: the largest whole number of
+   * DEVICE px per texel (1×, 2×, 3×…) that (about) fits, or an even 1/n step down when the sprite is much
+   * bigger than the slot — never an arbitrary ratio, which draws texels 1 or 2 px wide at random.
+   */
+  iconScale(key, boxPx) {
+    const k = this.resolveKey(key);
+    if (!k) return null;
+    const def = this.manifest[k];
+    const img = this.textures[k].image;
+    const fw = img.width / (def.frames || 1);
+    const dpr = window.devicePixelRatio || 1;
+    const r = (boxPx * dpr) / Math.max(fw, img.height);
+    // Up to ~15% over the box is allowed (a 48 px tower in a 45 px slot stays 1× instead of halving).
+    const ds = r >= 0.85 ? Math.max(1, Math.floor(r + 0.15)) : 1 / Math.ceil(1 / r - 0.15);
+    return ds / dpr;
+  }
+
+  /** CSS for a DOM icon of a sprite's first frame, at most `sizePx` CSS px on its long side
+   *  (integer-scaled, see iconScale), or null. */
   iconStyle(key, sizePx = 32) {
     const k = this.resolveKey(key);
     if (!k) return null;
@@ -168,7 +187,7 @@ export class Assets {
     const img = this.textures[k].image;
     const frames = def.frames || 1;
     const fw = img.width / frames;
-    const scale = sizePx / Math.max(fw, img.height);
+    const scale = this.iconScale(key, sizePx);
     return `background-image:url(${import.meta.env.BASE_URL}sprites/${def.file});background-size:${img.width * scale}px ${img.height * scale}px;background-position:0 0;width:${fw * scale}px;height:${img.height * scale}px;image-rendering:pixelated;background-repeat:no-repeat;`;
   }
 

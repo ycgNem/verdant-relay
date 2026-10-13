@@ -166,6 +166,11 @@ export class Game {
     this.stage.style.height = `${sh}px`;
     // UI scales with the stage so layouts look the same at every window size.
     this.stage.style.setProperty('--u', `${(sw / 960).toFixed(4)}px`);
+    // Pixel-font quantum: the UI fonts sit on an 8-unit em, so text is only crisp at whole multiples of
+    // 8 device px. CSS rounds every font-size to a multiple of --fq (see "Pixel-font grid" in style.css).
+    const dpr = window.devicePixelRatio || 1;
+    this.stage.style.setProperty('--fq', `${(CONFIG.ui.fontGrid / dpr).toFixed(4)}px`);
+    this.stage.style.setProperty('--fpx', `${(1 / dpr).toFixed(4)}px`);   // one device px (letter-spacing)
   }
 
   applySettings() {

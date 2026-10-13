@@ -169,7 +169,19 @@ export class Run {
     // Skip skills whose effect needs a locked tower (needsUnlock: a meta unlock key).
     const pool = SKILL_KEYS.filter((k) => !this.hasSkill(k) && (!SKILLS[k].req || this.hasSkill(SKILLS[k].req))
       && (!SKILLS[k].needsUnlock || meta.unlocks.includes(SKILLS[k].needsUnlock)));
-    return this.rng('skills', this.skills.length, salt).shuffle(pool).slice(0, n);
+    const shuffled = this.rng('skills', this.skills.length, salt).shuffle(pool);
+    // Spread the picks: the first skill of each branch (in shuffled order) goes in before any branch
+    // gets a second slot, so a pick spans as many branches as the pool allows.
+    const seen = new Set(), picks = [];
+    for (const k of shuffled) {
+      if (picks.length >= n) break;
+      if (!seen.has(SKILLS[k].branch)) { seen.add(SKILLS[k].branch); picks.push(k); }
+    }
+    for (const k of shuffled) {
+      if (picks.length >= n) break;
+      if (!picks.includes(k)) picks.push(k);
+    }
+    return picks;
   }
 
   takeSkill(id) {

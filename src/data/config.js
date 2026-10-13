@@ -12,6 +12,10 @@ export const CONFIG = {
   // derived from that), kept low so sprites standing behind a wall only lose their feet.
   pixel: { pitch: 55, ppu: 32, wallFrontPx: 16, blockFrontPx: 12 },
 
+  // DOM UI. fontGrid: the em size (device px) the pixel fonts Tiny5 / Silkscreen are drawn on —
+  // UI font sizes snap to whole multiples of it (Game.fit → --fq).
+  ui: { fontGrid: 8 },
+
   player: {
     hp: 100,
     speed: 5.6,          // tiles/sec (~180 px/s at 32 px tiles)
@@ -179,6 +183,17 @@ export const JUICE = {
   pickup: { sparkleEvery: 1.3, bobPx: 1, flyTime: 0.45 },
   hostileRing: { color: '#e43b44', opacity: 1 },
   hudFade: { opacity: 0.22, pad: 14 },   // HUD panels fade while a threat is behind them (pad: stage units)
+  // Explore: red arrows at the screen edge pointing at enemies winding up an attack off-screen
+  // (max arrows, inset from the edge in stage units, how far off-screen an enemy still counts in tiles).
+  threatArrows: { max: 4, inset: 20, range: 12 },
+  // Explore: small point lights on lamp posts (warm) and the emergency beacon (cyan). A fixed pool is
+  // created on enter (the shader's light count never changes, so no recompiles); each frame the lamps
+  // nearest the camera get a light. y: light height in world units; flicker: intensity wobble.
+  propLights: {
+    max: 6,
+    lamp: { color: '#ffd8a0', intensity: 8, distance: 3.4, y: 1.6, flicker: 0.12 },   // pale warm: a deep orange barely shows on blue floors
+    beacon: { color: '#2ce8f5', intensity: 8, distance: 4.4, y: 1.8, pulse: 0.35 },
+  },
   separation: { pad: 0.12, player: 0.16 },  // extra spacing between enemies / from the player (tiles)
   extraction: { scroll: 0.9, width: 1.6, height: 3.4 },
   // Where each tower's drawn muzzle / emitter is in its 32×48 sprite (texels from the left, from the
