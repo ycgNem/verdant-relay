@@ -5,16 +5,16 @@
 
 export const SKILLS = {
   // Scavenger
-  pack_rat_1: { branch: 'Scavenger', name: 'Pack Rat I', desc: 'Loot magnet radius +50%.' },
+  pack_rat_1: { branch: 'Scavenger', name: 'Pack Rat I', desc: 'Pick up loot from 50% further away.' },
   pack_rat_2: { branch: 'Scavenger', name: 'Pack Rat II', desc: 'Containers yield 10% more Scrap.', req: 'pack_rat_1' },
   // Safe Hands: spore clouds (SPORES in src/data/jungle.js: safeHands) hurt half as much and don't drain stamina.
   safe_hands: { branch: 'Scavenger', name: 'Safe Hands', desc: 'Spore clouds deal half damage and no longer drain your stamina.' },
-  field_medic: { branch: 'Scavenger', name: 'Field Medic', desc: 'Start each expedition carrying a med kit.' },
-  quick_extraction: { branch: 'Scavenger', name: 'Quick Extraction', desc: 'Extraction and objectives are 25% faster to interact with.' },
+  field_medic: { branch: 'Scavenger', name: 'Field Medic', desc: 'Start each trip carrying a med kit.' },
+  quick_extraction: { branch: 'Scavenger', name: 'Quick Extraction', desc: 'Heading home and goal tasks take 25% less time to hold E.' },
   lush_finds: { branch: 'Scavenger', name: 'Lush Finds', desc: 'Higher chance of Biofiber in containers.' },
   // Engineer
   efficient_assembly: { branch: 'Engineer', name: 'Efficient Assembly', desc: 'Towers cost 10% less Scrap.' },
-  circuit_recovery: { branch: 'Engineer', name: 'Circuit Recovery', desc: '25% chance to refund 1 Circuit when building a Circuit tower.' },
+  circuit_recovery: { branch: 'Engineer', name: 'Circuit Recovery', desc: '25% chance to get 1 Circuit back when you build a tower that uses Circuits.' },
   long_sightlines: { branch: 'Engineer', name: 'Long Sightlines', desc: 'Towers gain 10% range.' },
   field_tuning: { branch: 'Engineer', name: 'Field Tuning', desc: 'The first tower upgrade each night costs 40% less Scrap.', scrapMult: 0.6 },
   overclock: { branch: 'Engineer', name: 'Overclock', desc: 'Towers attack 8% faster.', req: 'long_sightlines' },

@@ -283,7 +283,7 @@ export function iconEl(game, key, size = 28, opts = {}) {
   const info = game.assets.spriteInfo?.(key);
   if (info?.tex?.image) {
     // Integer-scaled (Assets.iconScale): the biggest 1×/2×/3× (or even 1/n) that fits the box.
-    const boxPx = size * (game.stage.clientWidth || 960) / 960;
+    const boxPx = size * (game.u || 1);
     box.append(el('span.vicon-sprite', { style: game.assets.iconStyle(key, boxPx) }));
     return box;
   }

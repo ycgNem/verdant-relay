@@ -39,6 +39,9 @@ export class PostFx {
       uHurt: { value: 0 },
       tLeaves: { value: leafTexture() },
       uLeaves: { value: 0 },                        // 0 = off; 1 = foreground leaves frame the view
+      // Leaf frame depth in internal px (not a share of the screen, so a wider view isn't eaten by it):
+      // (x: full, fade-out) from the left/right edges, (z: full, w: fade-out) from the top/bottom.
+      uLeafBand: { value: new THREE.Vector4(...ATMOS.leafFrame.x, ...ATMOS.leafFrame.y) },
     };
     this.mat = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -50,6 +53,7 @@ export class PostFx {
         uniform vec2 uRes, uFocus, uPlayer;
         uniform float uWorld, uPpu, uTime, uLightR, uDark, uAmbient, uShadeK, uDapple, uDappleScale, uWind, uVignette, uHurt, uLeaves;
         uniform sampler2D tLeaves;
+        uniform vec4 uLeafBand;
         uniform vec3 uTint;
         varying vec2 vUv;
         const float BAYER[16] = float[16](0.03125,0.53125,0.15625,0.65625,0.78125,0.28125,0.90625,0.40625,0.21875,0.71875,0.09375,0.59375,0.96875,0.46875,0.84375,0.34375);
@@ -99,8 +103,8 @@ export class PostFx {
             vec2 sway = vec2(floor(sin(uTime * 0.9 + px.y * 0.01) * 2.0 + 0.5), 0.0);
             vec2 lp = (floor(px) + sway + floor(uFocus * uPpu * 1.35)) / 256.0;
             vec4 lf = texture2D(tLeaves, lp);
-            float edge = max(abs(q.x) * 1.0, abs(q.y) * 1.25);
-            float m = smoothstep(0.34, 0.5, edge) * uLeaves;
+            vec2 ed = (0.5 - abs(q)) * uRes;                                  // px to the nearest border
+            float m = max(1.0 - smoothstep(uLeafBand.x, uLeafBand.y, ed.x), 1.0 - smoothstep(uLeafBand.z, uLeafBand.w, ed.y)) * uLeaves;
             if (lf.a > 0.5 && m > b) col = mix(col, lf.rgb * (0.55 + 0.45 * light), 0.92);
           }
           gl_FragColor = vec4(max(col, 0.0), 1.0);

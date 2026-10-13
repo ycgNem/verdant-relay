@@ -10,8 +10,8 @@ export const DEFENSE_MAP = {
   core: { x: 27.6, y: 9.0 },        // world-space centre of the Relay Core
   coreRadius: 1.2,
   lanes: [
-    { name: 'North lane', short: 'North', points: [[-3, 3], [8, 3], [8, 7], [16, 7], [16, 4], [23, 4], [23, 8], [26, 8]] },
-    { name: 'South lane', short: 'South', points: [[-3, 13], [6, 13], [6, 10], [13, 10], [13, 14], [20, 14], [20, 9], [26, 9]] },
+    { name: 'North path', short: 'North', points: [[-3, 3], [8, 3], [8, 7], [16, 7], [16, 4], [23, 4], [23, 8], [26, 8]] },
+    { name: 'South path', short: 'South', points: [[-3, 13], [6, 13], [6, 10], [13, 10], [13, 14], [20, 14], [20, 9], [26, 9]] },
   ],
   // Build pads (tile coords of the pad's top-left). Nudged off the tile grid by 1/8–1/4 tile (multiples
   // of 4 px, so still pixel-exact) so the plinths don't read as a TD grid (critic G #12); every footprint

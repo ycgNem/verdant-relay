@@ -15,14 +15,20 @@
 //                     yield = Scrap multiplier by distance from the nearest return point
 //     spores          [{ id, x, z, region }]                    spore pods (a hazard; they regrow every day)
 //     pylons          [{ id, x, z, region }]                    extraction relays (activated ones persist)
+//     deep            Uint8Array(W²)      1 = deep water: impassable for everyone (GROUND.deepFrom)
+//     ford            Uint8Array(W²)      1 = a shallow crossing through a river (trail fords + a few extra)
+//     reach           { targets, unreachable, fords, removed, passes } — the reachability check's report
 //
 // Generation order: regions → water (rivers, ponds) → sites → trails between them → base ground →
-// level smoothing (banks) → undergrowth → trees → site dressing (ruins, paving) → containers.
+// level smoothing (banks) → deep water + fords → undergrowth → trees → site dressing (ruins, paving) →
+// containers → reachability (every site, pylon and container walkable from the Relay; fixed with fords or by
+// removing the objects in the way).
 // Everything is deterministic for (seed, districtKeys).
 
 import { makeRng, subSeed } from '../core/rng.js';
 import { makeNoise, hash2 } from './noise.js';
-import { JUNGLE, LEVEL, BRUSH, REGION_LOOK, SPORES } from '../data/jungle.js';
+import { JUNGLE, LEVEL, BRUSH, REGION_LOOK, SPORES, GROUND, DAY } from '../data/jungle.js';
+import { footprint, inFootprint } from './Solid.js';
 
 const TAU = Math.PI * 2;
 
@@ -44,6 +50,7 @@ export function generateWorld(seed, districtKeys) {
     trail: new Uint8Array(W * W),
     site: new Int16Array(W * W).fill(-1),   // site index whose clearing covers the tile
     objects: [], sites: [], containers: [], pylons: [],
+    deep: new Uint8Array(W * W), ford: new Uint8Array(W * W),
     regionAngles: [],
   };
 
@@ -77,7 +84,10 @@ export function generateWorld(seed, districtKeys) {
     }
   };
   water.fill(-99);
+  const riverLines = [];   // centreline samples per river (extra fords go on them)
   for (let r = 0; r < J.rivers; r++) {
+    const line = [];
+    riverLines.push(line);
     // A river crosses the whole map, bending away from the Relay's clearing.
     const a0 = rng.next() * TAU;
     const a1 = a0 + Math.PI + (rng.next() - 0.5) * 1.2;
@@ -99,6 +109,7 @@ export function generateWorld(seed, districtKeys) {
       if (x < -4 || z < -4 || x > W + 4 || z > W + 4) continue;
       const rad = J.riverWidth[0] + (J.riverWidth[1] - J.riverWidth[0]) * nC.fbm(t * 0.05, wseed, 2);
       stamp(x, z, rad, J.bankWidth);
+      if (t % 2 === 0 && x > 6 && z > 6 && x < W - 6 && z < W - 6) line.push([x, z]);
     }
   }
   // Ponds / swamp pools (more in flooded regions).
@@ -333,6 +344,45 @@ export function generateWorld(seed, districtKeys) {
     if (trailVerts[z * V + x] < trailHalf[z * V + x] + 0.3) world.trail[i] = 1;
     for (const s of sites) if (Math.hypot(tx - s.x, tz - s.z) < s.r * J.siteClear) { world.site[i] = s.idx; break; }
   }
+  // ---------------------------------------------------------------- deep water + fords
+  // Deep: well inside the water (the tile's mean depth below the shore line > deepFrom). Trails cross it at fords; each river
+  // gets a few extra fords. Ford tiles stay shallow (wading speed) and are drawn with stepping stones.
+  const G = GROUND;
+  const deep = world.deep, ford = world.ford;
+  for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
+    const i = z * V + x;
+    if ((water[i] + water[i + 1] + water[i + V] + water[i + V + 1]) / 4 > G.deepFrom && tileLevelAvg(x, z) === 0) deep[z * W + x] = 1;
+  }
+  const makeFord = (x, z, r) => {
+    for (let tz = Math.floor(z - r); tz <= Math.floor(z + r); tz++) for (let tx = Math.floor(x - r); tx <= Math.floor(x + r); tx++) {
+      if (tx < 0 || tz < 0 || tx >= W || tz >= W || Math.hypot(tx + 0.5 - x, tz + 0.5 - z) > r) continue;
+      const i = tz * W + tx;
+      if (deep[i] || tileLevelMin(tx, tz) === LEVEL.water) ford[i] = 1;
+      deep[i] = 0;
+    }
+  };
+  for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
+    if (!deep[z * W + x]) continue;
+    let near = false;
+    for (const [dx, dz] of [[0, 0], [1, 0], [0, 1], [1, 1]]) { const v = (z + dz) * V + x + dx; if (trailVerts[v] < trailHalf[v] + 0.3) near = true; }
+    if (near) makeFord(x + 0.5, z + 0.5, G.fordPad);   // the trail itself crosses here
+  }
+  const frng = makeRng(subSeed(seed, 'fords'));
+  for (const line of riverLines) {
+    const cand = frng.shuffle(line.filter(([x, z]) => deep[Math.floor(z) * W + Math.floor(x)]));
+    let n = 0;
+    for (const [x, z] of cand) {
+      if (n >= G.extraFords) break;
+      let clash = false;
+      for (let tz = Math.floor(z - G.fordSpacing); tz <= z + G.fordSpacing && !clash; tz += 2) for (let tx = Math.floor(x - G.fordSpacing); tx <= x + G.fordSpacing; tx += 2) {
+        if (tx >= 0 && tz >= 0 && tx < W && tz < W && ford[tz * W + tx] && Math.hypot(tx - x, tz - z) < G.fordSpacing) { clash = true; break; }
+      }
+      if (clash) continue;
+      makeFord(x, z, G.fordRadius);
+      n++;
+    }
+  }
+
   // Distance (tiles) to the nearest trail or open clearing: the deep jungle away from them grows denser.
   const openDist = new Float32Array(W * W).fill(999);
   for (let i = 0; i < W * W; i++) {
@@ -378,6 +428,16 @@ export function generateWorld(seed, districtKeys) {
       if (tx >= 0 && tz >= 0 && tx < W && tz < W) occupied[tz * W + tx] = 1;
     }
   };
+  // Also every tile under (or within `pad` of) an object's collision footprint (SOLID.kind), so no container,
+  // spore pod or later object lands inside a trunk, log or ruin.
+  const markFoot = (o, pad) => {
+    markCircle(o.x, o.z, 0);
+    const f = footprint(o);
+    if (!f) return;
+    for (let tz = Math.floor(f.z0 - f.rr - pad); tz <= Math.floor(f.z1 + f.rr + pad); tz++) for (let tx = Math.floor(f.x0 - f.rr - pad); tx <= Math.floor(f.x1 + f.rr + pad); tx++) {
+      if (tx >= 0 && tz >= 0 && tx < W && tz < W && inFootprint(f, tx + 0.5, tz + 0.5, pad)) occupied[tz * W + tx] = 1;
+    }
+  };
   const step = J.treeSpacing;
   for (let gz = 2; gz < W - 2; gz += step) {
     for (let gx = 2; gx < W - 2; gx += step) {
@@ -398,6 +458,7 @@ export function generateWorld(seed, districtKeys) {
       const px = Math.round(x * 32) / 32, pz = Math.round(z * 32) / 32;
       objects.push({ id: `o${oid++}`, kind: 'tree', type, x: px, z: pz, r, big, flip: rng.chance(0.5) });
       markCircle(px, pz, r + 0.3);
+      markFoot(objects[objects.length - 1], 0.35);
       // The trunk's own tile has no brush.
       B[i] = BRUSH.none;
     }
@@ -416,6 +477,7 @@ export function generateWorld(seed, districtKeys) {
         if (objects.some((o) => o.kind === 'ruin' && Math.hypot(o.x - x, o.z - z) < 3)) continue;
         objects.push({ id: `o${oid++}`, kind: 'ruin', type, x, z, r: 0, flip: rng.chance(0.5), site: s.idx });
         markCircle(x, z, 1.5);
+        markFoot(objects[objects.length - 1], 0.5);
       }
     }
     if (s.type === 'camp') {
@@ -432,6 +494,7 @@ export function generateWorld(seed, districtKeys) {
     const type = rng.pick(['boulder', 'boulder', 'log', 'stump']);
     objects.push({ id: `o${oid++}`, kind: 'rock', type, x: Math.round(x * 32) / 32, z: Math.round(z * 32) / 32, r: type === 'log' ? 0.5 : 0.45, flip: rng.chance(0.5) });
     markCircle(x, z, 0.8);
+    markFoot(objects[objects.length - 1], 0.4);
     B[i] = BRUSH.none;
   }
 
@@ -456,6 +519,7 @@ export function generateWorld(seed, districtKeys) {
     const px = Math.round(x * 32) / 32, pz = Math.round(z * 32) / 32;
     objects.push({ id: `o${oid++}`, kind: 'ruin', type, x: px, z: pz, r: 0, flip: rng.chance(0.5) });
     markCircle(px, pz, 1.4);
+    markFoot(objects[objects.length - 1], 0.5);
     // The brush thins right around it, so the ruin reads (ferns, not thickets).
     for (let tz = Math.floor(pz - 2); tz <= Math.floor(pz + 1); tz++) for (let tx = Math.floor(px - 2); tx <= Math.floor(px + 2); tx++) {
       const i = tz * W + tx;
@@ -478,9 +542,11 @@ export function generateWorld(seed, districtKeys) {
           const type = rng.pick(['car', 'pillar', ...look.ruins.map((t) => t.replace('ruin_', ''))]);
           objects.push({ id: `o${oid++}`, kind: 'ruin', type, x: px, z: pz, r: 0, flip: rng.chance(0.5) });
           markCircle(px, pz, 1.2);
+          markFoot(objects[objects.length - 1], 0.5);
         } else {
           objects.push({ id: `o${oid++}`, kind: 'rock', type: r < 0.75 ? 'boulder' : 'log', x: px, z: pz, r: 0.45, flip: rng.chance(0.5) });
           markCircle(px, pz, 0.7);
+          markFoot(objects[objects.length - 1], 0.4);
         }
         break;
       }
@@ -571,7 +637,161 @@ export function generateWorld(seed, districtKeys) {
 
   // Make sure the Relay clearing and every site/pylon are clear of brush at their centres.
   for (const s of sites) clearDisc(world, s.x, s.z, s.type === 'pylon' ? 1.6 : 1.2);
+  world.reach = ensureReachable(world);
+  // Nothing solid hides: no undergrowth under a footprint, and none right in front (south) of the low ones (logs,
+  // rocks, stumps, ruins) — fern cards there would cover them and you'd walk into an unseen wall. A tree standing
+  // right in front of a log / rock / stump (GROUND.treeFront.rock tiles) or a ruin (.ruin) goes too: its trunk
+  // and canopy cards would hide it.
+  const hiders = world.objects.filter((o) => o.kind === 'rock' || o.kind === 'ruin').map((o) => ({ f: footprint(o), d: GROUND.treeFront[o.kind] }));
+  world.objects = world.objects.filter((o) => o.kind !== 'tree' || !hiders.some(({ f, d }) => o.z > f.z1 && o.z < f.z1 + f.rr + d && o.x > f.x0 - f.rr - 0.6 && o.x < f.x1 + f.rr + 0.6));
+  for (const o of world.objects) {
+    const f = footprint(o);
+    if (!f) continue;
+    const low = o.kind !== 'tree';
+    const zEnd = f.z1 + f.rr + (low ? GROUND.clearFront : 0);
+    for (let tz = Math.floor(f.z0 - f.rr); tz <= Math.floor(zEnd); tz++) for (let tx = Math.floor(f.x0 - f.rr); tx <= Math.floor(f.x1 + f.rr); tx++) {
+      if (tx < 0 || tz < 0 || tx >= W || tz >= W) continue;
+      if (inFootprint(f, tx + 0.5, tz + 0.5, 0.25) || (low && tz + 0.5 > f.z1 && tz + 0.5 < zEnd && tx + 0.5 > f.x0 - f.rr && tx + 0.5 < f.x1 + f.rr)) B[tz * W + tx] = BRUSH.none;
+    }
+  }
   return world;
+}
+
+/**
+ * Reachability (Stage 6): every site, pylon and container must be walkable from the Relay. Brush counts as
+ * passable (it can be cut); deep water and object footprints (SOLID.kind, the largest art of each type, so
+ * the runtime colliders are never bigger) don't. A tile is walkable when its centre is >= GROUND.reachPad from
+ * every footprint. Anything unreachable is fixed along the cheapest path from the reachable area: deep water on
+ * it becomes a ford, objects on it are removed. Returns a report.
+ */
+export function ensureReachable(world) {
+  const G = GROUND, W = world.size;
+  const report = { targets: 0, unreachable: 0, fords: 0, removed: 0, passes: 0, left: 0 };
+  const targets = [
+    ...world.sites.map((s) => ({ x: s.x, z: s.z, r: 2 })),
+    ...world.pylons.map((p) => ({ x: p.x, z: p.z, r: 2 })),
+    ...world.containers.map((c) => ({ x: c.x, z: c.z, r: 1.2 })),
+  ];
+  report.targets = targets.length;
+  const sx = Math.floor(world.center.x + DAY.startOffset[0]), sz = Math.floor(world.center.z + DAY.startOffset[1]);
+  for (let pass = 0; pass <= 5; pass++) {
+    const { blocked, owners } = blockGrid(world);
+    const reached = floodTiles(W, blocked, sx, sz);
+    const bad = targets.filter((t) => !nearReached(W, reached, t));
+    if (pass === 0) report.unreachable = bad.length;
+    report.passes = pass;
+    report.left = bad.length;
+    if (!bad.length || pass === 5) return report;
+    // Cheapest repair path from the start to each unreachable target.
+    const cost = (i) => (blocked[i] === 2 ? G.fixDeep : blocked[i] === 1 ? G.fixObject : 1);
+    const { dist, from } = dijkstraTiles(W, cost, sx, sz);
+    const kill = new Set();
+    for (const t of bad) {
+      let best = -1;
+      forTilesNear(W, t, (i) => { if (dist[i] < Infinity && (best < 0 || dist[i] < dist[best])) best = i; });
+      for (let i = best; i >= 0 && !reached[i]; i = from[i]) {
+        if (blocked[i] === 2) {
+          const x = i % W, z = (i - x) / W;
+          for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+            if (x + dx < 0 || z + dz < 0 || x + dx >= W || z + dz >= W) continue;
+            const j = (z + dz) * W + x + dx;
+            if (world.deep[j]) { world.deep[j] = 0; world.ford[j] = 1; report.fords++; }
+          }
+        } else if (blocked[i] === 1) for (const o of owners.get(i) || []) if (!o.pylon) kill.add(o);
+      }
+    }
+    if (kill.size) {
+      world.objects = world.objects.filter((o) => !kill.has(o));
+      report.removed += kill.size;
+    }
+  }
+  return report;
+}
+
+/** Tiles blocked for walking (1 object footprint within reachPad, 2 deep water) and the objects on each. */
+export function blockGrid(world) {
+  const G = GROUND, W = world.size;
+  const blocked = new Uint8Array(W * W);
+  const owners = new Map();
+  const solids = [
+    ...world.objects,
+    ...world.pylons.map((p) => ({ kind: 'prop', type: 'pylon', x: p.x, z: p.z, pylon: true })),
+  ];   // (containers are targets, not walls: small, and opened from any side)
+  for (const o of solids) {
+    const f = footprint(o);
+    if (!f) continue;
+    const pad = f.rr + G.reachPad;
+    for (let tz = Math.floor(f.z0 - pad); tz <= Math.floor(f.z1 + pad); tz++) for (let tx = Math.floor(f.x0 - pad); tx <= Math.floor(f.x1 + pad); tx++) {
+      if (tx < 0 || tz < 0 || tx >= W || tz >= W || !inFootprint(f, tx + 0.5, tz + 0.5, G.reachPad)) continue;
+      const i = tz * W + tx;
+      blocked[i] = 1;
+      if (!owners.has(i)) owners.set(i, []);
+      owners.get(i).push(o);
+    }
+  }
+  for (let i = 0; i < W * W; i++) if (world.deep[i]) blocked[i] = 2;
+  return { blocked, owners };
+}
+
+function forTilesNear(W, t, fn) {
+  for (let tz = Math.floor(t.z - t.r); tz <= Math.floor(t.z + t.r); tz++) for (let tx = Math.floor(t.x - t.r); tx <= Math.floor(t.x + t.r); tx++) {
+    if (tx < 0 || tz < 0 || tx >= W || tz >= W || Math.hypot(tx + 0.5 - t.x, tz + 0.5 - t.z) > t.r) continue;
+    fn(tz * W + tx);
+  }
+}
+
+function nearReached(W, reached, t) {
+  let ok = false;
+  forTilesNear(W, t, (i) => { if (reached[i]) ok = true; });
+  return ok;
+}
+
+/** 8-way flood fill over unblocked tiles (diagonals only past two open sides, like a body). */
+export function floodTiles(W, blocked, sx, sz) {
+  const reached = new Uint8Array(W * W);
+  const q = new Int32Array(W * W);
+  let h = 0, t = 0;
+  if (blocked[sz * W + sx]) return reached;
+  reached[sz * W + sx] = 1;
+  q[t++] = sz * W + sx;
+  while (h < t) {
+    const i = q[h++];
+    const x = i % W, z = (i - x) / W;
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dz) continue;
+      const nx = x + dx, nz = z + dz;
+      if (nx < 1 || nz < 1 || nx >= W - 1 || nz >= W - 1) continue;
+      const n = nz * W + nx;
+      if (reached[n] || blocked[n]) continue;
+      if (dx && dz && (blocked[z * W + nx] || blocked[nz * W + x])) continue;
+      reached[n] = 1;
+      q[t++] = n;
+    }
+  }
+  return reached;
+}
+
+/** Dijkstra over per-tile entry costs (4-way, so a repair path never squeezes between two blockers). */
+function dijkstraTiles(W, cost, sx, sz) {
+  const N = W * W;
+  const dist = new Float32Array(N).fill(Infinity);
+  const from = new Int32Array(N).fill(-1);
+  const heap = new MinHeap();
+  const s = sz * W + sx;
+  dist[s] = 0;
+  heap.push(s, 0);
+  while (heap.size) {
+    const i = heap.pop();
+    const x = i % W, z = (i - x) / W;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, nz = z + dz;
+      if (nx < 1 || nz < 1 || nx >= W - 1 || nz >= W - 1) continue;
+      const n = nz * W + nx;
+      const d = dist[i] + cost(n);
+      if (d < dist[n]) { dist[n] = d; from[n] = i; heap.push(n, d); }
+    }
+  }
+  return { dist, from };
 }
 
 /** The run's world (generation takes ~150 ms and never changes within a run, so it is cached on the game). */

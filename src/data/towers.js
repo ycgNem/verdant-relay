@@ -15,12 +15,15 @@
 //   mortar  minRange, flightTime, blastRadius, blastEdge (damage fraction at the blast edge), burnDps + burnTime
 //   snare   slowMult + slowTime, rootTime + rootCooldown (per enemy)
 //   support buffRate (attack speed bonus), bonusAttackChance
-// role / icon are for the build menu.
+// role / icon are for the build menu. `line` is the build card's one plain sentence and `pips` its 1–3
+// strength bars (damage / speed / range, src/data/guide.js PIPS); the exact numbers sit in the card's tooltip.
 
 export const TOWERS = {
   scrap_turret: {
     name: 'Scrap Turret',
     role: 'Single target',
+    line: 'Shoots one enemy at a time. A solid all-rounder.',
+    pips: { damage: 2, speed: 2, range: 2 },
     desc: 'General-purpose single-target damage.',
     icon: { glyph: '⦿', color: '#c0cbdc' },
     cost: { scrap: 45 },
@@ -34,6 +37,8 @@ export const TOWERS = {
   thorn_nest: {
     name: 'Thorn Nest',
     role: 'Rapid',
+    line: 'Sprays thorns up close. Great against fast enemies.',
+    pips: { damage: 1, speed: 3, range: 1 },
     desc: 'Cheap, short range, rapid low damage. Shreds fast enemies.',
     icon: { glyph: '✶', color: '#63c74d' },
     cost: { scrap: 35, biofiber: 1 },
@@ -47,6 +52,8 @@ export const TOWERS = {
   arc_spire: {
     name: 'Arc Spire',
     role: 'Chain',
+    line: 'Lightning that jumps between enemies in a group.',
+    pips: { damage: 2, speed: 1, range: 2 },
     desc: 'Lightning that chains between groups. Hits burrowed enemies.',
     icon: { glyph: 'ϟ', color: '#2ce8f5' },
     cost: { scrap: 35, circuits: 2 },
@@ -60,6 +67,8 @@ export const TOWERS = {
   mortar_pod: {
     name: 'Mortar Pod',
     role: 'Splash',
+    line: 'Lobs shells far away that hit a whole group.',
+    pips: { damage: 3, speed: 1, range: 3 },
     desc: 'Lobbed seed shells. Strong vs clusters and Seed Carriers, weak vs fast enemies.',
     icon: { glyph: '◉', color: '#feae34' },
     cost: { scrap: 60, biofiber: 1 },
@@ -74,6 +83,8 @@ export const TOWERS = {
   snare_vine: {
     name: 'Snare Vine',
     role: 'Slow',
+    line: 'Slows every enemy near it, so other towers hit more.',
+    pips: { damage: 0, speed: 1, range: 1 },
     desc: 'Slows everything in range, even burrowed enemies, and the slow lingers after they leave. Almost no damage.',
     icon: { glyph: '§', color: '#b55088' },
     cost: { scrap: 30, biofiber: 1 },
@@ -87,6 +98,8 @@ export const TOWERS = {
   pulse_beacon: {
     name: 'Pulse Beacon',
     role: 'Support',
+    line: 'Makes the towers around it shoot faster.',
+    pips: { damage: 0, speed: 0, range: 2 },
     desc: 'Nearby towers attack faster. Deals no damage.',
     icon: { glyph: '◈', color: '#fee761' },
     cost: { scrap: 50, circuits: 2 },
@@ -104,12 +117,12 @@ export const TOWER_ORDER = ['scrap_turret', 'thorn_nest', 'arc_spire', 'snare_vi
 // Rule keys are saved with each tower, so they stay stable; the labels are what players see.
 export const TARGET_RULES = ['first', 'closest', 'strongest'];
 export const TARGET_RULE_LABEL = {
-  first: 'Lead',
-  closest: 'Nearest',
+  first: 'First in line',
+  closest: 'Closest',
   strongest: 'Toughest',
 };
 export const TARGET_RULE_TEXT = {
-  first: 'Lead: the enemy furthest along its lane (closest to the Relay).',
-  closest: 'Nearest: the enemy closest to this tower.',
+  first: 'First in line: the enemy furthest along its path (closest to the Relay).',
+  closest: 'Closest: the enemy nearest to this tower.',
   strongest: 'Toughest: the enemy with the most health left (bosses, tanks).',
 };

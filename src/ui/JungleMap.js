@@ -9,11 +9,11 @@ import { MAP_VIEW } from '../data/hud.js';
 
 /** Marker styles. `shape`: hub (Relay), tri (pylon), diamond, dot, arrow (player). */
 export const MAP_MARKERS = {
-  relay: { color: '#2ce8f5', core: '#ffffff', shape: 'hub', size: 1.6, label: 'Relay (return)' },
-  pylon_on: { color: '#63c74d', core: '#d8ffcf', shape: 'tri', size: 1.25, label: 'Pylon (return)' },
-  pylon_off: { color: '#7a8399', shape: 'tri', size: 1.1, label: 'Pylon (inactive)' },
-  objective: { color: '#feae34', shape: 'diamond', size: 1.4, label: 'Objective' },
-  optional: { color: '#c47bff', shape: 'diamond', size: 1.1, label: 'Optional' },
+  relay: { color: '#2ce8f5', core: '#ffffff', shape: 'hub', size: 1.6, label: 'Relay (home)' },
+  pylon_on: { color: '#63c74d', core: '#d8ffcf', shape: 'tri', size: 1.25, label: 'Beacon (a way home)' },
+  pylon_off: { color: '#7a8399', shape: 'tri', size: 1.1, label: 'Beacon (switch it on)' },
+  objective: { color: '#feae34', shape: 'diamond', size: 1.4, label: 'Goal' },
+  optional: { color: '#c47bff', shape: 'diamond', size: 1.1, label: 'Bonus task' },
   container: { color: '#ead4aa', shape: 'dot', size: 0.6, label: 'Supplies' },
   player: { color: '#ffffff', shape: 'arrow', size: 1.7, label: 'You' },
 };
@@ -124,6 +124,7 @@ export class JungleMap {
     const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
     const cols = LEVEL_COL.map(hex);
     const thick = hex('#132514'), bram = hex('#3a1a1e'), trail = hex('#8a6c48'), pave = hex('#6a6e66'), tree = hex('#0e1c10');
+    const deep = hex('#0f2a52'), ford = hex('#b8c4b0'), ford2 = hex('#8fa39a');
     for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
       const i = z * W + x;
       const lv = d.level[z * V + x];
@@ -132,6 +133,9 @@ export class JungleMap {
       const b = d.brush[i];
       if (b === BRUSH.thicket) c = thick; else if (b === BRUSH.bramble) c = bram;
       if (d.trail[i]) c = trail;
+      // Deep water (impassable) reads dark blue; fords (the shallow crossings) as a pale stony strip.
+      if (d.deep?.[i]) c = deep;
+      if (d.ford?.[i]) c = ((x + z) & 1) ? ford : ford2;
       const o = i * 4;
       img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 255;
     }

@@ -64,11 +64,13 @@ export class ResultsScene {
     const affordable = open.filter((k) => UNLOCKS[k].cost <= meta.research);
     let nudge = null;
     if (affordable.length) {
-      nudge = el('div.nudge.good', {}, '◈ You can afford ', el('b', UNLOCKS[affordable[0]].name),
-        affordable.length > 1 ? ` and ${affordable.length - 1} more` : '', ' in Collection.');
+      // Say what it does, and that Collection (the button right here) is where to get it.
+      const u = UNLOCKS[affordable[0]];
+      nudge = el('div.nudge.good', { title: u.desc }, '◈ Your Research buys ', el('b', u.name), ` (${u.desc.replace(/\.$/, '').replace(/^./, (c) => c.toLowerCase())})`,
+        affordable.length > 1 ? ` and ${affordable.length - 1} more` : '', '. Get it in Collection ▸');
     } else if (open.length) {
       const k = open[0];
-      nudge = el('div.nudge.muted', {}, `${UNLOCKS[k].cost - meta.research} more Research Data for `, el('b', UNLOCKS[k].name), '.');
+      nudge = el('div.nudge.muted', { title: UNLOCKS[k].desc }, `${UNLOCKS[k].cost - meta.research} more Research for `, el('b', UNLOCKS[k].name), ` (${UNLOCKS[k].desc.replace(/\.$/, '').replace(/^./, (c) => c.toLowerCase())}).`);
     } else {
       nudge = el('div.nudge.muted', 'Every research unlock is yours.');
     }
@@ -128,7 +130,7 @@ export class ResultsScene {
   _tableau(win) {
     const game = this.game;
     const A = game.assets;
-    const u = game.stage.clientWidth / 960;
+    const u = game.u;
     const s = Math.max(1, Math.round(u * 1.5));
     const spr = (key, frame = 0, cls = '') => {
       const info = A.spriteInfo(key);

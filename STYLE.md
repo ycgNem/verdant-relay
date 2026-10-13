@@ -21,14 +21,15 @@ Two generations of art live side by side:
   exists, pass it as a style reference to later jobs of the same family.
 - **Light from the top-left.** No semi-transparent pixels: every exported PNG is alpha 0 or 255 (threshold at 128).
 - Sprites are drawn **1:1 at ppu 32** (32 texels = 1 tile). Never resample a PixelLab image; pad or crop only.
-- **Pixel-exact on screen**: the canvas is always shown at a whole-number scale (Game picks the internal size per window).
+- **Pixel-exact on screen**: the canvas is always shown at a whole-number scale (Game picks the internal size per window
+  around a fixed 640×360 view = 20 × 11.25 tiles: ×2 at 720p, ×3 at 1080p, ×4 at 1440p, letterboxed).
   Every screen-space effect is hard alpha + ordered (Bayer) dither: x-ray window, occlusion silhouettes, glows, splats.
 - **Readability over density** (critic F): a creature covered by foliage draws as a flat-colour 1-texel outline + dither
-  checker (player `#d8fdff`, enemies `#c0603e` → `#ff5a2e` once alerted). Brush types read by height and colour:
+  checker (player a calm cyan `#4fb8c8`, enemies hot red `#e04434` → `#ff2e2e` once alerted: enemies out-shine the player). Brush types read by height and colour:
   ferns (walk through) are the low plants graded pale yellow-green, thickets (one slash) the tall ones graded dark
   blue-green, brambles (heavy chop) red-brown (`BRUSH_LOOK`, applied in the flora atlas — the PNGs stay untouched).
 - **The player always reads** (critic G): cards never cover the player's own texels (stencil card mask), and the player
-  has a 1-texel outline — near-black on open ground, `#d8fdff` in brush or behind tall objects (`ATMOS.playerOutline`).
+  has a 1-texel outline — near-black on open ground, cyan `#5fc8d8` in brush or behind tall objects (`ATMOS.playerOutline`).
   Night towers get the same outline in their type colour.
 - UI font: Tiny5, with "~" and "8" overridden by `src/ui/fonts/vr-glyphs.ttf`, and the HUD clock's Silkscreen Bold "4"
   by `src/ui/fonts/vr-clock.ttf` (both built by `tools/make_glyph_font.py` on the 8-unit grid; edit the bitmaps there and re-run).

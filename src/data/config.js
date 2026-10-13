@@ -3,7 +3,6 @@
 
 export const CONFIG = {
   saveVersion: 1,
-  resolutions: { chunky: [480, 270], sharp: [640, 360] },
   nights: 6,
 
   // Pixel-perfect 3D view (src/core/PixelView.js): an orthographic camera pitched `pitch`° with
@@ -18,9 +17,16 @@ export const CONFIG = {
   // (a click that dismissed the last screen must not land on a button of the next one).
   // minIntegerFill: a scene's fixed internal size (night map 1280×720) is shown at a whole-number scale
   // only if that fills at least this share of the window's area; otherwise it is stretched (Game._layout).
-  // fovTolerance: how far (±share) the day view's width in tiles may drift from the 1280×720 view on other
-  // window sizes; beyond it the view is letterboxed instead of showing more jungle (Game._layout).
-  ui: { fontGrid: 8, sceneClickGuard: 0.3, minIntegerFill: 0.9, fovTolerance: 0.07 },
+  // view: the world view in internal px (20 × 11.25 tiles at 32 px/tile), shown at a whole-number scale
+  // (×2 at 1280×720, ×3 at 1920×1080, ×4 at 2560×1440) with the rest letterboxed (Game._layout).
+  // viewBand: [min, max] share of `view` each side may take on other windows — the scale that fills
+  // the most of the window within it wins. The height may shrink more (browser toolbars eat ~10%).
+  // small: if that leaves only ×1 covering under `cover` of the window, ×2 may show down to w × h of the view.
+  ui: {
+    fontGrid: 8, sceneClickGuard: 0.3, minIntegerFill: 0.9,
+    view: [640, 360],
+    viewBand: { w: [0.87, 1.1], h: [0.8, 1.1], small: { cover: 0.6, w: 0.7, h: 0.7 } },
+  },
 
   player: {
     hp: 100,
@@ -228,7 +234,9 @@ export const JUICE = {
     stackPx: 13,          // vertical step (stage units) when numbers would overlap
   },
   pickup: { sparkleEvery: 1.3, bobPx: 1, flyTime: 0.45 },
-  hostileRing: { color: '#e43b44', opacity: 1 },
+  hostileRing: { color: '#ff2e2e', opacity: 1 },   // simplicity pass: hot red = danger (brighter than anything friendly)
+  // Simplicity pass: a red "!" pops over a jungle creature as it winds up an attack (JungleScene._updateLight).
+  attackBang: { color: '#ff2e2e', life: 0.55 },
   hudFade: { opacity: 0.22, pad: 14 },   // HUD panels fade while a threat is behind them (pad: stage units)
   // Explore: red arrows at the screen edge pointing at enemies winding up an attack off-screen
   // (max arrows, inset from the edge in stage units, how far off-screen an enemy still counts in tiles).

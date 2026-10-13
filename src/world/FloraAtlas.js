@@ -15,8 +15,9 @@ const ATLAS = 2048;
 export const FAMILIES = {
   // Brush reads by height + colour (critic F #6): ferns (walkable) are the LOW plants, thickets (solid)
   // the tall ones — tall flowering plants count as thicket. BRUSH_LOOK tints each family in the atlas.
-  fern: [/^fol_(fern|tall_?grass|grass|fiddlehead|bromeliad|agave)/],
-  thicket: [/^fol_(thicket|monstera|elephant|bamboo|shrub|bush|taro|dense|heliconia|palm_?sapling|ginger|cycad)/],
+  // Stage 6: the stiff, spiky agave is no plant you push through, so it draws as (solid) thicket.
+  fern: [/^fol_(fern|tall_?grass|grass|fiddlehead|bromeliad)/],
+  thicket: [/^fol_(thicket|monstera|elephant|bamboo|shrub|bush|taro|dense|heliconia|palm_?sapling|ginger|cycad|agave)/],
   vine: [/^fol_(vine|tangle|liana|hanging)/],
   bramble: [/^fol_(bramble|thorn)/],
   debris: [/^dec_cut_leaves/],          // flat leaf litter where undergrowth was cut

@@ -11,34 +11,20 @@
 //           its canopy covers you — and the card shader dithers a see-through window around the player.
 // Baking is spread out (one chunk per frame) and cached; cutting brush rebuilds only that chunk's cards.
 //
-// Collision: thickets/brambles are solid tiles; trunks, rocks and ruins are circles/boxes in a tile hash.
-// Water and mud slow movement (speedAt).
+// Collision (Stage 6 "solid jungle"): thickets/brambles and deep water are solid tiles; trunks, logs, rocks,
+// ruins and props are rounded-box footprints matched to the base of their art (src/world/Solid.js, SOLID) in a
+// tile hash. Ferns, shallow water and mud only slow movement (speedAt, GROUND).
 
 import * as THREE from 'three';
-import { JUNGLE, LEVEL, BRUSH, ATMOS } from '../data/jungle.js';
+import { JUNGLE, LEVEL, BRUSH, ATMOS, SOLID, GROUND } from '../data/jungle.js';
 import { CARD_SCALE } from '../core/PixelView.js';
 import { CARD_MASK_REF, setOutline } from '../core/Assets.js';
 import { TerrainBaker } from './TerrainBaker.js';
 import { FloraAtlas } from './FloraAtlas.js';
 import { hash2 } from './noise.js';
+import { footprint, inFootprint, pushOut } from './Solid.js';
 
 const C = JUNGLE.chunk;
-
-// Collision footprints by object kind/type (tiles). Boxes span x ± w/2 and z ∈ [z − d, z] (the anchor
-// is the front-bottom of the sprite). opaque = blocks line of sight.
-export const FOOTPRINTS = {
-  tree: (o) => ({ shape: 'circle', r: o.r }),
-  rock: (o) => ({ shape: 'circle', r: o.r, opaque: false }),
-  prop: (o) => ({ shape: 'circle', r: o.r }),
-  ruin_wall: { shape: 'box', w: 2.6, d: 0.7, opaque: true },
-  ruin_pillar: { shape: 'circle', r: 0.42 },
-  ruin_train: { shape: 'box', w: 4.4, d: 1.3, opaque: true },
-  ruin_greenhouse: { shape: 'box', w: 3, d: 0.5, opaque: false },
-  ruin_statue: { shape: 'circle', r: 1.05, opaque: true },
-  ruin_car: { shape: 'box', w: 1.9, d: 0.8, opaque: false },
-  ruin_mast: { shape: 'box', w: 2.6, d: 0.4, opaque: false },
-  ruin_stairs: { shape: 'box', w: 2, d: 0.9, opaque: false },
-};
 
 // 8 × 8 ordered dither (recursive Bayer): 64 levels, so a fade over a few pixels shows no steps.
 const BAYER_GLSL = 'float bayer2(vec2 a){ a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }\nfloat bayer8(vec2 a){ return (bayer2(0.25 * a) * 0.25 + bayer2(0.5 * a)) * 0.25 + bayer2(a); }\n';
@@ -117,6 +103,7 @@ export class JungleWorld {
     this.w = world;
     this.size = world.size;
     this.cut = cutMask;
+    this.deep = world.deep || new Uint8Array(world.size * world.size);
     world.brushNow = (x, z) => this.brushAt(x, z);
     this.atlas = new FloraAtlas(game.assets);
     this.cardMat = makeCardMaterial(this.atlas.texture);
@@ -142,8 +129,14 @@ export class JungleWorld {
     return this.cut[i] ? 0 : this.w.brush[i];
   }
 
-  /** Solid for movement: uncut thicket/bramble, or the map edge. */
-  solidAt(tx, tz) { return !this.inBounds(tx, tz) || this.brushAt(tx, tz) >= BRUSH.thicket; }
+  /** Deep water: nobody crosses it (fords are shallow). */
+  deepAt(tx, tz) { return this.inBounds(tx, tz) && this.deep[tz * this.size + tx] === 1; }
+
+  /** Solid for movement: uncut thicket/bramble, deep water, or the map edge. */
+  solidAt(tx, tz) { return !this.inBounds(tx, tz) || this.deep[tz * this.size + tx] === 1 || this.brushAt(tx, tz) >= BRUSH.thicket; }
+
+  /** Solid for a body that slips through brush: deep water and the map edge only. */
+  wetAt(tx, tz) { return !this.inBounds(tx, tz) || this.deep[tz * this.size + tx] === 1; }
 
   /** Opaque for sight: thickets, brambles, walls. */
   opaqueAt(tx, tz) {
@@ -154,7 +147,7 @@ export class JungleWorld {
   /** Blocked for pathfinding (brush unless the walker crashes/slips through, plus static colliders). */
   blockedAt(tx, tz, throughBrush = false) {
     if (!this.inBounds(tx, tz)) return true;
-    if (this.objGrid[tz * this.size + tx]) return true;
+    if (this.objGrid[tz * this.size + tx] || this.deep[tz * this.size + tx]) return true;
     return !throughBrush && this.brushAt(tx, tz) >= BRUSH.thicket;
   }
 
@@ -165,13 +158,16 @@ export class JungleWorld {
     return this.w.level[vz * V + vx];
   }
 
-  /** Movement multiplier: water and mud drag, ferns snag. */
-  speedAt(x, z) {
+  /** Movement multiplier: shallow water and mud drag, ferns snag (not `brushFree` bodies: skitters, razorbacks). */
+  speedAt(x, z, brushFree = false) {
     const lv = this.levelAt(x, z);
-    let m = lv === LEVEL.water ? 0.55 : lv === LEVEL.mud ? 0.82 : 1;
-    if (this.brushAt(Math.floor(x), Math.floor(z)) === BRUSH.fern) m *= 0.8;
+    let m = lv === LEVEL.water ? GROUND.shallow : lv === LEVEL.mud ? GROUND.mud : 1;
+    if (!brushFree && this.inFern(x, z)) m *= GROUND.fern;
     return m;
   }
+
+  /** Standing in uncut ferns? */
+  inFern(x, z) { return this.brushAt(Math.floor(x), Math.floor(z)) === BRUSH.fern; }
 
   /** Canopy shade 0..1 at a point (1 = deep shade) — for sprites' lighting on the CPU. */
   shadeAt(x, z) {
@@ -184,21 +180,22 @@ export class JungleWorld {
   _buildColliders() {
     const W = this.size;
     this.colGrid = new Map();               // tile index → [collider]
-    this.objGrid = new Uint8Array(W * W);   // tiles whose centre is inside a collider
+    this.objGrid = new Uint8Array(W * W);   // tiles whose centre is (nearly) inside a footprint: flow fields avoid them
     this.opaqueGrid = new Uint8Array(W * W);
     this.colliders = [];
-    for (const o of this.w.objects) this.addCollider(o);
-    for (const p of this.w.pylons) this.addCollider({ kind: 'prop', type: 'pylon', x: p.x, z: p.z, r: 0.4, id: p.id });
+    for (const o of this.w.objects) this.addCollider(o, objectEntry(o, this.atlas)?.key);
+    for (const p of this.w.pylons) this.addCollider({ kind: 'prop', type: 'pylon', x: p.x, z: p.z, id: p.id });
   }
 
-  addCollider(o) {
-    const fp = typeof FOOTPRINTS[o.kind] === 'function' ? FOOTPRINTS[o.kind](o) : FOOTPRINTS[`${o.kind}_${o.type}`] || FOOTPRINTS[o.kind];
-    if (!fp || (fp.shape === 'circle' && !(fp.r > 0))) return null;
-    const col = { ...fp, x: o.x, z: o.z, obj: o };
-    if (o.flip && fp.shape === 'box') col.x = o.x;   // boxes are symmetric about the anchor
-    let x0, x1, z0, z1;
-    if (col.shape === 'circle') { x0 = col.x - col.r; x1 = col.x + col.r; z0 = col.z - col.r; z1 = col.z + col.r; }
-    else { x0 = col.x - col.w / 2; x1 = col.x + col.w / 2; z0 = col.z - col.d; z1 = col.z; }
+  /**
+   * Make an object solid. Footprint from SOLID (src/data/jungle.js): by `artKey` (the sprite drawn for it),
+   * else by kind_type, else a circle of radius o.r. Returns the collider or null.
+   */
+  addCollider(o, artKey) {
+    const col = footprint(o, artKey);
+    if (!col) return null;
+    col.obj = o;
+    const x0 = col.x0 - col.rr, x1 = col.x1 + col.rr, z0 = col.z0 - col.rr, z1 = col.z1 + col.rr;
     col.bounds = [x0, z0, x1, z1];
     const W = this.size;
     for (let tz = Math.floor(z0); tz <= Math.floor(z1); tz++) for (let tx = Math.floor(x0); tx <= Math.floor(x1); tx++) {
@@ -206,19 +203,14 @@ export class JungleWorld {
       const i = tz * W + tx;
       if (!this.colGrid.has(i)) this.colGrid.set(i, []);
       this.colGrid.get(i).push(col);
-      if (this._pointIn(col, tx + 0.5, tz + 0.5, 0.15)) {
+      if (inFootprint(col, tx + 0.5, tz + 0.5, SOLID.tilePad)) {
         this.objGrid[i] = 1;
         if (col.opaque) this.opaqueGrid[i] = 1;
       }
     }
     this.colliders.push(col);
+    if (this._dbg) this.showColliders(true);
     return col;
-  }
-
-  _pointIn(col, x, z, pad = 0) {
-    if (col.shape === 'circle') return Math.hypot(x - col.x, z - col.z) < col.r + pad;
-    const [x0, z0, x1, z1] = col.bounds;
-    return x > x0 - pad && x < x1 + pad && z > z0 - pad && z < z1 + pad;
   }
 
   /** Static colliders overlapping a circle's neighbourhood. */
@@ -242,7 +234,7 @@ export class JungleWorld {
     const steps = Math.max(1, Math.ceil(dist / 0.2));
     const sx = dx / steps, sz = dz / steps;
     let hit = false;
-    const solid = opts.throughBrush ? (tx, tz) => !this.inBounds(tx, tz) : (tx, tz) => this.solidAt(tx, tz);
+    const solid = opts.throughBrush ? (tx, tz) => this.wetAt(tx, tz) : (tx, tz) => this.solidAt(tx, tz);
     for (let s = 0; s < steps; s++) {
       p.x += sx; p.z += sz;
       for (let it = 0; it < 2; it++) {
@@ -251,18 +243,10 @@ export class JungleWorld {
         const x0 = Math.floor(p.x - r), x1 = Math.floor(p.x + r), z0 = Math.floor(p.z - r), z1 = Math.floor(p.z + r);
         for (let tz = z0; tz <= z1; tz++) for (let tx = x0; tx <= x1; tx++) {
           if (!solid(tx, tz)) continue;
-          if (pushOutBox(p, r, tx, tz, tx + 1, tz + 1)) { hit = moved = true; if (opts.onBrush) opts.onBrush(tx, tz); }
+          if (pushOutBox(p, r, tx, tz, tx + 1, tz + 1)) { hit = moved = true; if (opts.onBrush && this.brushAt(tx, tz) >= BRUSH.thicket) opts.onBrush(tx, tz); }
         }
         // Objects.
-        for (const c of this.collidersNear(p.x, p.z, r + 0.1)) {
-          if (c.shape === 'circle') {
-            const ox = p.x - c.x, oz = p.z - c.z, d = Math.hypot(ox, oz), m = r + c.r;
-            if (d < m) {
-              if (d > 1e-6) { p.x = c.x + (ox / d) * m; p.z = c.z + (oz / d) * m; } else p.x += m;
-              hit = moved = true;
-            }
-          } else if (pushOutBox(p, r, ...c.bounds)) hit = moved = true;
-        }
+        for (const c of this.collidersNear(p.x, p.z, r + 0.1)) if (pushOut(p, r, c)) hit = moved = true;
         if (!moved) break;
       }
     }
@@ -272,12 +256,12 @@ export class JungleWorld {
   /** True if a circle at (x, z) overlaps anything solid. */
   blockedCircle(x, z, r, throughBrush = false) {
     for (let tz = Math.floor(z - r); tz <= Math.floor(z + r); tz++) for (let tx = Math.floor(x - r); tx <= Math.floor(x + r); tx++) {
-      if (throughBrush ? !this.inBounds(tx, tz) : this.solidAt(tx, tz)) {
+      if (throughBrush ? this.wetAt(tx, tz) : this.solidAt(tx, tz)) {
         const cx = Math.max(tx, Math.min(x, tx + 1)), cz = Math.max(tz, Math.min(z, tz + 1));
         if ((x - cx) ** 2 + (z - cz) ** 2 < r * r) return true;
       }
     }
-    for (const c of this.collidersNear(x, z, r)) if (this._pointIn(c, x, z, r * 0.9)) return true;
+    for (const c of this.collidersNear(x, z, r)) if (inFootprint(c, x, z, r * 0.9)) return true;
     return false;
   }
 
@@ -493,7 +477,48 @@ export class JungleWorld {
     return false;
   }
 
+  /** Debug: outline every footprint (yellow), deep water (blue) and fords (cyan) on the ground. */
+  showColliders(on = true) {
+    this._dbg?.removeFromParent();
+    this._dbg?.geometry.dispose();
+    this._dbg?.material.dispose();
+    this._dbg = null;
+    if (!on) return;
+    const pos = [], col = [];
+    const seg = (ax, az, bx, bz, c) => { pos.push(ax, 0.03, az, bx, 0.03, bz); col.push(...c, ...c); };
+    const Y = [1, 0.9, 0.2], B = [0.2, 0.4, 1], F = [0.3, 1, 1];
+    for (const c of this.colliders) {
+      // Rounded box: the inner box's sides pushed out by rr, plus quarter circles at the corners.
+      const { x0, z0, x1, z1, rr } = c;
+      if (x1 > x0) { seg(x0, z0 - rr, x1, z0 - rr, Y); seg(x0, z1 + rr, x1, z1 + rr, Y); }
+      if (z1 > z0) { seg(x0 - rr, z0, x0 - rr, z1, Y); seg(x1 + rr, z0, x1 + rr, z1, Y); }
+      const n = 6;
+      for (const [cx, cz, a0] of [[x1, z1, 0], [x0, z1, Math.PI / 2], [x0, z0, Math.PI], [x1, z0, Math.PI * 1.5]]) {
+        for (let k = 0; k < n; k++) {
+          const a = a0 + (k / n) * Math.PI / 2, b = a0 + ((k + 1) / n) * Math.PI / 2;
+          seg(cx + Math.cos(a) * rr, cz + Math.sin(a) * rr, cx + Math.cos(b) * rr, cz + Math.sin(b) * rr, Y);
+        }
+      }
+    }
+    const W = this.size, ford = this.w.ford;
+    for (let tz = 0; tz < W; tz++) for (let tx = 0; tx < W; tx++) {
+      const i = tz * W + tx;
+      if (this.deep[i]) { seg(tx + 0.1, tz + 0.1, tx + 0.9, tz + 0.9, B); seg(tx + 0.9, tz + 0.1, tx + 0.1, tz + 0.9, B); }
+      else if (ford && ford[i]) { seg(tx + 0.2, tz + 0.5, tx + 0.8, tz + 0.5, F); seg(tx + 0.5, tz + 0.2, tx + 0.5, tz + 0.8, F); }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    const m = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, depthWrite: false }));
+    m.renderOrder = 999;
+    m.frustumCulled = false;
+    m.userData.noSnap = true;
+    this.three.add(m);
+    this._dbg = m;
+  }
+
   dispose() {
+    this.showColliders(false);
     for (const [k, ch] of [...this.chunks]) this._dropChunk(k, ch);
     this.groundGeom.dispose();
     this.cardMat.dispose();
@@ -538,16 +563,21 @@ export function chunkCards(world, A, cut, x0, z0, w, h) {
   }
   for (const o of world.objects) {
     if (o.x < x0 || o.x >= x0 + w || o.z < z0 || o.z >= z0 + h) continue;
-    let fam;
-    if (o.kind === 'tree') fam = `tree_${o.type}`;
-    else if (o.kind === 'rock') fam = o.type;
-    else if (o.kind === 'ruin') fam = `ruin_${o.type}`;
-    else continue;
-    const e = A.pick(fam, Math.floor(o.x * 3), Math.floor(o.z * 3), 51) || A.pick('boulder', 1, 1);
+    const e = objectEntry(o, A);
     if (!e) continue;
     cards.push({ e, x: o.x, z: o.z, sway: o.kind === 'tree' ? 0.6 : 0, flip: o.flip && o.kind !== 'ruin', phase: o.x * 0.5 });
   }
   return cards.filter((c) => c.e);
+}
+
+/** The atlas sprite drawn for a world object (tree / rock / ruin), or null. Its `key` picks the collider (SOLID.art). */
+export function objectEntry(o, A) {
+  let fam;
+  if (o.kind === 'tree') fam = `tree_${o.type}`;
+  else if (o.kind === 'rock') fam = o.type;
+  else if (o.kind === 'ruin') fam = `ruin_${o.type}`;
+  else return null;
+  return A.pick(fam, Math.floor(o.x * 3), Math.floor(o.z * 3), 51) || A.pick('boulder', 1, 1);
 }
 
 /** One merged mesh of upright cards (see the file header). */

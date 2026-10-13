@@ -34,6 +34,7 @@ import { Lane, DefenseEnemy } from '../entities/DefenseEnemy.js';
 import { Tower } from '../entities/Tower.js';
 import { Projectiles } from '../entities/Projectiles.js';
 import { openSettingsOverlay } from './SettingsScene.js';
+import { READINESS } from '../data/guide.js';
 
 const DEG = Math.PI / 180;
 const UI_W = 960, UI_H = 540;   // UI unit space (see style.css --u)
@@ -202,19 +203,19 @@ export class DefenseScene {
     const bossLane = this.wave.events.find((e) => DEFENSE_ENEMIES[e.type]?.boss)?.lane;
     this._hintQueue = [
       { id: 'def_boss_target', pos: 'map-bottom-left', when: () => this.phase === 'prep' && bossLane != null,
-        html: `The <b>${DEFENSE_ENEMIES.colossus.name}</b> comes down the <b>${this.lanes[bossLane ?? 0]?.name}</b> tonight. Select the towers covering it and set targeting to <b>Toughest</b> (<span class="key">T</span>) so they focus the boss; leave the other lane on <b>Lead</b>.` },
-      { id: 'def_build', pos: 'map-bottom-left', when: () => this.phase === 'prep',
-        html: `Click a glowing <b>build pad</b> beside a lane to place a tower (or press <b>1–${run.availableTowers(game.meta).length}</b>, then click a pad). The right panel shows tonight's wave; click a pad to see the towers and their costs there.` },
+        html: `The <b>${DEFENSE_ENEMIES.colossus.name}</b> comes down the <b>${this.lanes[bossLane ?? 0]?.name}</b> tonight. Select the towers covering it and set targeting to <b>Toughest</b> (<span class="key">T</span>) so they focus the boss; leave the other path on <b>First in line</b>.` },
+      { id: 'def_build', pos: 'map-bottom-left', when: () => this.phase === 'prep', spot: () => this._padHintSpot(),
+        html: 'Enemies walk the dirt paths to your base. <b>Click a glowing square</b> beside a path to build a tower there.' },
       { id: 'def_select', pos: 'map-bottom-left', when: () => this.phase === 'prep' && this.towers.length > 0,
-        html: 'Click a tower to <b>upgrade</b> (<span class="key">U</span>), <b>sell</b> for 70% (<span class="key">S</span>) or change its <b>targeting</b> (<span class="key">T</span>).' },
+        html: 'Click a tower to <b>upgrade</b> it (<span class="key">U</span>) or <b>sell</b> it back (<span class="key">S</span>).' },
       { id: 'def_preview', pos: 'map-bottom-left', when: () => this.phase === 'prep' && (this.towers.length > 0 || this.prepTime > 14),
-        html: 'The <b>wave preview</b> (right panel, click empty ground to show it) lists every enemy per lane, tonight\'s district threat and your boons.' },
+        html: 'The right panel lists tonight\'s enemies on each path (click empty ground to bring it back).' },
       { id: 'def_start', pos: 'map-bottom-left', when: () => this.phase === 'prep' && this.towers.length > 0,
-        html: 'Ready? Press <span class="key">Space</span> or <b>Start Wave</b>. You can\'t build, upgrade or repair once the wave begins.' },
+        html: 'Ready? Press <b>Start Wave</b> (<span class="key">Space</span>). Once it starts you can\'t build until it ends.' },
       { id: 'def_intel', pos: 'map-bottom-left', when: () => this.phase === 'prep' && run.res.intel > 0 && this.prepTime > 3,
-        html: `You have <b>Intel</b>. Spend it under the wave preview (click empty ground to show it): <b>Decrypt</b> turns ${CONFIG.intel.decryptCost} Intel into ${CONFIG.intel.decryptResearch} Research Data; <b>Sabotage</b> (${CONFIG.intel.sabotageCost} Intel) makes tonight's wave ${Math.round((1 - CONFIG.intel.sabotageWave) * 100)}% smaller.` },
+        html: `You found <b>Intel</b>. Spend it under the enemy list: <b>Read it</b> (${CONFIG.intel.decryptCost} Intel → ${CONFIG.intel.decryptResearch} Research, kept forever) or <b>Disrupt the attack</b> (${CONFIG.intel.sabotageCost} Intel → ${Math.round((1 - CONFIG.intel.sabotageWave) * 100)}% fewer enemies tonight).` },
       { id: 'def_wave', pos: 'map-bottom-left', when: () => this.phase === 'wave',
-        html: 'Pause with <span class="key">Esc</span>, toggle <b>2×</b> speed with <span class="key">F</span>. Enemies that reach the Relay damage it.' },
+        html: 'Enemies that reach the Relay damage it. Pause with <span class="key">Esc</span>, speed up with <span class="key">F</span>.' },
       { id: 'def_boss', pos: 'map-bottom-left', when: () => this.phase === 'wave' && !!this.boss,
         html: 'The <b>Canopy Colossus</b> roots itself to spawn Crawlers (the <b style="color:#63c74d">filled green disc</b> around it), then charges along the <b>red</b> path. Your Mortar Pod landings show as <b style="color:#feae34">dashed amber rings</b>. At 60% health it <b>roars and enrages</b>: its bark hardens, it charges faster, and Skitters sprout with its roots. Slow it and focus fire.' },
     ];
@@ -657,7 +658,7 @@ export class DefenseScene {
 
   /** Icon for a tower / enemy, at most `size` stage units (N px on a 960-wide stage), integer-scaled. */
   _iconFor(kind, key, size = 22) {
-    const css = this.game.assets.iconStyle(key, size * this.game.stage.clientWidth / 960);
+    const css = this.game.assets.iconStyle(key, size * this.game.u);
     if (css) return el('span.df-ico', { style: css });
     if (kind === 'tower') {
       const ic = TOWERS[key].icon || { glyph: '?', color: '#8b9bb4' };
@@ -686,24 +687,21 @@ export class DefenseScene {
     const resTxt = RESOURCE_KEYS.map((r) => run.res[r]).join('|');
     if (force || k.res !== resTxt) {
       k.res = resTxt;
-      this.resHost.replaceChildren(resRow(run.res, { short: true }));
+      this.resHost.replaceChildren(resRow(run.res));
       if (this.phase === 'prep') this.sideDirty = true;
     }
     // Wave status
     let wTxt;
     if (this.phase === 'prep') wTxt = `p|${this.wave.total}`;
-    else {
-      const left = this.totalEnemies - this.resolved;
-      wTxt = `w|${left}|${Math.floor(this._progress() * 100)}`;
-    }
+    else wTxt = `w|${this._toGo()}|${Math.floor(this._progress() * 100)}`;
     if (force || k.wave !== wTxt) {
       k.wave = wTxt;
       if (this.phase === 'prep') {
         this.waveStat.replaceChildren(el('span.df-lbl', 'TONIGHT'), el('b', `${this.wave.total}`), el('span.muted', ' enemies'));
       } else {
-        const left = Math.max(0, this.totalEnemies - this.resolved);
+        // "N to go" = alive + not yet spawned, so it matches the per-path counts.
         this.waveBar.set(this._progress(), `${Math.floor(this._progress() * 100)}%`);
-        this.waveStat.replaceChildren(el('span.df-lbl', 'WAVE'), this.waveBar.node, el('span.df-left', {}, el('b', String(left)), el('span.muted', ' left')));
+        this.waveStat.replaceChildren(el('span.df-lbl', 'WAVE'), this.waveBar.node, el('span.df-left', {}, el('b', String(this._toGo())), el('span.muted', ' to go')));
       }
     }
     const ctlTxt = `${this.paused}|${this.speed}`;
@@ -713,6 +711,51 @@ export class DefenseScene {
       this.pauseBtn.classList.toggle('selected', this.paused);
       for (const b of this.speedBtns) b.classList.toggle('selected', Number(b.dataset.speed) === this.speed);
     }
+  }
+
+  /** Enemies still to deal with tonight: alive on the map + not yet spawned. */
+  _toGo() {
+    const pending = this.events ? this.events.length - this.spawnIdx : this.wave.total;
+    return Math.max(0, this.totalEnemies - this.resolved) + Math.max(0, pending);
+  }
+
+  /**
+   * Rough readiness for tonight (READINESS, src/data/guide.js): tower damage over a wave's worth of fire vs
+   * the wave's total health. → { ratio, level: 'weak' | 'risky' | 'strong', dps, hp }.
+   */
+  _readiness() {
+    const run = this.run, Rd = READINESS;
+    let dps = 0, slow = 0, beacons = 0;
+    for (const rec of run.towers) {
+      const st = run.towerStats(rec, run.relayHp / run.relayMax);
+      const rate = st.cooldown > 0 ? 1 / st.cooldown : 0;
+      if (st.kind === 'bullet') dps += st.damage * rate * (st.fifthShotMult ? 1 + (st.fifthShotMult - 1) / 5 : 1);
+      else if (st.kind === 'chain') { let m = 1, f = 1; for (let i = 0; i < (st.chains || 0); i++) { f *= st.chainFalloff || 0.7; m += f * 0.6; } dps += st.damage * rate * m; }
+      else if (st.kind === 'mortar') dps += st.damage * rate * 2;
+      else if (st.kind === 'snare') slow += Rd.slowValue;
+      else if (st.kind === 'support') beacons += 1;
+    }
+    dps = dps * (1 + beacons * Rd.supportValue) + slow;
+    let hp = 0;
+    for (const e of this.wave.events) hp += (DEFENSE_ENEMIES[e.type]?.hp || 0) * this.hpMult;
+    const secs = Rd.waveSeconds[Math.min(Rd.waveSeconds.length, this.night) - 1] || 30;
+    const ratio = hp > 0 ? (dps * secs) / hp : 9;
+    return { ratio, dps, hp, level: ratio < Rd.weak ? 'weak' : ratio < Rd.ok ? 'risky' : 'strong' };
+  }
+
+  /** Start Wave from the button / Space: a weak-looking defense asks once (press again within a few s). */
+  _tryStartWave() {
+    if (this.phase !== 'prep') return;
+    const r = this._readiness();
+    if (r.level === 'weak' && !(this.startArmed && this.game.time < this.startArmed)) {
+      this.startArmed = this.game.time + 4;
+      this.game.sfx.play('error');
+      toast(this.game.ui, this.towers.length ? 'Your defense looks too weak for tonight. Build or upgrade more, or press Start again.' : 'You have no towers! Build some first, or press Start again.', 'bad', 3);
+      this.sideDirty = true;
+      return;
+    }
+    this.startArmed = 0;
+    this.startWave();
   }
 
   /** Fraction of tonight's enemies resolved (killed or leaked), counting spawns not yet made. */
@@ -754,10 +797,10 @@ export class DefenseScene {
 
   _renderBuild(head, body) {
     const run = this.run;
-    head.append(el('h2', 'Build'), el('div.small.muted', `Pad ${this.selPad + 1} · Esc to cancel`));
+    head.append(el('h2', 'Build a tower'), el('div.small.muted', 'Pick one · Esc to cancel · hover for exact numbers'));
     run.availableTowers(this.game.meta).forEach((type, i) => body.append(this._towerCard(type, i, () => this._build(type, this.selPad))));
     const locked = Object.keys(TOWERS).filter((k) => !run.isTowerUnlocked(k, this.game.meta));
-    if (locked.length) body.append(el('div.small.muted.df-note', `🔒 ${locked.map((k) => TOWERS[k].name).join(', ')}: unlock with Research Data.`));
+    if (locked.length && this.game.meta.lifetime.runs > 1) body.append(el('div.small.muted.df-note', `🔒 ${locked.map((k) => TOWERS[k].name).join(', ')}: unlock with Research (Collection).`));
   }
 
   _towerCard(type, i, onPick) {
@@ -768,8 +811,10 @@ export class DefenseScene {
     const reason = ok ? null : run.missing(cost);
     const owned = run.towerCount(type);
     const surcharge = run.buildSurcharge(type);
+    // Plain card: name, price, one line, three strength bars. The exact numbers are in the tooltip.
+    const exact = `${def.name}: ${def.desc}\n${this._statSummary(this._previewStats(type))}`;
     const card = el(`div.df-card${ok ? '' : '.disabled'}`, {
-      title: reason || `Build ${def.name}`,
+      title: reason ? `${reason}\n${exact}` : exact,
       onclick: () => {
         if (!ok) { this.game.sfx.play('error'); toast(this.game.ui, reason, 'bad'); return; }
         onPick();
@@ -779,14 +824,22 @@ export class DefenseScene {
     },
     el('div.df-cardicon', {}, this._iconFor('tower', type, 26), el('span.df-hk', String(i + 1))),
     el('div.df-cardmain', {},
-      el('div.df-cardtop', {}, el('b', def.name)),
-      el('div.df-cardcost', {}, costLine(cost, run.res), el('span.df-role', def.role)),
-      el('div.df-desc', def.desc),
-      el('div.df-stats', this._statSummary(this._previewStats(type))),
-      surcharge ? el('div.df-desc', { title: `Each ${def.name} you own adds ${CONFIG.towerSurcharge} Scrap to the next one.` }, `${owned} built: +${surcharge} Scrap`) : null,
+      el('div.df-cardtop', {}, el('b', def.name), el('span.grow'), costLine(cost, run.res)),
+      el('div.df-desc', def.line || def.desc),
+      this._pips(def),
+      surcharge ? el('div.df-desc.amber', { title: `Each ${def.name} you own adds ${CONFIG.towerSurcharge} Scrap to the next one, so mixing tower types pays.` },
+        `+${surcharge} Scrap: you own ${owned} (each one raises the price)`) : null,
       reason ? el('div.df-desc.bad', reason) : null,
     ));
     return card;
+  }
+
+  /** Damage / speed / range as 1–3 pips (TOWERS[*].pips). */
+  _pips(def) {
+    const P = def.pips;
+    if (!P) return null;
+    return el('div.df-pips', {}, [['Power', 'damage'], ['Speed', 'speed'], ['Range', 'range']].map(([lbl, k]) =>
+      el('span.df-piprow', {}, el('span.df-pipl', lbl), el('span.df-pipbar', {}, [1, 2, 3].map((n) => el(`i${n <= (P[k] || 0) ? '.on' : ''}`))))));
   }
 
   _statSummary(s) {
@@ -814,9 +867,9 @@ export class DefenseScene {
     const lvl = t.rec.level;
     head.append(
       el('div.row', {}, this._iconFor('tower', t.rec.type, 26), el('div', {}, el('h2', def.name),
-        el('div.df-level', {}, [1, 2, 3].map((n) => el(`span.df-pip${n <= lvl ? '.on' : ''}`)), el('span.small.muted', ` Level ${lvl}/3 · ${def.role}`)))),
+        el('div.df-level', {}, [1, 2, 3].map((n) => el(`span.df-pip${n <= lvl ? '.on' : ''}`)), el('span.small.muted', ` Level ${lvl} of 3`)))),
     );
-    body.append(el('div.small.muted', def.desc));
+    body.append(el('div.small', def.line || def.desc));
 
     // Stats (effective: upgrades, skills, boons and beacon buffs applied).
     const rows = [];
@@ -824,7 +877,6 @@ export class DefenseScene {
     if (s.kind === 'bullet') {
       rows.push(['Damage', fmt(s.damage) + (s.fifthShotMult ? ` (×${s.fifthShotMult} every 5th)` : '')], ['Attacks', `${fmt(rate, 2)}/s`], ['Range', fmt(s.range)]);
       if (s.slowOnHit) rows.push(['Slow', `${Math.round((1 - s.slowOnHit) * 100)}% for ${s.slowTime}s${s.slowRadius ? ', splashes' : ''}`]);
-      rows.push(['Hits burrowed', 'No']);
     } else if (s.kind === 'chain') {
       rows.push(['Damage', `${fmt(s.damage)} (−${Math.round((1 - s.chainFalloff) * 100)}% per jump)`], ['Chains', `${s.chains} extra targets`], ['Attacks', `${fmt(rate, 2)}/s`], ['Range', fmt(s.range)]);
       if (s.chainSlow) rows.push(['Slow', `${Math.round((1 - s.chainSlow) * 100)}% for ${s.slowTime}s`]);
@@ -841,11 +893,13 @@ export class DefenseScene {
       rows.push(['Buffing', `${n} tower${n === 1 ? '' : 's'}`]);
     }
     if (t.buffRate > 0) rows.push(['Beacon', `+${Math.round(t.buffRate * 100)}% speed${t.bonusChance ? `, ${Math.round(t.bonusChance * 100)}% bonus` : ''}`]);
-    if (t.dmgDealt) rows.push(['Damage tonight', String(Math.round(t.dmgDealt))]);
-    body.append(el('div.df-statgrid', {}, rows.map(([a, b]) => [el('span.muted', a), el('span', b)])));
+    // Exact stats stay one hover away: the panel shows the three bars.
+    const pips = this._pips(def);
+    if (pips) { pips.title = rows.map(([a, b]) => `${a}: ${b}`).join(' · '); body.append(pips); }
+    if (t.dmgDealt) body.append(el('div.small.muted', `Damage tonight: ${Math.round(t.dmgDealt)}`));
 
-    // Targeting
-    if (['bullet', 'chain', 'mortar'].includes(s.kind)) {
+    // Targeting: from night 2 (night 1 towers shoot the enemy first in line).
+    if (['bullet', 'chain', 'mortar'].includes(s.kind) && this.night >= 2) {
       body.append(el('h3', {}, 'Targeting ', el('span.key', 'T')));
       body.append(el('div.row.df-targets', {}, TARGET_RULES.map((r) => {
         const b = button(TARGET_RULE_LABEL[r], () => this._setTarget(t, r), { title: TARGET_RULE_TEXT[r], cls: t.rec.target === r ? 'selected df-tgt' : 'df-tgt' });
@@ -859,7 +913,7 @@ export class DefenseScene {
     const wave = this.phase !== 'prep';
     if (wave) {
       // Upgrades and selling are locked mid-wave: keep the panel short so nothing is clipped.
-      body.append(el('div.small.muted.df-note', up ? `Next upgrade (after the wave): ${up.desc}` : '★ Max level'));
+      body.append(el('div.small.muted.df-note', up ? `Next upgrade (after the attack): ${up.desc}` : '★ Max level'));
       return;
     }
     body.append(el('h3', 'Upgrade'));
@@ -874,7 +928,7 @@ export class DefenseScene {
       body.append(el('div.small', {}, el('b.amber', `Level ${lvl + 1}: `), up.desc));
       const btn = button(el('span', {}, 'Upgrade ', costLine(cost, run.res)), () => this._upgrade(t), { disabled: !!reason, reason, hotkey: 'U', cls: 'primary df-wide' });
       body.append(btn);
-      if (free) body.append(el('div.small.good', 'Free upgrade from tonight\'s boon.'));
+      if (free) body.append(el('div.small.good', 'Free upgrade: tonight\'s reward.'));
       else if (discount) body.append(el('div.small.good', `Field Tuning: first upgrade tonight is ${Math.round((1 - SKILLS.field_tuning.scrapMult) * 100)}% off Scrap.`));
       if (reason) body.append(el('div.small.bad', reason));
     }
@@ -885,7 +939,7 @@ export class DefenseScene {
     const sellReason = wave ? 'Not during a wave' : null;
     const refundNote = `Refunds ${Math.round(CONFIG.sellRefund * 100)}% of ${t.rec.spent.scrap || 0} Scrap spent (rounded down). Components aren't refunded.`;
     // The refund rule sits in the heading row (short) and the button tooltip, so nothing is cut off below the button.
-    body.append(el('h3.df-sellhead', {}, 'Sell', el('span.small.muted', ` · ${Math.round(CONFIG.sellRefund * 100)}% of ${t.rec.spent.scrap || 0} Scrap`)));
+    body.append(el('h3.df-sellhead', {}, 'Sell', el('span.small.muted', ` · get back ${Math.round(CONFIG.sellRefund * 100)}% of the Scrap`)));
     const sellBtn = button(el('span', {}, armed ? 'Confirm sell ' : 'Sell for ', resChip('scrap', v, { short: true })), () => this._sell(t), {
       disabled: !!sellReason, reason: sellReason, hotkey: 'S', cls: armed ? 'danger df-wide df-sellarmed' : 'df-wide', title: refundNote,
     });
@@ -906,18 +960,18 @@ export class DefenseScene {
     const night = this.night;
     const tn = this.tonight;
     const inWave = this.phase !== 'prep';
-    head.append(el('h2', inWave ? 'Incoming' : 'Wave preview'),
-      el('div.small.muted', inWave ? 'Enemies still to arrive per lane' : `Night ${night} · ${this.wave.total} enemies`));
+    head.append(el('h2', inWave ? 'Still coming' : 'Tonight\'s attack'),
+      el('div.small.muted', inWave ? 'Enemies still to arrive on each path' : `Night ${night} · ${this.wave.total} enemies`));
 
     // District threat and boons first: they're what makes tonight different.
     const thr = tn.threat;
     if (thr) {
       // Tag kept short: wide pixel caps would wrap a district name onto 2–3 lines.
-      body.append(el('div.df-threat', { title: `Threat from ${DISTRICTS[this.district]?.name || 'the district'}` }, el('div.df-tag.bad', '⚠ Threat tonight'), el('div.small', thr.text)));
+      body.append(el('div.df-threat', { title: `Danger from ${DISTRICTS[this.district]?.name || 'the area'} you visited` }, el('div.df-tag.bad', '⚠ Danger tonight'), el('div.small', thr.text)));
     }
     const boons = tn.boons || [];
     if (boons.length) {
-      body.append(el('div.df-boons', {}, el('div.df-tag.good', '✔ Boons'), boons.map((b) => el('div.small', b.text))));
+      body.append(el('div.df-boons', {}, el('div.df-tag.good', '▲ Rewards'), boons.map((b) => el('div.small', b.text))));
     }
 
     // Per-lane counts (in a wave: what's still to spawn).
@@ -933,8 +987,8 @@ export class DefenseScene {
       const m = perLane[li];
       let n = 0;
       for (const c of m.values()) n += c;
-      const box = el('div.df-lane', {}, el('div.df-lanehead', {}, el('b', lane.name), el('span.muted', ` ${n}`)));
-      if (!m.size) box.append(el('div.small.muted', inWave ? 'All spawned.' : 'Quiet tonight.'));
+      const box = el('div.df-lane', {}, el('div.df-lanehead', {}, el('b', lane.name.replace(/lane/i, 'path')), el('span.muted', ` ${n}`)));
+      if (!m.size) box.append(el('div.small.muted', inWave ? 'All here.' : 'Quiet tonight.'));
       for (const [type, c] of m) {
         const d = DEFENSE_ENEMIES[type];
         box.append(el(`div.df-erow${d.boss ? '.boss' : ''}`, { title: `${d.name} (${d.role}): ${d.note || ''}` },
@@ -966,54 +1020,55 @@ export class DefenseScene {
 
     // Modifiers
     const mods = [];
-    if (night > 1) mods.push(`Enemy health +${Math.round((this.hpMult - 1) * 100)}% (night ${night})`);
+    if (night > 1) mods.push(`Enemies are tougher every night (+${Math.round((this.hpMult - 1) * 100)}% health tonight)`);
     const t = tn;
     if (t.enemyCount !== 1) {
       const wm = Math.max(CONFIG.waveSizeFloor ?? 0, t.enemyCount);
       const capped = t.enemyCount <= (CONFIG.waveSizeFloor ?? 0) + 1e-6;
-      mods.push(`Wave size ${wm < 1 ? '−' : '+'}${Math.round(Math.abs(1 - wm) * 100)}%${capped ? ` (capped at −${Math.round((1 - CONFIG.waveSizeFloor) * 100)}%)` : ''}`);
+      mods.push(`${Math.round(Math.abs(1 - wm) * 100)}% ${wm < 1 ? 'fewer' : 'more'} enemies${capped ? ` (−${Math.round((1 - CONFIG.waveSizeFloor) * 100)}% is the most)` : ''}`);
     }
-    if (t.enemySpeed !== 1) mods.push(`Enemies ${t.enemySpeed > 1 ? '+' : '−'}${Math.round(Math.abs(t.enemySpeed - 1) * 100)}% speed`);
-    if (t.laneSlow) mods.push(`${this.lanes[t.laneSlow.lane]?.name || 'Lane'}: enemies ${Math.round((1 - t.laneSlow.mult) * 100)}% slower`);
+    if (t.enemySpeed !== 1) mods.push(`Enemies move ${Math.round(Math.abs(t.enemySpeed - 1) * 100)}% ${t.enemySpeed > 1 ? 'faster' : 'slower'}`);
+    if (t.laneSlow) mods.push(`${(this.lanes[t.laneSlow.lane]?.name || 'Path').replace(/lane/i, 'path')}: enemies ${Math.round((1 - t.laneSlow.mult) * 100)}% slower`);
     if (t.towerRate !== 1) mods.push(`Towers attack ${Math.round((t.towerRate - 1) * 100)}% faster`);
     if (t.towerDamage !== 1) mods.push(`Towers deal ${Math.round((t.towerDamage - 1) * 100)}% more damage`);
     if (t.freeUpgrades > 0) mods.push(`${t.freeUpgrades} free tower upgrade${t.freeUpgrades > 1 ? 's' : ''} left`);
     const skills = run.skills.filter((k) => DEFENSE_SKILLS.includes(k) && SKILLS[k]);
     if (mods.length || skills.length) {
-      body.append(el('div.df-mods', {}, el('div.df-tag', 'Modifiers'),
+      body.append(el('div.df-mods', {}, el('div.df-tag', 'Also tonight'),
         mods.map((m) => el('div.small', '• ' + m)),
         skills.map((k) => el('div.small.accent', { title: SKILLS[k].desc }, `◆ ${SKILLS[k].name}: ${SKILLS[k].desc}`))));
     }
-    if (!inWave) body.append(el('div.small.muted.df-note', 'Tip: click a pad to build, click a tower to manage it. Range shows while placing.'));
+    if (!inWave) body.append(el('div.small.muted.df-note', 'Click a glowing square to build. Click a tower to upgrade it.'));
   }
 
   _renderFoot(foot) {
     const run = this.run;
     const prep = this.phase === 'prep';
-    if (prep && this.sideMode === 'preview') {
+    if (prep && this.sideMode === 'preview' && run.res.intel > 0) {
       // Intel: Decrypt (→ Research Data) and Sabotage (smaller wave, once per night). Shown with the
-      // wave preview only, so a selected tower's panel keeps room for upgrade / sell.
+      // wave preview only, and only once you have Intel (a newcomer never sees two dead buttons).
       const I = CONFIG.intel;
       const dCost = run.decryptCost();
       const dReason = run.missing(dCost);
       const sReason = run.sabotageBlocked();
       const cut = Math.round((1 - I.sabotageWave) * 100);
       foot.append(el('div.df-intel', {},
-        button(el('span', {}, 'Decrypt ', costLine(dCost, run.res), el('span.df-arrow', ` +${I.decryptResearch} RD`)), () => this._decrypt(), {
+        button(el('span', {}, 'Read ', costLine(dCost, run.res), el('span.df-arrow', ` → +${I.decryptResearch} Research`)), () => this._decrypt(), {
           disabled: !!dReason, cls: 'df-half',
-          title: `Decrypt: spend ${I.decryptCost} Intel for ${I.decryptResearch} Research Data (permanent; spend it on unlocks).${dReason ? ` ${dReason}.` : ''}`,
+          title: `Read Intel: spend ${I.decryptCost} Intel for ${I.decryptResearch} Research (kept forever; spend it on new gear in Collection).${dReason ? ` ${dReason}.` : ''}`,
         }),
-        button(el('span', {}, 'Sabotage ', costLine(run.sabotageCost(), run.res), el('span.df-arrow', ` −${cut}% wave`)), () => this._sabotage(), {
+        button(el('span', {}, 'Disrupt ', costLine(run.sabotageCost(), run.res), el('span.df-arrow', ` → ${cut}% fewer enemies`)), () => this._sabotage(), {
           disabled: !!sReason, cls: 'df-half',
-          title: `Sabotage: spend ${I.sabotageCost} Intel to make tonight's wave ${cut}% smaller (once per night).${sReason ? ` ${sReason}.` : ''}`,
+          title: `Disrupt the attack: spend ${I.sabotageCost} Intel for ${cut}% fewer enemies tonight (once per night).${sReason ? ` ${sReason}.` : ''}`,
         })));
     }
     // Repair and Emergency Patch: side by side as half buttons when both show (keeps the footer short
     // so the wave preview above keeps its room), full width otherwise.
     const patchOn = run.hasSkill('emergency_patch') && (prep || DEFENSE.emergencyPatchInWave) && (this.phase === 'prep' || this.phase === 'wave');
-    const halves = prep && patchOn;
+    const damaged = run.relayHp < run.relayMax;   // Repair shows only when there is something to repair
+    const halves = prep && patchOn && damaged;
     const pair = halves ? el('div.df-intel') : foot;
-    if (prep) {
+    if (prep && damaged) {
       const full = run.relayHp >= run.relayMax;
       const cost = run.repairCost();
       const reason = full ? 'Relay at full health' : run.missing(cost);
@@ -1034,11 +1089,23 @@ export class DefenseScene {
     }
     if (halves) foot.append(pair);
     if (prep) {
-      foot.append(button(el('span', {}, '▶ Start Wave'), () => this.startWave(), { hotkey: 'Space', cls: 'primary big df-wide df-start' }));
+      // Readiness: one plain line (and a meter) before Start Wave; a weak defense asks before starting.
+      const r = this._readiness();
+      const armed = this.startArmed && this.game.time < this.startArmed;
+      const say = {
+        weak: this.towers.length ? "Too weak: this probably won't hold" : 'No towers yet: enemies will walk right in',
+        risky: 'Risky: the Relay may take some damage',
+        strong: 'Looks strong',
+      }[r.level];
+      foot.append(el(`div.df-rd-line.${r.level}`, { title: `Rough estimate: your towers' damage over the attack vs the enemies' total health (${Math.round(r.ratio * 100)}%).` },
+        el('span.df-rd-k', 'Your defense'),
+        el('span.df-meter', {}, [0, 1, 2].map((n) => el(`i${n <= ({ weak: 0, risky: 1, strong: 2 })[r.level] ? '.on' : ''}`))),
+        el('span.df-rd-t', say)));
+      foot.append(button(el('span', {}, armed ? '▶ Start anyway' : '▶ Start Wave'), () => this._tryStartWave(), { hotkey: 'Space', cls: `primary big df-wide df-start${armed ? ' df-armed' : ''}` }));
     } else if (this.phase === 'wave') {
-      foot.append(el('div.small.muted', patchOn && DEFENSE.emergencyPatchInWave
-        ? 'Building, upgrades and Scrap repairs are locked during the wave. Targeting and the Emergency Patch still work.'
-        : 'Building, upgrades and repairs are locked during the wave. Targeting can still be changed.'));
+      foot.append(el('div.small.muted', this.night >= 2
+        ? "You can't build until the attack ends. You can still change a tower's targeting."
+        : "You can't build until the attack ends."));
     }
   }
 
@@ -1490,7 +1557,7 @@ export class DefenseScene {
     game.sfx.play('done');
     const last = this.result === 'victory';
     this._banner(last ? 'THE RELAY HOLDS' : `NIGHT ${night} SURVIVED`,
-      last ? 'The Canopy Colossus is beaten. Dawn breaks over Verdant Relay.' : `Relay ${Math.ceil(run.relayHp)} / ${run.relayMax} · +10 Research · resources carry over`, 'good');
+      last ? 'The Canopy Colossus is beaten. Dawn breaks over Verdant Relay.' : `Relay ${Math.ceil(run.relayHp)} / ${run.relayMax} · everything you stored and built stays for tomorrow`, 'good');
     // The banner waits for a click / Enter / Space (DEFENSE.bannerWait): an auto-advance could switch to the
     // briefing just as the player clicks the banner, and that click then lands on a district card (critic G #12).
     this.endTimer = DEFENSE.bannerWait ? Infinity : DEFENSE.endBanner + (last ? 1 : 0);
@@ -1740,7 +1807,7 @@ export class DefenseScene {
       if (this.phase === 'prep') { count = 0; for (const c of this.wave.perLane[i].values()) count += c; }
       else if (this.events) { count = 0; for (let j = this.spawnIdx; j < this.events.length; j++) if (this.events[j].lane === i) count++; }
       const bossHere = bossEntry && bossEntry.lane === i;
-      const txt = bossHere ? `☠ ${lane.short} ▸ Colossus` : this.phase === 'prep' ? `${lane.short} ▸ ${count}` : count > 0 ? `${lane.short} ▸ ${count} more` : '';
+      const txt = bossHere ? `☠ ${lane.short} ▸ Colossus` : this.phase === 'prep' ? `${lane.short} ▸ ${count}` : count > 0 ? `${lane.short} ▸ ${count} coming` : '';
       if (n.textContent !== txt) n.textContent = txt;
       n.classList.toggle('boss', !!bossHere);
       n.style.display = txt ? '' : 'none';
@@ -1832,7 +1899,7 @@ export class DefenseScene {
     }
     if (inp.wasPressed('KeyP')) { this.togglePause(true); return; }
     if (inp.wasPressed('Space')) {
-      if (prep) this.startWave();
+      if (prep) this._tryStartWave();
       else this.togglePause(true);
       return;
     }
@@ -1883,6 +1950,15 @@ export class DefenseScene {
     }
   }
 
+  /** Next to an empty build pad near the Relay, so the "click a glowing square" hint points at one. */
+  _padHintSpot() {
+    const pad = this.pads.filter((p) => !this._towerOn(p.i)).sort((a, b) => Math.hypot(a.x - this.corePos.x, a.z - this.corePos.z) - Math.hypot(b.x - this.corePos.x, b.z - this.corePos.z))[0];
+    if (!pad) return null;
+    const pr = this.game.project(new THREE.Vector3(pad.x, 0, pad.z), this.camera);
+    const sw = this.game.stage.clientWidth, u = this.game.u;
+    return { right: `${Math.round(sw - pr.x + 22 * u)}px`, top: `${Math.round(pr.y - 14 * u)}px`, maxWidth: `${Math.round(230 * u)}px` };
+  }
+
   _updateHints() {
     if (this._curHint && this._curHint.isConnected) return;
     this._curHint = null;
@@ -1890,7 +1966,7 @@ export class DefenseScene {
       const h = this._hintQueue[i];
       if (!h.when()) continue;
       this._hintQueue.splice(i, 1);
-      const n = showHint(this.game, h.id, h.html, { pos: h.pos, time: 11 });
+      const n = showHint(this.game, h.id, h.html, { pos: h.pos, style: h.spot?.() || null, time: 11 });
       if (n) { this._curHint = n; break; }
       i--;
     }

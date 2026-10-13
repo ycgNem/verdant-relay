@@ -10,33 +10,34 @@ import { DISTRICTS, DISTRICT_KEYS } from '../data/districts.js';
 import { worldForRun, compass } from '../world/JungleGen.js';
 import { PRIMARY } from '../data/objectives.js';
 import { MENU_INPUT } from '../data/hud.js';
+import { WORDS } from '../data/guide.js';
 import { DEFENSE_ENEMIES } from '../data/enemies.js';
 import { WAVES } from '../data/waves.js';
 import { MenuBackdrop } from './MenuBackdrop.js';
 import { openSettingsOverlay } from './SettingsScene.js';
-import { KeyNav, Bag, ask, sbtn, overlay, iconEl, skillTag, skillPicker, researchChip } from '../ui/screensKit.js';
+import { KeyNav, Bag, ask, sbtn, overlay, iconEl, skillTag, skillPicker } from '../ui/screensKit.js';
 
-/** Health bars + resources strip shared by Briefing and Summary. */
+/** Health bars + resources strip shared by Briefing and Summary. Zero currencies and an empty med-kit slot stay hidden. */
 export function runStatus(game, run) {
   const relay = bar('hp-bar', run.relayHp / run.relayMax > 0.3 ? 'var(--accent)' : 'var(--danger)');
   relay.set(run.relayHp / run.relayMax, `${Math.ceil(run.relayHp)} / ${run.relayMax}`);
   const you = bar('hp-bar', run.playerHp / CONFIG.player.hp > 0.3 ? 'var(--good)' : 'var(--danger)');
   you.set(run.playerHp / CONFIG.player.hp, `${Math.ceil(run.playerHp)} / ${CONFIG.player.hp}`);
   return el('div.status-strip', {},
-    el('div.stat-bar', {}, el('span.small.muted', 'Relay Core'), relay.node),
+    el('div.stat-bar', { title: 'The Relay is your base. Enemies attack it every night; the run ends if it falls.' }, el('span.small.muted', 'Relay (your base)'), relay.node),
     el('div.stat-bar', {}, el('span.small.muted', 'Your health'), you.node),
-    el('div.stat-meds', { title: `Med kits heal ${CONFIG.player.medHeal}. Carry up to ${CONFIG.player.maxMeds}.` },
-      el('span.small.muted', 'Med kits'), el('b.med', {}, resIcon('pick_med'), ` ${run.meds}/${CONFIG.player.maxMeds}`)),
-    el('div.stat-res', {}, el('span.small.muted', 'Banked resources'), resRow(run.res)));
+    run.meds > 0 ? el('div.stat-meds', { title: `Med kits heal ${CONFIG.player.medHeal} (Q in the jungle). Carry up to ${CONFIG.player.maxMeds}.` },
+      el('span.small.muted', 'Med kits'), el('b.med', {}, resIcon('pick_med'), ` ${run.meds}/${CONFIG.player.maxMeds}`)) : null,
+    el('div.stat-res', {}, el('span.small.muted', WORDS.stored), resRow(run.res)));
 }
 
-/** Night pips: ● survived, ◆ tonight, ○ ahead (boss night marked). */
+/** Night pips: ● survived, ◆ tonight, ○ ahead; the last one is the boss night (skull). */
 export function nightPips(night) {
-  return el('div.pips', { title: `Night ${night} of ${CONFIG.nights}` }, Array.from({ length: CONFIG.nights }, (_, i) => {
+  return el('div.pips', { title: `Night ${night} of ${CONFIG.nights}. Survive night ${CONFIG.nights} (the boss) to win.` }, Array.from({ length: CONFIG.nights }, (_, i) => {
     const n = i + 1;
     const cls = n < night ? 'done' : n === night ? 'now' : 'ahead';
-    return el(`span.pip.${cls}${n === CONFIG.nights ? '.boss' : ''}`, { title: n === CONFIG.nights ? 'Boss night' : `Night ${n}` });
-  }));
+    return el(`span.pip.${cls}${n === CONFIG.nights ? '.boss' : ''}`, { title: n === CONFIG.nights ? `Night ${n}: final night, the boss` : `Night ${n}` });
+  }), el('span.pip-skull', { title: `Night ${CONFIG.nights}: the boss` }, '☠'));
 }
 
 /** Tonight's base wave as icons + counts. */
@@ -69,6 +70,7 @@ export class BriefingScene {
     run.district = null;
     run.save('briefing');
     this.choices = run.districtChoices();
+    if (this.choices.length === 1) this.selected = this.choices[0];   // the guided night: nothing to choose yet
 
     this.backdrop = new MenuBackdrop(game, { mood: 'day', angle: 1.6, speed: 0.025, radius: 19, height: 12 });
     this.three = this.backdrop.scene;
@@ -93,11 +95,19 @@ export class BriefingScene {
       },
     }));
 
+    // One-time hint, placed where it covers nothing: on the guided night in the empty slot beside the
+    // single card, otherwise under the (short) cards.
     this.bag.timeout(() => {
       if (game.scene !== this) return;
-      showHint(game, 'briefing_districts',
-        'Pick a <b>district</b> for today\'s expedition. Its <b>bonus</b> boosts what you find, but it also adds a <b>threat</b> to tonight\'s wave. Finish the <b>objective</b> for a skill point and a boon for the night.',
-        { pos: 'bottom-right', style: this._hintSpot(), time: 14 });
+      if (this.choices.length === 1) {
+        showHint(game, 'briefing_guided',
+          'This is today\'s trip. Do the <b>goal</b>, open crates for <b>Scrap</b>, then come home. Tonight enemies attack your base, the <b style="color:#2ce8f5">Relay</b>: the Scrap you bring back builds its towers.',
+          { style: this._hintSpot(), time: 16 });
+      } else {
+        showHint(game, 'briefing_districts',
+          'Pick where to go today. Finish an area\'s <b>goal</b> for a <b style="color:#63c74d">reward</b> tonight; every area also adds its <b style="color:#ff6b6b">danger</b> to tonight\'s attack.',
+          { style: this._hintSpot(), time: 14 });
+      }
     }, 500);
   }
 
@@ -124,21 +134,27 @@ export class BriefingScene {
     return this.downCard === k;
   }
 
-  /** The empty lower part of district card 1: close to what the hint explains, covering nothing. */
+  /** Free space next to (one card) or under (two cards) the district cards: close to them, covering nothing. */
   _hintSpot() {
-    const card = this.game.ui.querySelector('.district-card');
-    if (!card) return null;
+    const cards = [...this.game.ui.querySelectorAll('.district-card')];
+    if (!cards.length) return null;
     const ui = this.game.ui.getBoundingClientRect();
-    const r = card.getBoundingClientRect();
-    return { left: `${r.left - ui.left + 12}px`, bottom: `${ui.bottom - r.bottom + 12}px`, maxWidth: `${r.width - 24}px` };
+    const grid = this.game.ui.querySelector('.district-cards').getBoundingClientRect();
+    const r = cards[0].getBoundingClientRect();
+    if (cards.length === 1) {
+      const left = r.right - ui.left + 14;
+      return { left: `${left}px`, top: `${r.top - ui.top}px`, maxWidth: `${grid.right - ui.left - left}px` };
+    }
+    const bottom = Math.max(...cards.map((c) => c.getBoundingClientRect().bottom));
+    return { left: `${grid.left - ui.left}px`, top: `${bottom - ui.top + 12}px`, maxWidth: `${grid.width}px` };
   }
 
   render() {
     const game = this.game;
     const run = game.run;
-    const meta = game.meta;
     this.root.innerHTML = '';
     const isBoss = run.night >= CONFIG.nights;
+    const guided = this.choices.length === 1;
 
     // Header: night, pips, status.
     const head = el('div.scr-head.panel.ui-block.brief-head', {},
@@ -148,49 +164,43 @@ export class BriefingScene {
       runStatus(game, run));
 
     const warn = isBoss
-      ? el('div.boss-warn.ui-block', {}, el('b', '⚠ FINAL NIGHT'), ' The ', el('b', DEFENSE_ENEMIES.colossus.name), ' leads tonight\'s siege. Bring back everything you can.')
+      ? el('div.boss-warn.ui-block', {}, el('b', '⚠ FINAL NIGHT'), ' The ', el('b', DEFENSE_ENEMIES.colossus.name), ' leads tonight\'s attack. Bring back everything you can.')
       : run.night === CONFIG.nights - 1
         ? el('div.boss-warn.soft.ui-block', {}, el('b', 'Tomorrow night: '), `the ${DEFENSE_ENEMIES.colossus.name}. Start preparing.`)
         : null;
 
-    // District cards.
-    const cards = this.choices.map((k, i) => this.districtCard(k, i));
-    const lockedNote = run.night < (DISTRICTS.data_center.minNight || 1)
-      ? el('div.small.muted.center-note', `${DISTRICTS.data_center.name} opens from Night ${DISTRICTS.data_center.minNight}.`)
-      : null;
+    // District cards: three lines each (goal + its reward, danger tonight); the rest behind "Details".
+    const cards = this.choices.map((k, i) => this.districtCard(k, i, guided));
     const main = el('div.brief-main', {},
-      el('div.choose-head', {}, el('h2', 'Choose today\'s district'), el('span.small.muted', 'Click a card or press 1 / 2')),
-      el('div.district-cards', {}, cards),
-      lockedNote);
+      el('div.choose-head', {}, el('h2', guided ? 'Today\'s trip' : 'Where to today?'),
+        el('span.small.muted', guided ? 'More areas open tomorrow' : 'Click a card or press 1 / 2')),
+      el(`div.district-cards${guided ? '.one' : ''}`, {}, cards));
 
-    // Side panel: loadout, skills, tonight's base wave.
-    const skills = run.skills.length ? el('div.skill-tags', {}, run.skills.map(skillTag)) : el('div.small.muted', 'No skills yet. Objectives earn skill points.');
+    // Side panel: tonight's attack first; towers, skills and the weapon only once there is something to say.
+    const weapon = WEAPONS[WEAPON_ALIAS[run.weapon] || run.weapon];
     const spend = run.skillPoints > 0
       ? el('div.points-box', {},
         el('div', {}, el('b.amber', `${run.skillPoints}`), run.skillPoints === 1 ? ' unspent skill point' : ' unspent skill points'),
         sbtn(game, 'Spend points', () => this.openSkills(), { cls: 'primary', hotkey: 'P' }))
       : null;
     const side = el('div.side.panel.ui-block', {},
-      el('h3', 'Loadout'),
-      el('div.small', {}, el('span.muted', 'Weapon: '), el('b', WEAPONS[WEAPON_ALIAS[run.weapon] || run.weapon]?.name || 'Machete')),
-      el('div.small', {}, el('span.muted', 'Towers standing: '), el('b', String(run.towers.length))),
-      el('h3', `Skills · ${run.skills.length}`),
-      skills,
-      spend,
-      el('h3', `Night ${run.night} wave`),
+      el('h3', 'Tonight\'s attack'),
       wavePreview(game, run.night),
       this.selected
-        ? el('div.small', {}, el('span.bad', 'Plus: '), run.threatFor(this.selected).text)
-        : el('div.small.muted', 'Plus the threat from the district you choose. Hover an icon for its name.'),
-      el('div.side-research.small', {}, el('span.muted', 'Research Data '), researchChip(meta.research, { noLabel: true })));
+        ? el('div.small', {}, el('span.bad', 'Plus: '), run.threatFor(this.selected).short || run.threatFor(this.selected).text)
+        : el('div.small.muted', 'Plus the danger from the area you pick. Hover an icon for its name.'),
+      run.towers.length ? el('div.small', {}, el('span.muted', 'Towers at your base: '), el('b', String(run.towers.length))) : null,
+      run.weapon !== 'machete' && weapon ? el('div.small', {}, el('span.muted', 'Weapon: '), el('b', weapon.name)) : null,
+      run.skills.length || run.skillPoints ? el('h3', 'Skills') : null,
+      run.skills.length ? el('div.skill-tags', {}, run.skills.map(skillTag)) : null,
+      spend);
 
-    const beginReason = 'Pick a district first (1 / 2)';
-    const begin = sbtn(game, el('span', {}, 'Begin Expedition ', el('span.arrow', '▶')), () => this.begin(), {
+    const beginReason = 'Pick an area first (1 / 2)';
+    const begin = sbtn(game, el('span', {}, 'Head out ', el('span.arrow', '▶')), () => this.begin(), {
       cls: 'primary big begin-btn', hotkey: 'Enter', disabled: !this.selected, reason: beginReason, sfx: null,
     });
     const foot = el('div.row.scr-foot', {},
       sbtn(game, 'Menu', () => this.pause(), { cls: 'menu-btn-sm', hotkey: 'Esc' }),
-      el('span.small.muted', run.skillPoints > 0 ? 'You can also spend skill points after the expedition.' : ''),
       el('span.grow'),
       this.selected ? el('span.small', {}, el('span.muted', 'Heading to '), el('b', DISTRICTS[this.selected].name)) : el('span.small.muted', beginReason),
       begin);
@@ -198,35 +208,44 @@ export class BriefingScene {
     this.root.append(...[el('div.scr-dim'), head, warn, el('div.brief-body', {}, main, side), foot].filter(Boolean));
   }
 
-  districtCard(k, i) {
+  districtCard(k, i, guided = false) {
     const game = this.game;
     const run = game.run;
     const d = DISTRICTS[k];
     const threat = run.threatFor(k);
-    const objKey = run.objectiveFor(k);
-    const obj = PRIMARY[objKey];
-    const firstVisit = !game.meta.discovered.includes(k);
+    const obj = PRIMARY[run.objectiveFor(k)];
     const enemyKeys = Object.keys(d.enemies || {});
+    const where = this.whereText(k);
+    // Everything else (where, finds, creatures, the long reward/danger text) is in the tooltip and behind "Details".
+    const tip = [d.env, where && `Where: ${where}`, `Finds: ${d.bonusText}`, `Creatures: ${d.enemyNote}`,
+      `Reward: ${obj.boon.text}`, `Danger tonight: ${threat.text}`].filter(Boolean).join('\n');
+    const more = el('span.dc-more', {
+      role: 'button',
+      // The hint sits under the short cards: close it so the opened details are never covered.
+      onclick: (e) => { e.stopPropagation(); this.details = !this.details; game.sfx.play('open'); game.ui.querySelector('.hint')?.remove(); this.render(); },
+    }, this.details ? 'Less ▴' : 'Details ▾');
     const card = el(`button.btn.district-card${this.selected === k ? '.selected' : ''}`, {
       style: { '--c': d.look.floorAlt, '--c2': d.look.floor },
       'data-key': k,
+      title: tip,
       onclick: (e) => { e.stopPropagation(); if (this._cardClickOk(e, k)) this.select(k, false); },
       ondblclick: (e) => { e.stopPropagation(); if (this._cardClickOk(e, k)) { this.select(k, false); this.begin(); } },
     },
-    el('div.dc-stripe', {}, el('span.dc-num', String(i + 1)), el('span.dc-name', d.name)),
-    firstVisit ? el('div.dc-first', { title: 'Research Data for your first visit' }, `★ First visit: +${CONFIG.research.newDistrict} Research Data`) : null,
+    el('div.dc-stripe', {}, guided ? null : el('span.dc-num', String(i + 1)), el('span.dc-name', d.name), el('span.grow'), more),
     el('div.dc-body', {},
-      el('div.dc-env', d.env),
-      this.whereLine(k),
-      el('div.dc-line', {}, el('span.dc-k.good', 'Bonus'), el('span', d.bonusText)),
-      el('div.dc-line', {}, el('span.dc-k', 'Enemies'), el('span', {}, el('span.dc-icons', enemyKeys.map((ek) => iconEl(game, ek, 18))), ' ', d.enemyNote)),
-      el('div.dc-line.dc-obj', {}, el('span.dc-k.accent', 'Objective'), el('span', {}, el('b', obj.name), el('div.small.muted', {}, 'Boon: ', obj.boon.text))),
-      el('div.dc-line.dc-threat', {}, el('span.dc-k.bad', 'Tonight'), el('span', threat.text))));
+      el('div.dc-line.dc-obj', {}, el('span.dc-k.amber', 'Goal'), el('span', {}, el('b', obj.name),
+        el('div.small.dc-reward', {}, el('span.good', '▲ Reward: '), obj.boon.short || obj.boon.text))),
+      el('div.dc-line.dc-threat', {}, el('span.dc-k.bad', 'Danger'), el('span', threat.short || threat.text)),
+      this.details ? el('div.dc-details', {},
+        el('div.dc-env', d.env),
+        where ? el('div.dc-line', {}, el('span.dc-k', 'Where'), el('span', where)) : null,
+        el('div.dc-line', {}, el('span.dc-k.good', 'Finds'), el('span', d.bonusText)),
+        el('div.dc-line', {}, el('span.dc-k', 'Creatures'), el('span', {}, el('span.dc-icons', enemyKeys.map((ek) => iconEl(game, ek, 18))), ' ', d.enemyNote))) : null));
     return card;
   }
 
   /** Where the district lies in the jungle: direction and rough distance from the Relay. */
-  whereLine(k) {
+  whereText(k) {
     const run = this.game.run;
     const data = worldForRun(this.game, run, DISTRICT_KEYS);
     const ri = DISTRICT_KEYS.indexOf(k);
@@ -237,7 +256,7 @@ export class BriefingScene {
     const d = Math.round(Math.hypot(mx - c.x, mz - c.z) / 10) * 10;
     const pylon = data.pylons.find((p) => p.region === ri);
     const on = pylon && (run.world?.pylons || []).includes(pylon.id);
-    return el('div.dc-line', {}, el('span.dc-k', 'Where'), el('span', {}, `${compass(mx - c.x, mz - c.z)} of the Relay, ~${d} m`, on ? el('span.accent', ' · pylon online') : null));
+    return `${compass(mx - c.x, mz - c.z)} of the Relay, ~${d} m${on ? ` · your ${WORDS.pylon} there is on` : ''}`;
   }
 
   select(k, fromKey) {
@@ -254,7 +273,7 @@ export class BriefingScene {
 
   begin() {
     const game = this.game;
-    if (!this.selected) { game.sfx.play('error'); toast(game.ui, 'Pick a district first (1 / 2)', 'bad', 1.8); return; }
+    if (!this.selected) { game.sfx.play('error'); toast(game.ui, 'Pick an area first (1 / 2)', 'bad', 1.8); return; }
     if (game.ui.querySelector('.overlay')) return;
     game.sfx.play('done');
     const k = this.selected;

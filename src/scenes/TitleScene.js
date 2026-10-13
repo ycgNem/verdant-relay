@@ -14,6 +14,8 @@ import { KeyNav, Bag, ask, sbtn, researchChip } from '../ui/screensKit.js';
 export function startNewRun(game) {
   clearRun();
   game.run = Run.create(game.meta);
+  // The very first run is guided: night 1 offers one area and the day coaches one step at a time.
+  game.run.guided = game.meta.lifetime.runs === 0;
   game.meta.lifetime.runs += 1;
   game.saveMeta();
   game.go('briefing');
@@ -61,7 +63,7 @@ export class TitleScene {
         if (!continueRun(game)) { toast(game.ui, 'That save could not be loaded.', 'bad'); this.rebuild(); }
       }, { cls: 'primary menu-btn', sfx: 'done', hotkey: 'C' }));
     }
-    buttons.push(sbtn(game, el('span.mbtn', {}, el('span.mlabel', 'New Run'), el('span.msub', save ? 'Abandons the saved run' : 'Six nights. Hold the Relay.')), () => this.newRun(save), { cls: save ? 'menu-btn' : 'primary menu-btn', sfx: 'done', hotkey: 'N' }));
+    buttons.push(sbtn(game, el('span.mbtn', {}, el('span.mlabel', 'New Run'), el('span.msub', save ? 'Abandons the saved run' : 'Six nights. Defend your base, the Relay.')), () => this.newRun(save), { cls: save ? 'menu-btn' : 'primary menu-btn', sfx: 'done', hotkey: 'N' }));
     buttons.push(sbtn(game, el('span.mbtn', {}, el('span.mlabel', 'Collection'), el('span.msub', 'Unlocks, records, codex')), () => game.go('collection', { from: 'title' }), { cls: 'menu-btn', hotkey: 'K' }));
     buttons.push(sbtn(game, el('span.mbtn', {}, el('span.mlabel', 'Settings'), el('span.msub', 'Sound, display, hints')), () => game.go('settings', { from: 'title' }), { cls: 'menu-btn', hotkey: 'O' }));
 
@@ -72,7 +74,8 @@ export class TitleScene {
       : null;
 
     const best = meta.best;
-    const record = el('div.title-stats.panel.ui-block', {},
+    // Records only once there is something to show (a first visit sees four zeros otherwise).
+    const record = meta.lifetime.runs === 0 && !meta.research ? null : el('div.title-stats.panel.ui-block', {},
       el('div.row', {}, el('span.muted', 'Research Data'), el('span.grow'), researchChip(meta.research, { noLabel: true })),
       el('div.row', {}, el('span.muted', 'Best run'), el('span.grow'),
         best.victory ? el('b.good', `Victory · ${CONFIG.nights}/${CONFIG.nights} nights`) : el('b', best.nights ? `${best.nights}/${CONFIG.nights} nights survived` : 'No nights yet')),

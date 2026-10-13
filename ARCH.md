@@ -22,9 +22,10 @@ How the engine pieces fit together. `DESIGN.md` says what the game is; `PLAN.md`
 | `game.input` | `isDown(code)`, `wasPressed(code)`, `mouseHeld(b)`, `mouseClicked(b)`, `mouse.{x,y,ndcX,ndcY}` (codes are `KeyboardEvent.code`: `KeyW`, `Space`, `Tab`, `Escape`…) |
 | `game.sfx.play(name)` | synthesized blips (`src/core/Sfx.js`: shoot cutter hit hurt pickup open dodge build sell zap boom core done alarm error) |
 | `game.assets` | sprite/visual factory (below) |
-| `game.setResMult(m)` | render at base×m (resets on scene switch) |
+| `game.setResMult(m)` | render at the view size ×m (resets on scene switch) |
 | `game.setInternalRes(w, h)` | render at a fixed internal size until the next scene switch (night: `DEFENSE_VIEW.res` = 1280×720) |
-| `game.fit()` | size the stage: always a whole-number CSS scale (device px). Default: fixed field of view — the internal size the base res gets at 1280×720 (chunky 426×240 ×3) is the reference, other windows stay within ±`CONFIG.ui.fovTolerance` of it in tiles (1920×1080 → 454×254 ×4, letterboxed); `meta.settings.integerScale` = exact base res, bigger borders. A fixed `setInternalRes` is integer-scaled when that fills ≥ `CONFIG.ui.minIntegerFill`, else stretched |
+| `game.fit()` | size the stage: always a whole-number CSS scale (device px). Fixed field of view `CONFIG.ui.view` = 640×360 (20 × 11.25 tiles): ×2 at 1280×720, ×3 at 1920×1080, ×4 at 2560×1440; other windows take the scale filling the most of the window with each side inside `CONFIG.ui.viewBand` (1366×768 → 682×384 ×2, 1920×950 → 640×316 ×3, 1600×900 → 704×396 ×2 letterboxed; small windows `viewBand.small`: 1024×600 → 512×300 ×2). No resolution setting. A fixed `setInternalRes` is integer-scaled when that fills ≥ `CONFIG.ui.minIntegerFill`, else stretched |
+| `game.u` | CSS px per UI unit (`--u`) = min(stage width / 960, height / 540) — the stage aspect varies a little, so use this, not `clientWidth / 960` |
 | `game.width/height` | current internal resolution — changes with the window, so size per frame (PostFx) or rely on `_applyRes` re-sizing the scene's PixelCamera |
 | `game.shake(amp, time)` | screen shake (respects the settings toggle) |
 | `game.flash(color, opacity)` | full-screen flash |
@@ -62,13 +63,24 @@ Module functions (import from `../core/Assets.js`):
 
 ## The jungle (day) — `src/world/`
 
+- **Solid jungle** (`src/world/Solid.js`, tables `SOLID` + `GROUND` in jungle.js): every collider is a rounded box
+  `{x0, z0, x1, z1, rr}` (inner box grown by `rr`; a circle is a zero-size box) — `footprint(o, artKey)`, `boxDist`,
+  `inFootprint(c, x, z, pad)`, `pushOut(p, r, c)`. Runtime picks the footprint by the sprite actually drawn
+  (`SOLID.art[key]`, via `objectEntry(o, atlas)` in JungleWorld, shared with `chunkCards`); generation uses the per-type
+  maximum (`SOLID.kind`). `addCollider({kind:'prop', type:'container'|'objective'|'nest'|'pylon'|'relay', x, z})` for scene
+  props, or `{x, z, r}` for a plain circle. Deep water (`data.deep`) is a solid tile for everyone (`wetAt` for brush-slippers);
+  `objGrid` (tile centre within `SOLID.tilePad` of a footprint) + deep feed `blockedAt` and so the flow fields.
+  Debug: `vr.game.scene.debug.colliders(true)` outlines footprints (yellow), deep water (blue ×) and fords (cyan +);
+  `debug.reach()` returns the generator's reachability report.
 - `JungleGen.generateWorld(seed, districtKeys)` → plain data: `size` (192), `level` (vertex terrain levels, `LEVEL`),
   `pave`, `brush` (per tile, `BRUSH`), `region`, `trail`, `site`, `objects` (trees/ruins/rocks), `sites` (`lost`: no trail,
   ringed by thick brush), `containers` (`yield`: Scrap multiplier by distance from the Relay / nearest pylon), `spores`,
-  `pylons`, `center`. `worldForRun(game, run, keys)` caches it per run seed; `compass(dx, dz)`; `clearDisc(world, x, z, r)`.
+  `pylons`, `center`, `deep` / `ford` (per tile), `reach` (`ensureReachable(world)`: flood from the Relay over
+  `blockGrid(world)`, repairs with fords / object removal; `floodTiles` is exported for tests). `worldForRun(game, run, keys)` caches it per run seed; `compass(dx, dz)`; `clearDisc(world, x, z, r)`.
 - `SporePods(scene, world.spores)` (`src/entities/`): the spore-pod hazard — `update(dt)`, `hittables(out)`, `dispose()`.
 - `JungleWorld(game, scene3d, data, cutMask)`: chunk streaming (`update(dt, focusX, focusZ)`, `warm(x, z)`), queries
-  (`brushAt solidAt opaqueAt blockedAt(x, z, throughBrush) levelAt speedAt shadeAt lineOfSight`), movement
+  (`brushAt solidAt deepAt wetAt opaqueAt blockedAt(x, z, throughBrush) levelAt speedAt(x, z, brushFree) inFern shadeAt
+  lineOfSight`), movement
   `moveBody(p, dx, dz, r, {throughBrush, onBrush})`, `blockedCircle`, `addCollider(obj)`, the machete
   `hitBrush(tx, tz, power)` (→ type cut, −1 nicked, 0 nothing), `setPlayer(px, py, z)` for the see-through window,
   `shadeTex` (canopy density for PostFx). `JungleWorld.regrow(data, cut, seed)` between days.
@@ -108,7 +120,7 @@ for friendly markers, `hitStop(t)` / `slowMo(time, scale)` with `dt *= fx.step(r
 `el('div.cls', attrs, ...children)`, `button(label, onClick, {disabled, reason, cls:'primary'|'danger'|'big', hotkey})`, `panel(cls, ...children)`,
 `resChip(key, amount)`, `resRow(res)`, `costLine(cost, haveRes)` (marks shortfalls red), `bar(cls, color)` → `{node, set(frac, text)}`,
 `toast(game.ui, text, 'good'|'bad'|'amber')` (game-time: `setToastsPaused(game.ui, true)` freezes them while paused), `modal(game.ui, title, body, buttons)`, `fmtTime(s)`.
-CSS sizes: `calc(var(--u) * N)` = N px on a 960-wide stage (scales with the window). Shared classes in `src/ui/style.css`.
+CSS sizes: `calc(var(--u) * N)` = N px on a 960×540 stage (scales with the window; JS: `game.u`). Shared classes in `src/ui/style.css`.
 
 ## Run (`src/core/Run.js`) — the single source of truth
 
@@ -140,14 +152,23 @@ Fields: `seed night phase relayHp relayMax playerHp meds weapon res{scrap,circui
   draw to put sprites (`isSprite`) and flat decals (`userData.pxSnap`) on whole pixels; `userData.noSnap` opts out.
   Sprites are upright cards: a sprite `h` tiles tall on screen is `h × CARD_SCALE` (tan 55° ≈ 1.43) world units tall, which is what
   `vis.height` reports; a world height `y` shows as `y / CARD_SCALE` tiles on screen. Sprite scales must be whole numbers (makeVisual rounds).
-  Day renders at a near-fixed field of view (chunky: 400–454 px wide, 12.5–14 tiles across, whatever the window); night renders at 1280×720 with the field at 32 px/tile
+  Day renders at a near-fixed field of view (640×360 = 20 × 11.25 tiles; 17.5–22 tiles across whatever the window, see `game.fit`); night renders at 1280×720 with the field at 32 px/tile
   (whole-number scale at 720p/1440p/2160p; at 1080p it is stretched ×1.5 — a pixel-exact night zoom would need a panning camera).
 - Lighting: hemisphere + directional, Lambert materials. Day warm; night blue with a cyan point light at the core.
 
 ## Tutorial hints (`src/ui/hints.js`)
 
 `showHint(game, id, html, {pos, time})` shows a one-time hint (stored in `meta.hints`, skipped when `meta.settings.hints` is off).
-Use it for first-run guidance in each mode (controls, extraction, building, wave preview…).
+Use it for first-run guidance in each mode (controls, extraction, building, wave preview…). `opts.style` places it
+explicitly (computed from what it explains, so it never covers it).
+
+Simplicity pass (`src/data/guide.js`): `run.guided` (set by `startNewRun` on the player's first run, or `&guided=1` on a
+debug URL) makes `run.isGuidedDay()` true on night 1 — `districtChoices()` returns `[GUIDE.district]` and
+`objectiveFor()` returns `GUIDE.objective`. JungleScene then runs the coach (`_setupCoach` / `_updateCoach` /
+`_coachTip`: one instruction at a time, top-left) instead of the jungle hints; `FIRST_DAY` softens every run's day 1
+(`_chunkPop`, objective guards). `_homeOffered()` gates the Relay's "Head home" prompt (`RETURN_PROMPT`).
+DefenseScene `_readiness()` (→ `READINESS`) drives the "Your defense" line and `_tryStartWave()`'s confirm.
+`ui.shownResources(res)` / `resRow` hide zero currencies (Scrap always shows); `resChip(k, n, {short})` = icon + number.
 
 ## Per-mode CSS
 

@@ -337,7 +337,11 @@ export class ExploreEnemy {
       const kd = Math.exp(-9 * dt);
       this.kb.x *= kd; this.kb.z *= kd;
       const mx = (this.vel.x + this.kb.x) * dt, mz = (this.vel.z + this.kb.z) * dt;
-      if (Math.abs(mx) + Math.abs(mz) > 1e-5) sc.world.moveBody(this, mx * sc.world.speedAt(this.x, this.z), mz * sc.world.speedAt(this.x, this.z), this.radius, this.moveOpts);
+      if (Math.abs(mx) + Math.abs(mz) > 1e-5) {
+        // Ferns drag walkers; brush-slippers (Skitter, Crawler) and the bulldozing Razorback ignore them.
+        const g = sc.world.speedAt(this.x, this.z, !!(this.moveOpts.throughBrush || this.moveOpts.onBrush));
+        sc.world.moveBody(this, mx * g, mz * g, this.radius, this.moveOpts);
+      }
       // Rustling: something moving through the undergrowth gives itself away.
       if (this.moveOpts.throughBrush && Math.hypot(this.vel.x, this.vel.z) > 0.6 && sc.world.brushAt(Math.floor(this.x), Math.floor(this.z)) >= 1 && Math.random() < dt * 5) {
         sc.fx.burst({ x: this.x, y: 0.5, z: this.z }, { color: '#2a5628', color2: '#4b8139', count: 2, speed: 1, up: 1.6, life: 0.4, size: 1.5 / 32, gravity: 5 });

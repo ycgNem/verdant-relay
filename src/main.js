@@ -49,6 +49,7 @@ async function boot() {
     game.run.debug = true;   // keeps debug runs out of lifetime stats / records
     game.run.noSave = q.get('save') !== '1';   // and away from the real run save (add &save=1 to test Continue)
     game.run.night = Math.max(1, Math.min(6, Number(q.get('night')) || 1));
+    game.run.guided = q.get('guided') === '1';   // &guided=1: the first-run guided night 1 (src/data/guide.js)
     for (const k of ['scrap', 'circuits', 'biofiber', 'intel']) if (q.has(k)) game.run.res[k] = Number(q.get(k));
     if (q.has('skills')) game.run.skills = q.get('skills').split(',');
     if (q.has('points')) game.run.skillPoints = Number(q.get('points'));

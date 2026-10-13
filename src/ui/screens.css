@@ -362,3 +362,37 @@
 .res-head .res { font-family: var(--font); }
 .boon-row, .threat-row { padding: calc(var(--u) * 1) 0; }
 .set-fit { padding: calc(var(--u) * 2) 0 calc(var(--u) * 6); line-height: 1.35; }
+
+/* ---------------------------------------------------------------- simplicity pass (Stage 6) */
+/* Briefing: short cards (goal + reward, danger) that don't stretch, so the hint can sit under/next to them. */
+.district-cards { align-content: start; }
+.district-cards.one { grid-template-columns: 1fr 1fr; }
+.district-card .dc-body { gap: calc(var(--u) * 8); padding: calc(var(--u) * 10) calc(var(--u) * 12); }
+.dc-obj b { color: var(--amber); }
+.dc-reward { margin-top: calc(var(--u) * 3); color: var(--text); }
+.dc-k.amber { color: var(--amber); }
+.dc-threat { color: #ffb0b0; }
+.dc-more {
+  font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); padding: calc(var(--u) * 2) calc(var(--u) * 6);
+  border: 1px solid rgba(255, 255, 255, 0.55); border-radius: calc(var(--u) * 2); background: rgba(0, 0, 0, 0.35); cursor: pointer;
+}
+.dc-more:hover { background: rgba(0, 0, 0, 0.6); }
+.dc-details { display: flex; flex-direction: column; gap: calc(var(--u) * 5); border-top: 1px dashed var(--panel-edge); padding-top: calc(var(--u) * 7); }
+.pips { align-items: center; }
+.pip-skull { color: var(--danger); font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); line-height: 1; margin-left: calc(var(--u) * -1); }
+/* Summary: one card (simplicity pass). */
+.sum-body.one { display: flex; justify-content: center; align-items: flex-start; }
+.sum-card {
+  width: calc(var(--u) * 620); display: flex; flex-direction: column; gap: calc(var(--u) * 5); overflow-y: auto; max-height: 100%; box-sizing: border-box;
+  padding: calc(var(--u) * 8) calc(var(--u) * 16); font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); line-height: 1.3;
+}
+.sum-row { display: grid; grid-template-columns: calc(var(--u) * 70) 1fr; gap: calc(var(--u) * 10); align-items: baseline; padding-bottom: calc(var(--u) * 4); border-bottom: 1px solid rgba(90, 105, 136, 0.35); }
+.sum-k { font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); letter-spacing: round(0.08em, var(--fpx)); text-transform: uppercase; color: var(--muted); }
+.sum-k.amber { color: var(--amber); }
+.sum-row.ok b { color: var(--good); }
+.sum-row.no b { color: #ffb0b0; }
+.sum-chips { display: flex; flex-wrap: wrap; gap: calc(var(--u) * 6) calc(var(--u) * 14); }
+.sum-chip { display: inline-flex; align-items: center; gap: calc(var(--u) * 4); }
+.sum-chip .lbl { color: var(--c, var(--text)); }
+.sum-danger { color: #ffb0b0; }
+.sum-research { padding-top: calc(var(--u) * 2); }

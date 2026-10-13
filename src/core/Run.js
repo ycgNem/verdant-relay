@@ -12,6 +12,7 @@
 import { CONFIG, RESOURCE_KEYS, RESOURCES } from '../data/config.js';
 import { DISTRICTS, DISTRICT_KEYS } from '../data/districts.js';
 import { PRIMARY_KEYS } from '../data/objectives.js';
+import { GUIDE } from '../data/guide.js';
 import { SKILLS, SKILL_KEYS } from '../data/skills.js';
 import { TOWERS, TOWER_ORDER } from '../data/towers.js';
 import { makeRng, newSeed, subSeed } from './rng.js';
@@ -65,6 +66,7 @@ export class Run {
       bossDamage: 0, nightsSurvived: 0, deaths: 0, extractions: 0,
     };
     this.bossResearchGiven = 0;
+    this.guided = false;         // the player's first run: night 1 offers one area and the day is coached (src/data/guide.js)
     this.debug = false;          // started from a ?debug= URL (kept out of lifetime stats)
     this.noSave = false;         // debug runs don't write the run save (see Run.save)
   }
@@ -129,6 +131,8 @@ export class Run {
 
   /** Today's two district options, seeded so a reload offers the same pair. */
   districtChoices() {
+    // The guided first night: one easy area, no choice yet (GUIDE.district).
+    if (this.isGuidedDay()) return [GUIDE.district];
     const rng = this.rng('districts');
     const pool = DISTRICT_KEYS.filter((k) => (DISTRICTS[k].minNight || 1) <= this.night);
     return rng.shuffle(pool).slice(0, 2);
@@ -136,11 +140,15 @@ export class Run {
 
   /** The primary objective for a district today (seeded). */
   objectiveFor(districtKey) {
+    if (this.isGuidedDay() && districtKey === GUIDE.district) return GUIDE.objective;
     // The two districts on offer always get different objectives (a seeded shuffle dealt in order).
     const i = this.districtChoices().indexOf(districtKey);
     if (i < 0) return this.rng('objective', districtKey).pick(PRIMARY_KEYS);
     return this.rng('objectives').shuffle(PRIMARY_KEYS)[i];
   }
+
+  /** Night 1 of the player's first run: one area, an easy objective, a coached day. */
+  isGuidedDay() { return !!this.guided && this.night === 1; }
 
   /** What tonight's wave looks like if this district is chosen. */
   threatFor(districtKey) { return DISTRICTS[districtKey].nightThreat; }
@@ -419,7 +427,7 @@ export class Run {
       this.stats.extractions += 1;
       this.add(result.carried);
       summary.banked = { ...result.carried };
-      this.award(game, R.expedition, 'Expedition extracted', summary);
+      this.award(game, R.expedition, 'Got home safe', summary);
       this.meds = result.medsLeft;
       this.playerHp = result.playerHp;
     } else {
@@ -434,7 +442,7 @@ export class Run {
     }
     // Objectives and flags count even on death (the work was done), but the scrap bonus needs extraction.
     if (result.objectiveDone) {
-      this.award(game, R.objective, 'Primary objective', summary);
+      this.award(game, R.objective, 'Goal done', summary);
       if (result.boon) this.addBoon(result.boon, summary, result.extracted);
     }
     for (const o of result.optionals || []) {

@@ -5,14 +5,14 @@ Read `DESIGN.md` for what the game is. This file covers how it's built and in wh
 ## Tech
 
 - **Three.js 0.186.1** (pinned) + **Vite 5**, plain JavaScript (ES modules). Run `npm run dev` (port 5190) or `Play.bat`.
-- **Pixel look:** render at 480×270 (Settings option 640×360) with `renderer.setPixelRatio(1)`; the night map renders at a fixed
-  1280×720 (`game.setInternalRes`). Scale the canvas up with CSS `image-rendering: pixelated`, letterboxed to the exact base aspect;
-  Settings → "Pixel-perfect scaling" (`meta.settings.integerScale`) letterboxes to a whole-number multiple instead.
+- **Pixel look:** the day renders a fixed 640×360 view (`CONFIG.ui.view`, 20 × 11.25 tiles) with `renderer.setPixelRatio(1)`, shown at a
+  whole-number scale (×2 at 720p, ×3 at 1080p, ×4 at 1440p; odd windows bend the size a little within `CONFIG.ui.viewBand`, rest letterboxed);
+  the night map renders at a fixed 1280×720 (`game.setInternalRes`). CSS `image-rendering: pixelated`. No resolution setting.
   Use `NearestFilter` on every texture and turn off mipmaps.
 - **World units:** 1 unit = 1 tile, Y up, world X = tile x, world Z = tile y. Models face −Z.
   To face direction (dx, dz), set `rotation.y = atan2(-dx, -dz)`.
 - **Camera:** a `PixelCamera` (`src/core/PixelView.js`): an `OrthographicCamera` pitched 55° (`CONFIG.pixel`) with **1 tile = 32 internal px**
-  on the ground in both directions (480 px → 15 tiles across; the 30×17 night field is 960×544 px), so floor tiles and 32-ppu sprites draw 1:1.
+  on the ground in both directions (640 px → 20 tiles across; the 30×17 night field is 960×544 px), so floor tiles and 32-ppu sprites draw 1:1.
   Sprites are drawn as upright cards (patched sprite shader): same 1:1 pixels on screen, but depth of a vertical card at their feet, so walls
   behind a sprite never cut it. The camera focus and every sprite/decal are snapped to the pixel grid each draw (no shimmer).
   Sprite scales are whole numbers only. Wall boxes show a fixed `wallFrontPx` (16) of their camera-facing side.
@@ -123,7 +123,17 @@ Pushing to `main` runs `.github/workflows/deploy.yml`, which builds with Vite an
 - [x] Screen-space lighting, ambience, foreground leaves; menus and night map use the jungle renderer
 - [x] PixelLab environment art (terrain, undergrowth, trees, ruins, props, decals)
 - [x] PixelLab character art (player 8-way with slash/chop/roll, creatures)
-- [ ] Critic playtest + fixes on the new loop; balance pass (day length, wildlife, economy)
+- [x] Critic playtest + fixes on the new loop; balance pass (day length, wildlife, economy) — critics F and G
+
+### Stage 6: Grounded jungle and public-ready (2026-10-13)
+Feedback: "I don't like how I can run over everything in the jungle", wants more field of view and a game that is
+simpler to the public's eye.
+- [x] Solid jungle: everything that looks solid blocks you (trunks, logs, boulders, stumps, ruins, props, tall plants);
+      undergrowth must be cut or pushed through slowly; deep water only at fords; enemies obey the same rules
+- [x] Wider view: a fixed 640 × 360 world view (×2 at 720p, ×3 at 1080p, ×4 at 1440p), streaming/lighting retuned
+- [x] Simplicity pass: guided first day, plain-language UI, decluttered HUD/menus/night prep, one colour language
+      (tuning in `src/data/guide.js`; DESIGN.md §8)
+- [x] Newcomer playtest (fresh-eyes critic) + fixes
 
 ## Acceptance checklist
 

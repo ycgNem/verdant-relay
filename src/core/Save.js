@@ -22,7 +22,7 @@ export function defaultMeta() {
     discovered: [],                 // district keys seen at least once (first-time bonus)
     best: { nights: 0, victory: false },
     lifetime: { runs: 0, victories: 0, kills: 0 },
-    settings: { shake: true, volume: 0.6, music: 0.5, resolution: 'chunky', hints: true, integerScale: false },
+    settings: { shake: true, volume: 0.6, music: 0.5, hints: true },
     hints: {},                      // tutorial hint ids already shown
   };
 }

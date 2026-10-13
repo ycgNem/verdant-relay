@@ -1135,7 +1135,7 @@ export class Fx {
     };
     // Step upward while overlapping a live label (screen space).
     const p = this._projectText(t, 0);
-    const u = this.game.stage.clientWidth / 960;
+    const u = this.game.u;
     for (let k = 0; k < 5; k++) {
       const hit = this.texts.some((q) => q.sx != null && Math.abs(q.sx - p.x) < (q.w + t.w) * 0.5 && Math.abs(q.sy - (p.y - t.dy)) < (q.h + t.h) * 0.5 * 0.9);
       if (!hit) break;

@@ -9,8 +9,11 @@
 
 import * as THREE from 'three';
 import { CARD_SCALE } from '../core/PixelView.js';
+import { ATMOS } from '../data/jungle.js';
 
-const N = 420;
+const N = ATMOS.particles.count;
+const [SPAWN_W, SPAWN_D] = ATMOS.particles.spawn;
+const [KEEP_W, KEEP_D] = ATMOS.particles.keep;
 const KIND = { mote: 0, leaf: 1, fly: 2 };
 
 export class Ambience {
@@ -57,8 +60,8 @@ export class Ambience {
   _spawn(p, cx, cz, kind) {
     p.alive = true;
     p.kind = kind;
-    p.x = cx + (Math.random() - 0.5) * 26;
-    p.z = cz + (Math.random() - 0.5) * 20;
+    p.x = cx + (Math.random() - 0.5) * SPAWN_W;
+    p.z = cz + (Math.random() - 0.5) * SPAWN_D;
     p.age = 0;
     p.ph = Math.random() * 6.28;
     if (kind === KIND.leaf) {
@@ -89,7 +92,7 @@ export class Ambience {
     for (const p of this.p) if (p.alive) { if (p.kind === KIND.fly) flies++; else if (p.kind === KIND.mote) motes++; else leaves++; }
     for (let i = 0; i < N; i++) {
       const p = this.p[i];
-      if (!p.alive || Math.abs(p.x - cx) > 15 || Math.abs(p.z - cz) > 12) {
+      if (!p.alive || Math.abs(p.x - cx) > KEEP_W / 2 || Math.abs(p.z - cz) > KEEP_D / 2) {
         if (p.alive) { p.alive = false; if (p.kind === KIND.fly) flies--; else if (p.kind === KIND.mote) motes--; else leaves--; }
         if (flies < wantFly) { this._spawn(p, cx, cz, KIND.fly); flies++; }
         else if (motes < wantMote) { this._spawn(p, cx, cz, KIND.mote); motes++; }
@@ -130,12 +133,13 @@ export class Ambience {
   }
 
   _updateShafts(dt, cx, cz) {
-    // Keep ~4 shafts near the camera, in places with a gap in the canopy (shade 0.2–0.6).
-    const want = this.dusk > 0.6 ? 0 : 4;
+    // Keep a few shafts near the camera, in places with a gap in the canopy (shade 0.2–0.6).
+    const [SW, SD] = ATMOS.particles.shaftBox;
+    const want = this.dusk > 0.6 ? 0 : ATMOS.particles.shafts;
     while (this.shafts.length < want) {
       let x = 0, z = 0, ok = false;
       for (let t = 0; t < 12 && !ok; t++) {
-        x = cx + (Math.random() - 0.5) * 22; z = cz + (Math.random() - 0.5) * 14;
+        x = cx + (Math.random() - 0.5) * SW; z = cz + (Math.random() - 0.5) * SD;
         const s = this.world.shadeAt(x, z);
         ok = s > 0.2 && s < 0.65;
       }
@@ -157,7 +161,7 @@ export class Ambience {
       s.t += dt;
       const k = Math.min(1, s.t / 2, (s.life - s.t) / 2) * (1 - this.dusk);
       s.m.material.opacity = Math.max(0, k) * s.peak;
-      const far = Math.abs(s.m.position.x - cx) > 16 || Math.abs(s.m.position.z - cz) > 13;
+      const far = Math.abs(s.m.position.x - cx) > SW / 2 + 4 || Math.abs(s.m.position.z - cz) > SD / 2 + 4;
       if (s.t >= s.life || far) {
         s.m.removeFromParent();
         s.m.material.dispose();

@@ -6,14 +6,19 @@
 // UI lives in `game.ui` (a DOM overlay); it is cleared on every scene switch.
 //
 // Resolution (pixel-exact, STYLE/CLAUDE contract): the canvas is always shown at a WHOLE-NUMBER CSS
-// scale k (in device px), so every texel is k×k screen pixels. The base size from settings (480×270
-// "chunky" or 640×360 "sharp") sets the field of view: the internal size it gets in a 1280×720 window
-// (chunky 426×240 ×3, sharp 640×360 ×2) is the reference, and every other window shows the same number of
-// tiles within ±CONFIG.ui.fovTolerance (1920×1080 chunky → 454×254 ×4, 1600×900 → 400×224 ×4, 2560×1440
-// → 426×240 ×6), letterboxing what's left — a bigger monitor never sees more jungle (critic G #12).
-// With Settings → "Pixel-perfect scaling" (meta.settings.integerScale) the internal size is exactly
-// the base size instead (whole-number multiple, larger black borders).
-// A scene may call `game.setResMult(m)` (target × m) or `game.setInternalRes(w, h)` for a fixed size
+// scale k (in device px), so every texel is k×k screen pixels. The world view is a fixed field of view:
+// CONFIG.ui.view (640×360 internal px = 20 × 11.25 tiles) — ×2 at 1280×720, ×3 at 1920×1080, ×4 at
+// 2560×1440. Other windows pick the whole-number scale that fills the most of the window while the
+// internal size stays inside CONFIG.ui.viewBand (each side may shrink a little — a browser's toolbars
+// cost ~10% of the height — or grow a little), and letterbox the rest: 1366×768 → 682×384 ×2,
+// 1920×950 → 640×316 ×3, 1600×900 / 1440×900 → 704×396 ×2. A bigger monitor never sees much more
+// jungle (critic G #12). Windows too small for ×2 get ×1 at the view size (or as much of it as fits) —
+// unless ×1 would leave most of the window black, then ×2 with a smaller view (viewBand.small: 1024×600
+// → 512×300 ×2).
+// Device px (window size × devicePixelRatio) are used throughout, so Windows display scaling still
+// lands on whole device pixels. The stage aspect therefore varies a little; the DOM UI unit --u
+// (game.u) is min(width / 960, height / 540) so a 960×540-unit layout always fits.
+// A scene may call `game.setResMult(m)` (view × m) or `game.setInternalRes(w, h)` for a fixed size
 // (the night map renders at 1280×720 so the whole field fits at exactly 32 px per tile); a fixed size
 // is integer-scaled when that fills ≥ CONFIG.ui.minIntegerFill of the window, else stretched to fit.
 // Both reset on every scene switch. 3D scenes use a PixelCamera (src/core/PixelView.js): 1 tile = 32
@@ -137,9 +142,10 @@ export class Game {
 
   // ---------------------------------------------------------------- display
 
-  get baseRes() { return CONFIG.resolutions[this.meta.settings.resolution] || CONFIG.resolutions.chunky; }
   get width() { return this._res()[0]; }
   get height() { return this._res()[1]; }
+  /** CSS px per UI unit (--u): a 960×540-unit layout always fits the stage. */
+  get u() { const L = this._layout(); return Math.min(L.sw / 960, L.sh / 540); }
 
   setResMult(m) {
     this.resMult = m;
@@ -153,60 +159,52 @@ export class Game {
   }
 
   /**
-   * Internal size and CSS stage size for the current window: { w, h, sw, sh } (sw/sh in CSS px).
+   * Internal size and CSS stage size for the current window: { w, h, sw, sh, k } (sw/sh in CSS px).
    * Cached per window size / settings.
    */
   _layout() {
     const dpr = window.devicePixelRatio || 1;
     const vw = Math.floor(window.innerWidth * dpr), vh = Math.floor(window.innerHeight * dpr);   // device px
-    const [BW, BH] = this.baseRes;
-    const key = `${vw}x${vh}@${dpr}|${BW}x${BH}|${this.resMult}|${this.resOverride}|${!!this.meta.settings.integerScale}`;
+    const key = `${vw}x${vh}@${dpr}|${this.resMult}|${this.resOverride}`;
     if (this._layoutKey === key) return this._layoutCache;
     let w, h, k;
-    const fixed = this.resOverride || (this.meta.settings.integerScale ? [BW * this.resMult, BH * this.resMult] : null);
-    if (fixed) {
-      [w, h] = fixed;
+    if (this.resOverride) {
+      [w, h] = this.resOverride;
       k = Math.floor(Math.min(vw / w, vh / h));
-      if (k < 1 || (this.resOverride && !this.meta.settings.integerScale && (k * w * k * h) / (vw * vh) < (CONFIG.ui.minIntegerFill ?? 0.9))) {
+      if (k < 1 || (k * w * k * h) / (vw * vh) < (CONFIG.ui.minIntegerFill ?? 0.9)) {
         // Fixed size that can't fill the window with a whole number: keep its aspect, stretch to fit.
         k = Math.min(vw / w, vh / h);
       }
     } else {
-      // Adaptive with a fixed field of view (critic G #12): the reference is the internal size this
-      // setting gets in a 1280×720 window (chunky 426×240); every window shows that many tiles within
-      // ±CONFIG.ui.fovTolerance — a whole-number scale k, the internal size clamped to the band and the
-      // rest letterboxed — so a bigger monitor never sees more jungle. Among scales inside the band the
-      // one filling the most of the window wins.
-      const ar = BW / BH;
-      const fit = (W, H, kk) => {
-        let ww = Math.min(Math.floor(W / kk), Math.floor((Math.floor(H / kk)) * ar));
-        ww -= ww % 2;
-        return ww;
-      };
-      const nearest = (W, H, TW) => {
-        let b = null;
+      // Fixed field of view (see the header): among whole-number scales whose internal size stays in
+      // the band, the one covering the most of the window wins (ties: closest to the view size).
+      const [VW, VH] = CONFIG.ui.view;
+      const B = CONFIG.ui.viewBand;
+      const RW = VW * this.resMult, RH = VH * this.resMult;
+      const even = (n) => n - (n % 2);
+      const maxW = even(Math.floor(RW * B.w[1])), maxH = even(Math.floor(RH * B.h[1]));
+      const pick = (fw, fh) => {
+        const minW = RW * fw, minH = RH * fh;
+        let best = null;
         for (let kk = 1; kk <= 16; kk++) {
-          const ww = fit(W, H, kk);
-          if (ww < 160) break;
-          const err = Math.abs(Math.log(ww / TW));
-          if (!b || err < b.err - 1e-6) b = { err, ww, kk };
+          const ww = Math.min(even(Math.floor(vw / kk)), maxW), hh = Math.min(even(Math.floor(vh / kk)), maxH);
+          if (ww < minW || hh < minH) continue;
+          const cover = (ww * kk * hh * kk) / (vw * vh);
+          const err = Math.abs(Math.log((ww * hh) / (RW * RH)));
+          if (!best || cover > best.cover + 1e-6 || (Math.abs(cover - best.cover) <= 1e-6 && err < best.err)) best = { cover, err, ww, hh, kk };
         }
-        return b;
+        return best;
       };
-      const ref = (nearest(1280, 720, BW)?.ww || BW) * this.resMult;
-      const tol = CONFIG.ui.fovTolerance ?? 0.07;
-      const lo = ref * (1 - tol), hi = Math.floor(ref * (1 + tol));
-      let best = null;
-      for (let kk = 1; kk <= 16; kk++) {
-        let ww = Math.min(fit(vw, vh, kk), hi - (hi % 2));
-        if (ww < 160) break;
-        if (ww < lo) continue;
-        const cover = ww * kk, err = Math.abs(Math.log(ww / ref));
-        if (!best || cover > best.cover + 1e-6 || (Math.abs(cover - best.cover) < 1e-6 && err < best.err)) best = { cover, err, ww, kk };
+      let best = pick(B.w[0], B.h[0]);
+      // A small window (laptop, half a screen) where the band only allows ×1 and that leaves most of the
+      // window black: take ×2 with a somewhat smaller view instead (B.small), so the HUD stays readable.
+      if (B.small && (!best || (best.kk === 1 && best.cover < B.small.cover))) {
+        const alt = pick(B.small.w, B.small.h);
+        if (alt && alt.kk > 1) best = alt;
       }
-      if (!best) best = nearest(vw, vh, ref) || { ww: BW, kk: 1 };
-      w = best.ww; k = best.kk;
-      h = Math.round(w / ar); h -= h % 2;
+      // Too small for the band even at ×1: show ×1, as much of the view as fits.
+      if (!best) best = { ww: Math.max(2, Math.min(even(vw), maxW)), hh: Math.max(2, Math.min(even(vh), maxH)), kk: 1 };
+      w = best.ww; h = best.hh; k = best.kk;
     }
     this._layoutKey = key;
     this._layoutCache = { w, h, sw: (w * k) / dpr, sh: (h * k) / dpr, k };
@@ -238,8 +236,9 @@ export class Game {
     const sw = L.sw, sh = L.sh;
     this.stage.style.width = `${sw}px`;
     this.stage.style.height = `${sh}px`;
-    // UI scales with the stage so layouts look the same at every window size.
-    this.stage.style.setProperty('--u', `${(sw / 960).toFixed(4)}px`);
+    // UI scales with the stage so layouts look the same at every window size; the stage aspect varies a
+    // little (see _layout), so the unit is sized for a 960×540-unit layout to fit either way.
+    this.stage.style.setProperty('--u', `${this.u.toFixed(4)}px`);
     // Pixel-font quantum: the UI fonts sit on an 8-unit em, so text is only crisp at whole multiples of
     // 8 device px. CSS rounds every font-size to a multiple of --fq (see "Pixel-font grid" in style.css).
     const dpr = window.devicePixelRatio || 1;
@@ -249,14 +248,14 @@ export class Game {
 
   applySettings() {
     this.sfx.volume = this.meta.settings.volume;
-    this._applyRes();   // resolution / pixel-perfect scaling may have changed
+    this._applyRes();
   }
 
   saveMeta() { saveMeta(this.meta); }
 
   // ---------------------------------------------------------------- feedback
 
-  /** Screen shake (skipped when disabled in settings). amp is in CSS pixels at 960-wide stage. */
+  /** Screen shake (skipped when disabled in settings). amp is in UI units (--u). */
   shake(amp = 4, time = 0.2) {
     if (!this.meta.settings.shake) return;
     this._shake.amp = Math.max(this._shake.amp, amp);
@@ -267,7 +266,7 @@ export class Game {
     const s = this._shake;
     if (s.t > 0) {
       s.t -= dt;
-      const u = this.stage.clientWidth / 960;
+      const u = this.u;
       const a = s.amp * u * Math.max(0, Math.min(1, s.t / 0.2));
       this.canvas.style.transform = `translate(${((Math.random() * 2 - 1) * a).toFixed(1)}px, ${((Math.random() * 2 - 1) * a).toFixed(1)}px)`;
       if (s.t <= 0) { s.amp = 0; this.canvas.style.transform = ''; }

@@ -13,6 +13,7 @@
 
 import * as THREE from 'three';
 import { CONFIG, WEAPONS, WEAPON_ALIAS, STAMINA, ROLL, JUICE } from '../data/config.js';
+import { GROUND } from '../data/jungle.js';
 import { setAnim, setFacing, updateVisual, flashVisual, setOpacity, hasAnim, animLength, animHitFrac, setAnimSpeed } from '../core/Assets.js';
 
 export class Player {
@@ -183,8 +184,10 @@ export class Player {
     const terrain = sc.world.speedAt(this.pos.x, this.pos.z);
     if (this.state === 'roll') {
       const k = 1 - Math.min(1, this.stateT / ROLL.time) * 0.5;
-      this.vel.x = this.rollDir.x * ROLL.speed * k * Math.max(0.7, terrain);
-      this.vel.z = this.rollDir.z * ROLL.speed * k * Math.max(0.7, terrain);
+      // Ferns drag a roll too (no full-speed rolling through undergrowth); water/mud only down to rollMin.
+      const rt = Math.max(GROUND.rollMin, sc.world.speedAt(this.pos.x, this.pos.z, true)) * (sc.world.inFern?.(this.pos.x, this.pos.z) ? GROUND.fernRoll : 1);
+      this.vel.x = this.rollDir.x * ROLL.speed * k * rt;
+      this.vel.z = this.rollDir.z * ROLL.speed * k * rt;
       if (Math.random() < 0.5) sc.fx.burst({ x: this.pos.x, y: 0.05, z: this.pos.z }, { color: '#5a4430', count: 1, speed: 0.6, up: 0.6, life: 0.3, size: 0.06 });
     } else {
       const slow = this.state === 'charge' ? 0.42 : this.attacking ? 0.3 : 1;

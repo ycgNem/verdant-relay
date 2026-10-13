@@ -37,12 +37,12 @@ district consequences, player HP. All of it resets when the run ends. Permanent 
 
 | Screen | Contents |
 |---|---|
-| Title | New Run, Continue (only if a valid save exists), Collection, Settings |
-| Briefing | Night, two districts (name, environment, enemy type, reward bonus, tonight's threat), resources, Relay HP, skills, Begin Expedition |
-| Exploration HUD | HP, stamina, med kits, daylight dial, carried loot, objective steps with distance/direction, nearest return point, minimap (Tab/M big map), interact prompt |
-| Summary | Loot recovered, intel, objective result, optional/event outcomes, skill pick, Continue |
-| Preparation | Defense map, Relay HP, resources, tower list (cost and description), selected-tower upgrade/sell/target rule, Intel actions (Decrypt / Sabotage), Repair, wave preview, Start Wave |
-| Defense HUD | Relay HP, wave progress, enemies left, resources, pause, 1×/2× speed, boss bar |
+| Title | New Run, Continue (only if a valid save exists), Collection, Settings; the records box (Research, best run, runs, unlocks) only once there is a record |
+| Briefing | Night N/6 (pips, the last one a ☠ boss night), Relay (your base) and your health, resources stored at base (Scrap always, others once you have some), two area cards of three lines each: **Goal** (the objective sentence) with its **Reward**, and **Danger** tonight; where / finds / creatures behind **Details** and the card tooltip. Side: tonight's attack (wave icons), towers and skills once there are any. Head out. The guided first night shows one pre-selected area |
+| Exploration HUD | Health, Stamina (flashes "tired" when empty), med kits (once carried), carried loot (Scrap always, other currencies as found), daylight dial, the GOAL strip (the objective sentence, "name: sub-step" for multi-step ones) with distance/direction, "Home N m" only when going home is next (goal done, last minute of daylight, low health), minimap (Tab/M big map: deep water dark blue, crossings pale), interact prompt; the guided first day adds the coach line (top-left) |
+| Summary | One card: You got (or Saved / Lost), Goal ✓/✗, Reward(s) tonight, Bonus tasks, Danger tonight, skill points, Intel note (only with Intel), Research in one line; then the skill pick (only with points) and Continue |
+| Preparation | Defense map, Relay HP, resources (full words, zeros hidden), tower list (name, price, one plain line, Power/Speed/Range bars; exact numbers on hover; "+5 Scrap: you own N" when the price rises), selected tower (line, bars, targeting from night 2, upgrade, sell), Intel actions (Read / Disrupt, only with Intel), Repair (only when damaged), tonight's attack (danger, rewards, enemies per path, "also tonight"), the readiness line (Your defense: weak / risky / strong) and Start Wave |
+| Defense HUD | Relay HP, wave progress, "N to go" (alive + still coming, matching the per-path counts), resources, pause, 1×/2× speed, boss bar |
 | Results | Victory or defeat, nights survived, kills, districts, peak resources, research earned, New Run / Title |
 
 ## 4. Exploration (day) — the open jungle
@@ -57,7 +57,7 @@ densest away from trails and clearings, so cutting cross-country is a real short
 What you change persists across the run (`run.world`): undergrowth you cut, supplies you open, pylons you activate,
 the map you have explored. Each night ~18% of cut undergrowth grows back (never trails).
 
-**Feel:** dense and claustrophobic. You see ~15 tiles across; foliage cards stand higher than you, canopy shade
+**Feel:** dense and claustrophobic. You see ~20 × 11 tiles (a fixed 640×360-pixel view at every window size); foliage cards stand higher than you, canopy shade
 drifts over everything, foreground leaves close in at the screen edges, creatures rustle through the brush before
 they break out. Terrain blends organically (no tile grid). Foliage in front of you turns see-through around you.
 
@@ -66,15 +66,28 @@ they break out. Terrain blends organically (no tile grid). Foliage in front of y
 **Controls:** WASD move · mouse aim · **LMB** machete slash (3-hit combo) · hold **RMB** charge a heavy chop, release
 to swing · **Space** dodge roll (i-frames, stamina) · E interact (hold where needed) · Q med kit · Tab/M map · Esc pause.
 
-**Player:** 100 HP, ~5.6 tiles/s (water ×0.55, mud ×0.82, ferns ×0.8). **Stamina** 100: slashes 9–14, chop 22,
+**Player:** 100 HP, ~5.6 tiles/s (shallow water ×0.55, mud ×0.82, ferns ×0.5; a roll in ferns ×0.6). **Stamina** 100: slashes 9–14, chop 22,
 roll 22, regen 40/s after 0.5 s; empty = exhausted (slower, weaker swings, slower regen until 35%).
 - **Machete** (`WEAPONS.machete`): 13 / 13 / 24 damage combo, 120° arcs, range ~1.5; each swing lunges a step.
   The heavy **chop** (0.42 s charge) hits 40 in a 165° arc, staggers (interrupts wind-ups) and clears brambles.
 - **Parang** (unlock): slower, harder, cuts brambles with any swing.
 - Every swing hits all enemies, nests and undergrowth tiles in its arc. **Cutting is loud**: wildlife nearby comes to look.
 
-**Undergrowth** (`BRUSH`): ferns (walk-through, slow), thickets (solid, one slash), brambles (solid, thorny: a chop or
-three slashes). Skitters and Crawlers slip through undergrowth, Razorbacks bulldoze it, Feral Scavengers need paths.
+**Undergrowth** (`BRUSH`): ferns (pushed through at half speed, they rustle; any swing clears them), thickets
+(solid, one slash: the tall plants, agave included), brambles (solid, thorny: a chop or three slashes). Trails and
+clearings stay open and fast. Skitters and Crawlers slip through undergrowth (ferns don't slow them), Razorbacks
+bulldoze it, Feral Scavengers need paths and wade through ferns like you.
+
+**A solid jungle** (Stage 6, `SOLID`/`GROUND` in `src/data/jungle.js`): everything that looks solid blocks you and the
+creatures alike — tree trunks with their root flare, fallen logs, boulders, stumps, every ruin, crates and other
+containers (opened ones too), objective props, pylons and the Relay. Each footprint follows the base of its art (a
+rounded box), never the canopy, so you slide smoothly along it. Ground decals and leaf litter stay walkable. No
+undergrowth grows on or right in front of a log, rock or ruin, so nothing solid hides in the ferns.
+**Water:** shallow edges, ponds' rims and mud only slow you. Deep water (the dark channel with a pale drop-off line)
+can't be crossed by anyone: rivers are crossed at **fords** — where a trail meets the river, plus ~3 more per river —
+drawn as stepping stones in shallow water. Generation guarantees that every site, pylon and container can be walked
+to from the Relay (brush counts as passable, since you can cut it); anything cut off gets a ford, or the trees in the
+way are removed.
 
 **A day:**
 1. The Relay drone drops you at the Relay, or at an activated pylon if that still leaves a trek of ≥ 50 m to the
@@ -85,7 +98,7 @@ three slashes). Skitters and Crawlers slip through undergrowth, Razorbacks bulld
    trail), do optionals
    (nest, stranded engineer, data drive, locked cache — announced when you get near).
 4. Activate pylons (hold E 2.5 s): they become return points for the rest of the run and map their surroundings.
-5. **Return** to the Relay or any activated pylon (hold E 2 s) to bank what you carry. Allowed any time; the
+5. **Return** to the Relay or any activated pylon (hold E 2 s) to bank what you carry ("Head home"). Allowed any time once offered (you carry loot, the goal is done, you are hurt, or 75 s in; never at the drop-off right away); the
    objective's skill point and boon only count if it was done.
 - **Daylight** lasts 300 s. At **sunset** the light shrinks around you over 70 s of dusk and **hunters** come in
   packs (every 18 s → 9 s at full dark, +1 per pack from night 4). There is no hard fail: the jungle just gets worse.
@@ -95,7 +108,7 @@ three slashes). Skitters and Crawlers slip through undergrowth, Razorbacks bulld
   research are kept. (Critic G: one early death used to decide whole runs.)
 
 **Wildlife** (`POP`): rolled per 16 × 16 chunk per day, denser further from the Relay and in today's district,
-scaled by night. It appears ≥ 11 tiles away, despawns far behind you, and stays dead for the day once killed.
+scaled by night. It appears ≥ 15 tiles away (off screen), despawns far behind you, and stays dead for the day once killed.
 Feral camps hold 2–4 Feral Scavengers. **Enemies:** Bramble Crawler (lunge), Skitter (fast), Feral Scavenger (spear
 thrust), Spitter (rooted, lobs sap over the brush: its sight ignores undergrowth, only walls, trees and ruins block it),
 Razorback (wind-up, charge, crashes through brush; its lane is drawn as wide as the hit and shows through foliage).
@@ -138,7 +151,7 @@ lies (compass direction and distance from the Relay, pylon status).
 There are 16 fixed build pads beside the lanes. Towers can never block a route.
 
 **Prep phase:** build, select, upgrade, sell (70% of total Scrap spent, rounded down), set targeting
-(**Lead** = furthest along its lane / **Nearest** to the tower / **Toughest** = most health left), repair
+(**First in line** = furthest along its path / **Closest** to the tower / **Toughest** = most health left), repair
 (25 Scrap → +15 HP; near max you pay only for the HP restored, rounded up), spend Intel (Decrypt: 1 Intel → +4 Research Data;
 Sabotage: 3 Intel → tonight's wave 10% smaller, once per night), read the wave preview, then Start Wave.
 All wave-size cuts (objective boons, nest, Sabotage) multiply together but never go below 80% of the wave (−20% at most);
@@ -252,3 +265,25 @@ and don't overwrite the real run save (add `&save=1` to test Continue).
   the player's click), and the briefing ignores pointer input for its first 0.7 s.
 - On the night map each occupied pad's corner brackets take the tower's type colour, and hovering a tower shows its name
   and level. The briefing's wave row labels the boss and tags new enemy types (names on hover).
+- **Simplicity pass (Stage 6, critic "newcomer").** Plain words in the UI (code keys unchanged): Boon → Reward,
+  Threat → Danger tonight, Expedition / Extract → trip / Head home, Banked → Stored at base, District → area,
+  Pylon → beacon, Objective → Goal, Optional → Bonus task, Lead → First in line, Nearest → Closest, lanes → paths,
+  Decrypt / Sabotage → Read / Disrupt; no SCR/CIR/BIO/INT/ST/RD codes (costs are icon + number, names in the tooltip).
+  One objective sentence (`PRIMARY[*].name`) is used word for word on the briefing card, the start banner, the GOAL
+  strip and the summary. Things show up when they matter: zero currencies, Intel buttons, Repair (Relay full), skills,
+  the weapon line, med kits (none carried), beacon legend entries (none met), targeting (night 1), Research (title,
+  summary one-liner, results). Tuning for all of it lives in `src/data/guide.js`.
+- **One colour language:** red = danger / enemies (hot-red silhouettes and ground rings, a red "!" over a creature
+  winding up an attack), cyan = you / the Relay / home (calm mid-cyan player outline, dimmer than enemies), amber =
+  the goal and loot (the ◆ arrow, the GOAL strip, crates), green = rewards.
+- **The guided first run** (the player's very first run, `run.guided`): night 1 offers one area (`GUIDE.district`,
+  pre-selected) with an easy objective (`GUIDE.objective`) at a trail-side site 32–60 m out; the jungle coaches one
+  step at a time (move → cut through plants → open a crate on the way → the goal → head home) with one-off tips (the
+  first enemy, out of stamina, a crate you pass). "Head home" is offered only once you carry loot, the goal is done,
+  you're hurt or 75 s have passed. Every run's day 1 is gentler (`FIRST_DAY`): no wildlife within 26 m of the Relay,
+  45% of the wildlife, creatures alone, no roaming Razorbacks/Spitters, small or empty feral camps, one Crawler as the
+  objective's guard. From night 2 the briefing offers the usual choice of two.
+- **Readiness check:** night prep rates the defense (towers' damage over the wave vs the wave's total health,
+  `READINESS`); a weak rating asks once before the wave starts ("Start anyway").
+- Hints never cover what they explain: the briefing hint sits beside / under the cards (and closes when Details
+  opens), the build hint sits next to an empty pad near the Relay.

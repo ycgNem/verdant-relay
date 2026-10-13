@@ -135,7 +135,7 @@ export const DAY = {
   dusk: 70,                  // seconds from sunset to full dark
   huntEvery: [18, 9],        // seconds between hunter packs: at sunset → at full dark
   huntCount: [2, 3],         // hunters per pack (+1 from night 4)
-  huntDist: [12, 17],        // spawn distance from the player (out of sight when possible)
+  huntDist: [15, 20],        // spawn distance from the player (off screen: view half-diagonal ≈ 11.5 + look-ahead)
   extractHold: 2.0,
   relayRadius: 3.2,          // stand this close to the Relay Core to return
   pylonRadius: 2.2,          // interact radius of a pylon (dead or online) — the sprite is 3 tiles tall
@@ -191,7 +191,7 @@ export const POP = {
   campSize: [2, 3],          // ferals at a camp (+1 from night 3)
   spawnRadius: 2,            // chunks around the player whose wildlife is live
   despawnDist: 46,           // tiles: un-alerted wildlife this far away goes back into the bush
-  minSpawnDist: 11,          // never pop in closer than this to the player
+  minSpawnDist: 15,          // never pop in closer than this to the player (view half-diagonal ≈ 11.5 tiles + look-ahead + margin)
   // District enemy tables use the v1 'scav' (gunner): in the jungle it is the melee Feral Scavenger.
   remap: { scav: 'feral' },
 };
@@ -236,7 +236,16 @@ export const ATMOS = {
   dappleScale: 0.21,         // dapple noise frequency (per tile)
   wind: 0.16,                // dapple drift speed (tiles/s)
   vignette: 0.55,
-  lightRadius: [9, 5.5],     // the player's visible radius in tiles: midday → dusk (darkness beyond)
+  // The player's visible radius in tiles: midday → dusk (darkness beyond). Sized for the 20 × 11-tile
+  // view (CONFIG.ui.view): at dusk the dark closes in to about the screen's top/bottom edges.
+  lightRadius: [13.5, 8.25],
+  // Foreground leaf frame (PostFx uLeafBand), internal px from the screen edge: [solid, faded out] for the
+  // left/right (x) and top/bottom (y) edges — a fixed depth, so the frame doesn't grow with the view.
+  leafFrame: { x: [0, 72], y: [16, 56] },
+  // Ambience particles (src/world/Ambience.js): pool size, spawn box around the camera (tiles, w × d) and
+  // the box beyond which they are recycled — a bit wider than the view (20 × 11 tiles).
+  // shafts: light shafts kept around the camera, placed within shaftBox (tiles).
+  particles: { count: 620, spawn: [32, 24], keep: [36, 28], shafts: 6, shaftBox: [30, 20] },
   xrayRadius: 1.55,          // foliage in front of the player turns see-through within this (tiles) — a dithered
                              // halo around the player; the player's own texels are always fully clear (playerOutline)
   xrayMax: 1,                // share of foliage texels removed at the centre of the window (fades to 0 at the rim)
@@ -244,10 +253,100 @@ export const ATMOS = {
   // Occlusion silhouettes (src/core/Assets.js): where brush/trees/ruins cover a creature, its outline
   // is drawn solid and its body as a dither of `fill` density, in these flat colours.
   // playerFill: the player's own dither density where a sprite (an enemy, a crate) stands in front of it.
-  silhouette: { player: '#d8fdff', enemy: '#ff5a2e', enemyDim: '#c0603e', fill: 0.2, playerFill: 0.45, inner: 0.75 },
+  // One colour language (simplicity pass): cyan = you / home, red = danger. Enemies must out-shine the player:
+  // the player's silhouette is a calm mid cyan, hostiles a hot red (brighter still once they've spotted you).
+  silhouette: { player: '#4fb8c8', enemy: '#ff2e2e', enemyDim: '#e04434', fill: 0.2, playerFill: 0.35, inner: 0.75 },
   // Player readability (critic G #1): foliage/trunk/ruin cards never cover the player's own texels or its
   // 1-texel outline (stencil mask, Assets.js), so the player is always drawn whole. The outline is dark on
   // open ground and turns `cover` while brush or a tall object is right around / in front of the player.
-  playerOutline: { open: '#141019', cover: '#d8fdff', coverRadius: 1, coverAhead: 2 },
+  playerOutline: { open: '#141019', cover: '#5fc8d8', coverRadius: 1, coverAhead: 2 },
   sway: 1,                   // foliage sway amplitude (texels)
+};
+
+// Solid jungle (Stage 6, src/world/Solid.js): everything that looks solid blocks movement — player and creatures
+// alike. A footprint is a rounded box in tiles around an object's ground anchor (x → east, z → south, i.e. toward
+// the camera): [x0, z0, x1, z1, round] = the inner box grown by `round` on every side (a circle is a zero-size box),
+// mirrored with the sprite. They follow the BASE of the art (trunk + root flare, the log on the ground, the rock's
+// foot, the ruin's walls), never the canopy. `art` is per sprite key (the atlas picks one per object, JungleWorld);
+// `kind` is per object kind_type: generation's reachability check and placeholder art use these, so each is the
+// largest art of its type. `opaque` kinds also block sight lines.
+export const SOLID = {
+  art: {
+    tree_kapok: [-0.2, -0.6, 0.05, -0.45, 0.5],
+    tree_banyan: [-0.7, -0.65, 0.55, -0.35, 0.35],      // trunk + the curtain of aerial roots
+    tree_canopy: [-0.4, -0.6, 0.25, -0.4, 0.42],
+    tree_strangler_fig: [-0.35, -0.6, 0.2, -0.4, 0.4],
+    tree_dead_vine: [-0.25, -0.55, 0.05, -0.45, 0.42],
+    tree_palm: [0.08, -0.3, 0.08, -0.3, 0.3],
+    tree_fern: [0, -0.3, 0, -0.3, 0.28],
+    fol_log: [-0.65, -0.35, 0.55, 0, 0.25],
+    fol_boulder: [-0.55, -0.35, 0.6, 0, 0.35],
+    fol_rock_mossy: [-0.5, -0.3, 0.45, 0, 0.32],
+    fol_rubble_ivy: [-0.55, -0.45, 0.45, -0.1, 0.35],
+    fol_stump: [0, -0.35, 0, -0.35, 0.55],
+    ruin_wall: [-1.0, -0.75, 1.05, -0.15, 0.2],
+    ruin_pillar: [0.05, -0.4, 0.05, -0.4, 0.48],
+    ruin_train_car: [-1.6, -1.3, 1.45, -0.2, 0.15],
+    ruin_greenhouse: [-1.7, -1.5, 1.3, -0.1, 0.15],
+    ruin_statue_head: [-1.0, -1.1, 0.9, -0.3, 0.35],
+    ruin_car_wreck: [-1.35, -0.85, 1.35, 0, 0.2],
+    ruin_radio_mast: [-1.6, -0.8, 1.1, -0.1, 0.2],
+    ruin_stairs: [-1.3, -1.6, 1.25, -0.25, 0.2],
+  },
+  kind: {
+    tree_kapok: [-0.2, -0.6, 0.05, -0.45, 0.5],
+    tree_fig: [-0.7, -0.65, 0.55, -0.35, 0.35],
+    tree_palm: [0.08, -0.3, 0.08, -0.3, 0.3],
+    tree_dead: [-0.25, -0.55, 0.05, -0.45, 0.42],
+    tree_fern: [0, -0.3, 0, -0.3, 0.28],
+    rock_log: [-0.65, -0.35, 0.55, 0, 0.25],
+    rock_boulder: [-0.55, -0.35, 0.6, 0, 0.35],
+    rock_stump: [0, -0.35, 0, -0.35, 0.55],
+    ruin_wall: [-1.0, -0.75, 1.05, -0.15, 0.2],
+    ruin_pillar: [0.05, -0.4, 0.05, -0.4, 0.48],
+    ruin_train: [-1.6, -1.3, 1.45, -0.2, 0.15],
+    ruin_greenhouse: [-1.7, -1.5, 1.3, -0.1, 0.15],
+    ruin_statue: [-1.0, -1.1, 0.9, -0.3, 0.35],
+    ruin_car: [-1.35, -0.85, 1.35, 0, 0.2],
+    ruin_mast: [-1.6, -0.8, 1.1, -0.1, 0.2],
+    ruin_stairs: [-1.3, -1.6, 1.25, -0.25, 0.2],
+    prop_campfire: [0, -0.15, 0, -0.15, 0.42],
+    prop_pylon: [-0.4, -0.6, 0.4, -0.05, 0.15],          // the pylon's stone plinth
+    prop_relay: [-1.2, -1.45, 1.2, -0.25, 0.25],         // the Relay Core's platform
+    prop_container: [-0.3, -0.4, 0.3, -0.05, 0.18],      // crates, chests, caches, terminals (opened ones too)
+    prop_objective: [-0.25, -0.4, 0.25, -0.1, 0.18],     // objective / optional props (fuse box, pump, terminal…)
+    prop_nest: [0, -0.2, 0, -0.2, 0.5],
+  },
+  opaque: ['ruin_wall', 'ruin_train', 'ruin_statue'],
+  tilePad: 0.15,             // a tile counts as blocked for flow fields when its centre is this close to a footprint
+};
+
+// Ground and water (Stage 6): movement multipliers, deep water and fords (src/world/JungleWorld.js speedAt,
+// src/world/JungleGen.js). Undergrowth: ferns are pushed through slowly (no full-speed rolls either), the machete
+// clears them; thickets and brambles stay solid until cut. Creatures that slip through or bulldoze brush
+// (Skitter, Crawler, Razorback) ignore the fern drag.
+export const GROUND = {
+  fern: 0.5,                 // walking through ferns
+  fernRoll: 0.6,             // a dodge roll in ferns (× roll speed)
+  rollMin: 0.6,              // a roll never drops below this × speed on slow ground (water, mud)
+  mud: 0.82,
+  shallow: 0.55,             // wading: shallow water, river edges, fords
+  // Water deeper than `deepFrom` tiles in from the shore is deep: nobody crosses it. Rivers (half-width
+  // 1.4–2.6) keep a deep channel; trails cross at fords (deep cleared `fordPad` tiles around the trail), and
+  // each river gets `extraFords` more (radius `fordRadius`, at least `fordSpacing` tiles apart along it).
+  deepFrom: 0.85,
+  fordPad: 1.2,
+  extraFords: 3,
+  fordRadius: 1.6,
+  fordSpacing: 30,
+  deepTint: 0.5,             // deep water drawn this much darker (TerrainBaker), so the channel reads
+  clearFront: 1.3,           // no undergrowth this far in front of (south of) logs, rocks and ruins, so they show
+  treeFront: { rock: 1.9, ruin: 2.4 },   // ...and no tree trunk this far in front of them (its card would hide them)
+  // Reachability (JungleGen): every site, pylon and container must be walkable from the Relay (brush counts as
+  // passable — it can be cut; deep water, trunks, rocks and ruins don't). A tile is walkable when its centre
+  // is ≥ reachPad from every footprint. Unreachable targets are fixed along the cheapest path: deep water on it
+  // becomes a ford (cost fixDeep per tile), objects on it are removed (fixObject per tile).
+  reachPad: 0.3,
+  fixDeep: 12,
+  fixObject: 30,
 };

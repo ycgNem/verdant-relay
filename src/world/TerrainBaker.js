@@ -6,7 +6,7 @@
 //   · every level samples its own seamless texture (128 × 128, PixelLab base tiles when available,
 //     otherwise generated here with ordered dithering on hand-picked ramps)
 //   · edges get a 1 px lit rim on their north side and a darker step on their south side (light from
-//     the top-left), water gets a foam line
+//     the top-left), water gets a foam line; deep (impassable) water is darker, fords get stepping stones
 //   · ambient occlusion pools under trees, ruins and thickets (dithered, 3 steps)
 //   · ground detail is scattered on top: dec_* sprites from the manifest, plus procedural leaf litter,
 //     twigs, pebbles and flowers drawn texel by texel
@@ -15,7 +15,7 @@
 //     north lip, lit south edge), spread moss over the stone and stain it; then cracks and rubble.
 // Canopy shade, sun dapples and colour grading are applied later, in screen space (src/core/PostFx.js).
 
-import { LEVEL, BRUSH, JUNGLE, PAVING } from '../data/jungle.js';
+import { LEVEL, BRUSH, JUNGLE, PAVING, GROUND } from '../data/jungle.js';
 import { makeNoise, hash2 } from './noise.js';
 
 export const CHUNK_PX = JUNGLE.chunk * 32;
@@ -242,6 +242,16 @@ export class TerrainBaker {
     const texs = kinds.map((k) => this.tex[k]);
     const order = [0, 1, 2, 3, 4, 2];   // height order of each kind (paving sits at dirt height)
     const foam = hex('#5f9a86');
+    // Deep water (impassable, world.deep): a darker channel with a pale ledge line along its edge.
+    const deep = this.world.deep, W = this.world.size;
+    const deepTile = (tx, tz) => (tx < 0 || tz < 0 || tx >= W || tz >= W ? 0 : deep[tz * W + tx]);
+    const deepAt = (wx, wy) => {
+      const fx = (wx + 0.5) / 32 - 0.5, fy = (wy + 0.5) / 32 - 0.5;
+      const ix = Math.floor(fx), iy = Math.floor(fy), u = fx - ix, v = fy - iy;
+      return (deepTile(ix, iy) * (1 - u) + deepTile(ix + 1, iy) * u) * (1 - v) + (deepTile(ix, iy + 1) * (1 - u) + deepTile(ix + 1, iy + 1) * u) * v;
+    };
+    const isDeep = (wx, wy) => deepAt(wx, wy) + this.blend[(wy & 255) * 256 + (wx & 255)] * 0.35 > 0.5;
+    const ledge = hex('#2f6d64');
     for (let y = 0; y < P; y++) {
       for (let x = 0; x < P; x++) {
         const k = lv[(y + 1) * B + x + 1];
@@ -280,6 +290,11 @@ export class TerrainBaker {
         }
         if (paved) { /* hole shading done */ }
         else if (k === 0 && (up > 0 || left > 0 || right > 0 || down > 0)) { r = foam[0]; gg = foam[1]; b = foam[2]; }
+        else if (k === 0 && deep) {
+          // A crisp drop-off: the deep channel darker and bluer, a pale ledge line on the shallow side of its edge.
+          if (isDeep(wx, wy)) { m = GROUND.deepTint; b *= 1.12; }
+          else if (isDeep(wx, wy + 1) || isDeep(wx, wy - 1) || isDeep(wx + 1, wy) || isDeep(wx - 1, wy)) { r = ledge[0]; gg = ledge[1]; b = ledge[2]; }
+        }
         else if (up < h) m = 1.22;                       // lit north rim of higher ground
         else if (down < h) m = 0.62;                     // shaded south step
         else if (left < h && h > 1) m = 1.1;
@@ -295,6 +310,7 @@ export class TerrainBaker {
         D[o] = r * m; D[o + 1] = gg * m; D[o + 2] = b * m; D[o + 3] = 255;
       }
     }
+    if (this.world.ford) this._fordStones(D, cx, cz, lv, B);
     g.putImageData(img, 0, 0);
     // Pass 3: ground detail.
     this._scatter(g, cx, cz, lv, B);
@@ -408,6 +424,32 @@ export class TerrainBaker {
       else add(o.x, o.z + 0.1, 0.9, 0.5);
     }
     return ao;
+  }
+
+  /** Stepping stones across the fords (world.ford): 1–2 flat stones per tile, on water texels only. */
+  _fordStones(D, cx, cz, lv, B) {
+    const P = CHUNK_PX, C = JUNGLE.chunk, W = this.world.size, F = this.world.ford;
+    const ramp = ['#1d2423', '#4f5047', '#6b6a5b', '#8a8571', '#aaa28a'].map(hex);
+    for (let tz = cz * C; tz < cz * C + C; tz++) for (let tx = cx * C; tx < cx * C + C; tx++) {
+      if (!F[tz * W + tx]) continue;
+      const n = hash2(tx, tz, 501) < 0.55 ? 2 : 1;
+      for (let s = 0; s < n; s++) {
+        const sx = (tx - cx * C) * 32 + 8 + (s ? 14 : 0) + Math.floor(hash2(tx, tz, 510 + s) * 10), sy = (tz - cz * C) * 32 + 7 + Math.floor(hash2(tx, tz, 520 + s) * 18);
+        if (lv[(sy + 1) * B + sx + 1] !== 0) continue;
+        const rx = 5 + Math.floor(hash2(tx, tz, 530 + s) * 3), ry = 3 + Math.floor(hash2(tx, tz, 540 + s) * 2);
+        for (let y = -ry - 1; y <= ry + 1; y++) for (let x = -rx - 1; x <= rx + 1; x++) {
+          const px = sx + x, py = sy + y;
+          if (px < 0 || py < 0 || px >= P || py >= P) continue;
+          const d = (x * x) / (rx * rx) + (y * y) / (ry * ry);
+          let c;
+          if (d <= 1) c = ramp[Math.max(1, Math.min(4, 4 - Math.floor(((y + ry) / (2 * ry)) * 3) - (x > rx * 0.4 ? 1 : 0)))];
+          else if (d <= 1.7 && y > 0) c = ramp[0];                                  // wet shadow under the stone
+          else continue;
+          const o = (py * P + px) * 4;
+          D[o] = c[0]; D[o + 1] = c[1]; D[o + 2] = c[2];
+        }
+      }
+    }
   }
 
   _scatter(g, cx, cz, lv, B) {

@@ -1,6 +1,6 @@
 // DOM helpers for the overlay UI. Everything is plain elements styled by style.css.
-// Sizes in CSS use `calc(var(--u) * N)` where --u is 1/960 of the stage width, so layouts
-// scale with the window.
+// Sizes in CSS use `calc(var(--u) * N)` where --u is `game.u` = min(stage width / 960, stage height / 540),
+// so layouts scale with the window and always fit a 960 × 540 UI box.
 
 import { RESOURCES, RESOURCE_KEYS } from '../data/config.js';
 
@@ -66,7 +66,7 @@ const ICON_FILES = { pick_scrap: 'pick_scrap.png', pick_circuits: 'pick_circuits
   const stage = typeof document !== 'undefined' && document.getElementById('stage');
   if (!stage || typeof ResizeObserver === 'undefined') return;
   const set = () => {
-    const u = stage.clientWidth / 960;
+    const u = parseFloat(stage.style.getPropertyValue('--u')) || stage.clientWidth / 960;
     const s = Math.max(1, Math.round(u * 1.2 * (window.devicePixelRatio || 1))) / (window.devicePixelRatio || 1);
     stage.style.setProperty('--ri', `${12 * s}px`);
   };
@@ -91,16 +91,28 @@ export function resIconHtml(key) {
   return `<span class="ricon" style="background-image:url(${import.meta.env.BASE_URL}sprites/${file})"></span>`;
 }
 
-/** One resource as icon + amount + label (colour is never the only cue). */
+/**
+ * One resource as icon + amount + label (colour is never the only cue). opts.short = icon + amount only
+ * (costs, tight bars): the full name is in the tooltip — never a 3-letter code (simplicity pass).
+ */
 export function resChip(key, amount, opts = {}) {
   const r = RESOURCES[key];
   return el(`span.res.res-${key}${opts.short ? '.short' : ''}`, { title: r.desc ? `${r.label}: ${r.desc}` : r.label, style: { '--c': r.color } },
-    resIcon(key), el('b', String(amount)), opts.noLabel ? null : el('span.lbl', opts.short ? r.short : r.label));
+    resIcon(key), el('b', String(amount)), opts.noLabel || opts.short ? null : el('span.lbl', r.label));
 }
 
-/** All resources in a row. `res` = { scrap, circuits, ... } */
+/**
+ * Resources worth showing: Scrap always, the others only once you have some (they're introduced one
+ * at a time, as you find them — a newcomer never sees a row of zeros).
+ */
+export function shownResources(res) {
+  return RESOURCE_KEYS.filter((k) => k === 'scrap' || (res[k] || 0) > 0);
+}
+
+/** All resources in a row. `res` = { scrap, circuits, ... }. opts.all shows the zero ones too. */
 export function resRow(res, opts = {}) {
-  return el('div.resrow', {}, RESOURCE_KEYS.filter((k) => !opts.skipZero || res[k]).map((k) => resChip(k, res[k] || 0, opts)));
+  const keys = opts.all ? RESOURCE_KEYS : opts.skipZero ? RESOURCE_KEYS.filter((k) => res[k]) : shownResources(res);
+  return el('div.resrow', {}, keys.map((k) => resChip(k, res[k] || 0, opts)));
 }
 
 /** A cost line, e.g. "45 ⚙ Scrap · 1 ❦ Biofiber"; marks unaffordable parts red. */

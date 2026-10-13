@@ -1,5 +1,5 @@
-// Summary: after an expedition. What was banked (or lost), objective / optional / event outcomes, the
-// boons now active tonight, research earned, and the skill pick. Continue → night prep (defense).
+// Summary: after a day's trip. One card (simplicity pass): what you got (or lost), the goal and tonight's
+// reward, bonus tasks, tonight's danger, research in one line; then the skill pick. Continue → night prep.
 // Works when the player died (nothing banked) or the record is missing.
 
 import '../ui/screens.css';
@@ -10,7 +10,7 @@ import { DISTRICTS } from '../data/districts.js';
 import { PRIMARY, OPTIONAL, EVENTS } from '../data/objectives.js';
 import { MenuBackdrop } from './MenuBackdrop.js';
 import { runStatus, nightPips } from './BriefingScene.js';
-import { KeyNav, Bag, sbtn, skillPicker, researchChip, skillTag } from '../ui/screensKit.js';
+import { KeyNav, Bag, sbtn, skillPicker, skillTag } from '../ui/screensKit.js';
 
 export class SummaryScene {
   constructor(game) {
@@ -76,20 +76,20 @@ export class SummaryScene {
     this.root.innerHTML = '';
 
     if (!x) {
-      this.root.append(el('div.panel.ui-block.summary-empty', {}, el('h2', 'Back at the Relay'), el('p.muted', 'No expedition record. Head into the night.')),
+      this.root.append(el('div.panel.ui-block.summary-empty', {}, el('h2', 'Back at base'), el('p.muted', 'Nothing to report. Get ready for the night.')),
         el('div.row.scr-foot', {}, el('span.grow'), this.continueBtn()));
       return;
     }
 
-    const d = DISTRICTS[x.district] || { name: x.district || 'Unknown district' };
+    const d = DISTRICTS[x.district] || { name: x.district || 'Unknown area' };
     const extracted = !!x.extracted;
-    const headline = extracted ? 'EXTRACTED' : x.died ? 'YOU WENT DOWN' : 'EXPEDITION LOST';
+    const headline = extracted ? 'BACK HOME SAFE' : x.died ? 'YOU WENT DOWN' : 'TRIP LOST';
     const salvaged = (!extracted && x.salvaged) || null;
     const sub = extracted
-      ? 'Everything you carried is banked at the Relay.'
+      ? 'Everything you carried is stored at base.'
       : salvaged
-        ? 'Most of what you carried is lost, but the drone salvaged some Scrap. Towers, banked resources and research are safe.'
-        : 'Everything you carried this expedition is lost. Towers, banked resources and research are safe.';
+        ? 'Most of what you carried is lost, but the drone saved some Scrap. Your towers and stored resources are safe.'
+        : 'What you carried is lost. Your towers and stored resources are safe.';
 
     const head = el(`div.scr-head.panel.ui-block.sum-head${extracted ? '.ok' : '.fail'}`, {},
       el('div', {}, el('div.headline', headline), el('div.small.muted', {}, `${d.name} · Night ${run.night}`, x.kills ? ` · ${x.kills} kill${x.kills === 1 ? '' : 's'}` : '')),
@@ -97,71 +97,50 @@ export class SummaryScene {
       el('span.grow'),
       nightPips(run.night));
 
-    // Loot column.
+    // One card: what you got, the goal and its reward, bonus tasks, tonight's danger, research (one line).
     const carried = x.carried || {};
-    const lootRows = RESOURCE_KEYS.map((k) => {
-      const n = Math.floor(carried[k] || 0);
-      const kept = Math.floor(salvaged?.[k] || 0);
-      const r = RESOURCES[k];
-      return el(`div.loot-row${n ? '' : '.zero'}${extracted ? '' : '.lost'}`, { style: { '--c': r.color }, title: r.desc },
-        resIcon(k), el('span.lbl', r.label), el('span.grow'),
-        extracted ? el('b.good', n ? `+${n}` : '0') : el('b.bad', n ? el('s', String(n)) : '0'),
-        kept ? el('b.good', ` +${kept}`) : null,
-        k === 'scrap' && x.bonusScrap ? el('b.amber.loot-bonus', { title: `+${x.bonusScrap} bonus Scrap from objectives / optionals (see Tonight)` }, ` +${x.bonusScrap}`) : null,
-        el('span.small.muted.loot-now', extracted ? `now ${run.res[k]}` : kept ? 'salvaged' : n ? 'lost' : ''));
-    });
-    const anyLoot = RESOURCE_KEYS.some((k) => carried[k]);
-    const loot = el('div.panel.ui-block.sum-col', {},
-      el('h3', extracted ? 'Loot banked' : salvaged ? 'Loot lost (some salvaged)' : 'Loot lost'),
-      lootRows,
-      !anyLoot && !salvaged ? el('div.small.muted', 'You came back empty-handed.') : null,
-      el('div.small.muted.sum-note', { title: RESOURCES.intel.desc }, 'Intel: spend it in night prep to Decrypt (+Research Data) or Sabotage the wave.'));
-
-    // Outcomes column.
-    const objKey = run.objectiveFor(x.district);
-    const obj = PRIMARY[objKey];
-    const outcome = [];
-    outcome.push(el(`div.out-row${x.objectiveDone ? '.ok' : '.no'}`, {},
-      el('span.mark', x.objectiveDone ? '✓' : '✗'),
-      el('div', {}, el('b', obj ? obj.name : 'Primary objective'), el('div.small.muted', x.objectiveDone ? 'Complete: +1 skill point and a boon tonight.' : 'Not completed.'))));
-    for (const o of x.optionals || []) {
-      const def = OPTIONAL[o.key];
-      // One line each (name + "optional" tag) so a busy expedition still fits without scrolling.
-      outcome.push(el('div.out-row.ok.compact', {}, el('span.mark', '✓'), el('div', {}, el('b', o.name || def?.name || o.key), el('span.small.muted', ' · optional'))));
+    const gotKeys = RESOURCE_KEYS.filter((k) => extracted ? carried[k] : salvaged?.[k]);
+    const chip = (k, n, cls = 'good') => el('span.sum-chip', { style: { '--c': RESOURCES[k].color }, title: RESOURCES[k].desc },
+      resIcon(k), el(`b.${cls}`, `+${n}`), el('span.lbl', RESOURCES[k].label));
+    const got = gotKeys.map((k) => chip(k, Math.floor(extracted ? carried[k] : salvaged[k])));
+    if (x.bonusScrap) got.push(el('span.sum-chip', { title: 'Bonus Scrap from your goal / bonus tasks' }, resIcon('scrap'), el('b.amber', `+${x.bonusScrap}`), el('span.lbl', 'bonus Scrap')));
+    const lostKeys = extracted ? [] : RESOURCE_KEYS.filter((k) => Math.floor(carried[k] || 0) - Math.floor(salvaged?.[k] || 0) > 0);
+    const rows = [];
+    rows.push(el('div.sum-row', {}, el('span.sum-k', extracted ? 'You got' : 'Saved'),
+      got.length ? el('div.sum-chips', {}, got) : el('span.muted', extracted ? 'Nothing this time.' : 'Nothing.')));
+    if (lostKeys.length) {
+      rows.push(el('div.sum-row', {}, el('span.sum-k.bad', 'Lost'),
+        el('span.muted', lostKeys.map((k) => `${Math.floor(carried[k]) - Math.floor(salvaged?.[k] || 0)} ${RESOURCES[k].label}`).join(', '))));
     }
-    for (const e of x.events || []) {
-      const def = EVENTS[e.key];
-      outcome.push(el('div.out-row.ok', {}, el('span.mark', '★'), el('div', {}, el('b', def?.name || e.key), el('div.small.muted', e.flag?.text || 'Event completed'))));
+    const obj = PRIMARY[run.objectiveFor(x.district)];
+    const reward = x.objectiveDone && obj ? obj.boon.text : null;
+    rows.push(el(`div.sum-row${x.objectiveDone ? '.ok' : '.no'}`, {}, el('span.sum-k.amber', 'Goal'),
+      el('div', {}, el('b', `${x.objectiveDone ? '✓' : '✗'} ${obj ? obj.name : 'Goal'}`),
+        x.objectiveDone ? null : el('span.small.muted', '  · not done'))));
+    // Rewards for tonight: the goal's, plus bonus tasks / events (the same list night prep shows).
+    const rewards = (x.boons || []).filter((b) => b !== reward);
+    if (reward || rewards.length) {
+      rows.push(el('div.sum-row', {}, el('span.sum-k.good', 'Reward'),
+        el('div', {}, [reward, ...rewards].filter(Boolean).map((b) => el('div', {}, el('span.good', '▲ '), b)))));
     }
-    if (!(x.optionals || []).length && !(x.events || []).length) outcome.push(el('div.small.muted', 'No optional objectives or events this time.'));
-    const pts = x.skillPointsEarned || 0;
-    const outcomes = el('div.panel.ui-block.sum-col', {},
-      el('h3', 'Expedition'),
-      outcome,
-      el('div.sum-note.small', {}, pts ? el('span.amber', `+${pts} skill point${pts === 1 ? '' : 's'} earned`) : el('span.muted', 'No skill points earned.')),
-      el('div.status-mini.small', {},
-        el('span.muted', 'Health '), el('b', `${Math.ceil(run.playerHp)}/${CONFIG.player.hp}`),
-        el('span.muted', '  ·  Med kits '), el('b', `${run.meds}/${CONFIG.player.maxMeds}`)));
-
-    // Tonight + research column.
+    const extras = [...(x.optionals || []).map((o) => o.name || OPTIONAL[o.key]?.name || o.key), ...(x.events || []).map((e) => EVENTS[e.key]?.name || e.key)];
+    if (extras.length) rows.push(el('div.sum-row', {}, el('span.sum-k', 'Bonus'), el('span', extras.map((n) => `✓ ${n}`).join('   '))));
     const t = run.tonight || {};
-    const boons = (x.boons || []).map((b) => el('div.boon-row.small', {}, el('span.good', '▲ '), b));
-    const research = (x.research || []).map((r) => el('div.res-line', { title: r.reason }, el('span.res-reason', r.reason.replace(/^Optional: /, '')), el('span.grow'), el('b', `+${r.amount}`)));
-    const earned = (x.research || []).reduce((s, r) => s + r.amount, 0);
-    const tonight = el('div.panel.ui-block.sum-col', {},
-      el('h3', 'Tonight'),
-      t.threat ? el('div.threat-row', {}, el('span.bad', '▼ '), t.threat.text) : null,
-      boons.length ? boons : el('div.small.muted', 'No boons active tonight.'),
-      // Header doubles as the total line (saves a row so a busy night fits at 720p).
-      el('h3.res-head', {}, 'Research Data', el('span.grow'), el('span.small.muted', 'Earned '), el('b.amber', `+${earned}`), el('span.small.muted', ' · Total '), researchChip(game.meta.research, { noLabel: true })),
-      research.length ? el(`div.res-lines.small${research.length > 4 ? '.two' : ''}`, {}, research) : el('div.small.muted', 'None this expedition.'));
+    if (t.threat) rows.push(el('div.sum-row', {}, el('span.sum-k.bad', 'Danger'), el('span.sum-danger', t.threat.text)));
+    const pts = x.skillPointsEarned || 0;
+    if (pts) rows.push(el('div.sum-row', {}, el('span.sum-k.amber', 'Skill'), el('span', `+${pts} skill point${pts === 1 ? '' : 's'}: pick a skill below`)));
+    if (extracted && carried.intel) rows.push(el('div.sum-row', {}, el('span.sum-k', 'Intel'), el('span.muted', 'Spend it tonight, before the attack (night prep, under the wave list).')));
+    const earned = (x.research || []).reduce((n, r) => n + r.amount, 0);
+    const resTip = (x.research || []).map((r) => `+${r.amount}  ${r.reason}`).join('\n');
+    const card = el('div.panel.ui-block.sum-card', {}, rows,
+      earned ? el('div.sum-research.small.muted', { title: resTip }, `+${earned} Research (kept forever: spend it on new gear in Collection, from the title screen)`) : null);
 
     // Skill pick / skills owned.
-    let skillArea;
+    let skillArea = null;
     if (run.skillPoints > 0 && !this.pickerHidden) {
       this.picker.refresh();
       skillArea = el('div.panel.ui-block.sum-skills', {}, this.picker.node);
-    } else {
+    } else if (run.skills.length || run.skillPoints > 0) {
       skillArea = el('div.panel.ui-block.sum-skills.compact', {},
         el('div.row', {},
           el('b', 'Skills'),
@@ -176,7 +155,7 @@ export class SummaryScene {
       el('span.grow'),
       this.continueBtn());
 
-    this.root.append(el('div.scr-dim'), head, el('div.sum-body', {}, loot, outcomes, tonight), skillArea, foot);
+    this.root.append(...[el('div.scr-dim'), head, el('div.sum-body.one', {}, card), skillArea, foot].filter(Boolean));
   }
 
   continueBtn() {

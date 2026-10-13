@@ -1,4 +1,4 @@
-// Settings: screen shake, sound and music volume, resolution, tutorial hints, reset progress.
+// Settings: screen shake, sound and music volume, picture size (read-only), tutorial hints, reset progress.
 //
 // The panel is also usable as an overlay from any scene (pause menus):
 //   import { openSettingsOverlay } from './SettingsScene.js';
@@ -7,7 +7,6 @@
 import '../ui/screens.css';
 import { el, toast } from '../ui/ui.js';
 import { resetAll, loadMeta } from '../core/Save.js';
-import { CONFIG } from '../data/config.js';
 import { MenuBackdrop } from './MenuBackdrop.js';
 import { KeyNav, Bag, ask, sbtn, overlay } from '../ui/screensKit.js';
 
@@ -62,37 +61,15 @@ export function buildSettingsPanel(game, opts = {}) {
 
   const s = () => game.meta.settings;
 
-  const resBtns = {};
-  const paintRes = () => { for (const [k, b] of Object.entries(resBtns)) b.classList.toggle('selected', s().resolution === k); };
-  for (const [k, [w, h]] of Object.entries(CONFIG.resolutions)) {
-    const name = k === 'chunky' ? 'Chunky' : k === 'sharp' ? 'Sharp' : k;
-    resBtns[k] = sbtn(game, el('span', {}, el('b', name), el('span.small.muted', ` ${w}×${h}`)), () => {
-      s().resolution = k;
-      save();
-      game.applySettings();
-      paintRes();
-      paintFit();
-    }, { cls: 'seg-btn' });
-    focusables.push(resBtns[k]);
-  }
-  paintRes();
-
-  // "Best fit" note: which resolution fills this window best with whole-number scaling.
-  const fitNote = el('div.set-fit.small.muted');
-  const paintFit = () => {
-    const W = window.innerWidth, H = window.innerHeight;
-    const opts2 = Object.entries(CONFIG.resolutions).map(([k, [w, h]]) => {
-      const n = Math.max(1, Math.floor(Math.min(W / w, H / h)));
-      return { k, w, h, n, fill: Math.min(1, (n * w) / W, (n * h) / H) };
-    });
-    const best = opts2.reduce((a, b) => (b.fill > a.fill + 0.01 ? b : a));
-    fitNote.textContent = '';
-    fitNote.append(`This window (${W}×${H}) with pixel-perfect scaling: `,
-      ...opts2.flatMap((o, i) => [i ? ' · ' : '', el(o === best ? 'b.good' : 'span', `${o.k === 'chunky' ? 'Chunky' : o.k === 'sharp' ? 'Sharp' : o.k} ×${o.n} fills ${Math.round(o.fill * 100)}%`)]),
-      best.k !== s().resolution && s().integerScale ? el('span.amber', ` — try ${best.k === 'chunky' ? 'Chunky' : 'Sharp'} for less border.`) : '');
+  // Picture: no choice to make — the view is a fixed 20 × 11-tile window, scaled up by whole numbers
+  // (Game._layout). A read-only line says how this window is shown.
+  const picVal = el('b.set-pic');
+  const paintPic = () => {
+    const L = game._layout();
+    picVal.textContent = `Scale ×${Number.isInteger(L.k) ? L.k : L.k.toFixed(2)}`;
+    picVal.title = `${game.width}×${game.height} game pixels`;
   };
-  paintFit();
-  const onResize = () => paintFit();
+  const onResize = () => paintPic();
   window.addEventListener('resize', onResize);
   bag.add(() => window.removeEventListener('resize', onResize));
 
@@ -110,13 +87,11 @@ export function buildSettingsPanel(game, opts = {}) {
       sec('Display',
         toggle('Screen shake', 'Camera kick when the Relay or you get hit.', () => s().shake, (v) => { s().shake = v; if (v) game.shake(5, 0.25); }),
         (() => {
-          focusables.push(...Object.values(resBtns));
-          return el('div.set-row', {}, el('div.set-label', {}, el('b', 'Resolution'), el('div.small.muted', 'Internal pixel size. Chunky is the intended look.')),
-            el('div.set-ctrl.seg', {}, Object.values(resBtns)));
-        })(),
-        toggle('Pixel-perfect scaling', 'Scale the picture by whole numbers only (every pixel the same size), with black borders. The screen resizes when you switch.',
-          () => !!s().integerScale, (v) => { s().integerScale = v; game.fit(); paintFit(); }),
-        fitNote),
+          paintPic();
+          return el('div.set-row', {}, el('div.set-label', {}, el('b', 'Picture size'),
+            el('div.small.muted', 'Automatic: a 20 × 11-tile view, scaled up by whole numbers so pixels stay crisp.')),
+            el('div.set-ctrl', {}, picVal));
+        })()),
       sec('Tutorial',
         toggle('Tutorial hints', 'Short tips the first time you see each screen.', () => s().hints, (v) => { s().hints = v; }),
         (() => {
@@ -163,7 +138,6 @@ export function buildSettingsPanel(game, opts = {}) {
     toast(game.ui, 'All progress erased.', 'amber');
     opts.onReset?.();
     build();
-    paintRes();
   };
 
   build();
