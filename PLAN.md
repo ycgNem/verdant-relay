@@ -101,7 +101,7 @@ verdant-relay/
 
 ## Acceptance checklist
 
-- [ ] The day/night loop is understandable without outside explanation
+- [x] The day/night loop is understandable without outside explanation
 - [x] Exploration and defense feel mechanically separate
 - [x] Loot is banked only on extraction; dying costs the carried loot but not the run
 - [x] Towers can be built only in prep; enemies follow readable lanes; towers hit reliably
@@ -109,4 +109,4 @@ verdant-relay/
 - [x] All 6 nights progress; the boss is telegraphed and beatable
 - [x] Win and loss end the run cleanly; a new run resets run data and keeps unlocks
 - [x] Unlocks survive a browser refresh
-- [ ] No unexplained controls or hidden objectives
+- [x] No unexplained controls or hidden objectives

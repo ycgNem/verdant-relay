@@ -71,6 +71,9 @@ export class Game {
   go(name, params = {}) {
     const Cls = this.scenes[name];
     if (!Cls) throw new Error(`Unknown scene: ${name}`);
+    // A switch requested from inside scene.update() waits until that update returns, so the old
+    // scene's remaining update code can't leak UI (hints, toasts) into the new scene.
+    if (this._inUpdate) { this._pendingGo = [name, params]; return; }
     if (this.scene) {
       try { this.scene.exit(); } catch (e) { console.error(e); }
     }
@@ -94,10 +97,17 @@ export class Game {
       this.time += real;
       const dt = Math.min(real, MAX_DT);
       if (this.scene) {
+        this._inUpdate = true;
         try {
           this.scene.update(dt);
         } catch (e) {
           console.error(e);
+        }
+        this._inUpdate = false;
+        if (this._pendingGo) {
+          const [name, params] = this._pendingGo;
+          this._pendingGo = null;
+          this.go(name, params);
         }
         const sc = this.scene;
         if (sc && sc.three && sc.camera) {
