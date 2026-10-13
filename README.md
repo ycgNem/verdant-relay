@@ -11,14 +11,31 @@ npm install
 npm run dev
 ```
 
-Then open http://localhost:5190.
+Then open http://localhost:5190. `npm run playtest` builds and serves a frozen copy on port 5191 (no hot reload).
+
+## How to play
+
+- **Day (exploration):** WASD move · mouse aim · LMB fire · RMB Pulse Cutter (melee, cuts brambles) · Space dodge · E interact (hold) · Q med kit · Tab big map · Esc pause.
+  Finish the district objective, grab loot, then hold E in the extraction zone. Loot is only kept if you extract.
+- **Night (defense):** click a glowing pad to build (or 1–6 then a pad), click a tower to upgrade (U), sell (S) or change targeting (T).
+  Read the wave preview, spend Intel (Decrypt / Sabotage), repair (R), then Start Wave (Space). F toggles 1×/2×.
+- Survive 6 nights; the Canopy Colossus attacks on night 6. Research Data earned in every run buys permanent unlocks in the Collection.
 
 ## Docs
 
-- `DESIGN.md`: what the game is (loop, modes, content, progression)
+- `DESIGN.md`: what the game is (loop, modes, content, progression, numbers)
 - `PLAN.md`: tech choices, folder map, build stages and what's done
+- `ARCH.md`: core engine APIs (scenes, visuals, effects, run state, debug URLs)
+- `STYLE.md`: art direction and the sprite contract
+- `critique/`: playtest/critic reports from development rounds
 
 ## Art
 
-Drop sprites into `public/sprites/` and register them in `public/sprites/manifest.json`. Anything not
-registered is drawn as a placeholder model from `src/data/visuals.js`.
+All sprites are hand-built pixel art (pixel-art-studio): each has a deterministic build script in `pixel-art/<key>/`
+that exports to `public/sprites/`. Fragments `pixel-art/manifest.<group>.json` merge into `public/sprites/manifest.json`
+via `python pixel-art/merge_manifest.py`. Anything not registered falls back to a placeholder model from `src/data/visuals.js`.
+
+## Debug URLs
+
+`?debug=explore&district=flooded_transit&night=2`, `?debug=defense&night=6&scrap=600&circuits=12&biofiber=12`,
+`?debug=summary`, `?debug=briefing`, `?debug=results&victory=1`. Debug runs never touch your real save (add `&save=1` to test Continue).
