@@ -1,0 +1,42 @@
+{
+  "tileSize": 32,
+  "levels": [
+    "water",
+    "mud",
+    "dirt",
+    "floor",
+    "moss"
+  ],
+  "sets": {
+    "water_mud": {
+      "png": "water_mud.png",
+      "meta": "water_mud.json",
+      "lower": "water",
+      "upper": "mud"
+    },
+    "mud_dirt": {
+      "png": "mud_dirt.png",
+      "meta": "mud_dirt.json",
+      "lower": "mud",
+      "upper": "dirt"
+    },
+    "dirt_floor": {
+      "png": "dirt_floor.png",
+      "meta": "dirt_floor.json",
+      "lower": "dirt",
+      "upper": "floor"
+    },
+    "floor_moss": {
+      "png": "floor_moss.png",
+      "meta": "floor_moss.json",
+      "lower": "floor",
+      "upper": "moss"
+    },
+    "paving_floor": {
+      "png": "paving_floor.png",
+      "meta": "paving_floor.json",
+      "lower": "paving",
+      "upper": "floor"
+    }
+  }
+}

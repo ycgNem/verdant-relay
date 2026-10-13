@@ -41,7 +41,7 @@ export const FOOTPRINTS = {
 
 const BAYER_GLSL = 'const float BAYER[16] = float[16](0.03125,0.53125,0.15625,0.65625,0.78125,0.28125,0.90625,0.40625,0.21875,0.71875,0.09375,0.59375,0.96875,0.46875,0.84375,0.34375);\nfloat bayer4(vec2 p){ int x = int(mod(p.x, 4.0)); int y = int(mod(p.y, 4.0)); return BAYER[y * 4 + x]; }\n';
 
-function makeCardMaterial(tex) {
+export function makeCardMaterial(tex) {
   return new THREE.ShaderMaterial({
     uniforms: {
       map: { value: tex },
@@ -451,103 +451,11 @@ export class JungleWorld {
   /** (Re)build the merged card mesh for a chunk. */
   _buildCards(ch) {
     ch.dirtyCards = false;
-    const W = this.size;
-    const A = this.atlas;
-    const cards = [];
-    const x0 = ch.cx * C, z0 = ch.cz * C;
-    const snap = (v) => Math.round(v * 32) / 32;
-    for (let tz = z0; tz < z0 + C; tz++) {
-      for (let tx = x0; tx < x0 + C; tx++) {
-        if (tx >= W || tz >= W) continue;
-        const i = tz * W + tx;
-        const base = this.w.brush[i];
-        if (!base) continue;
-        const b = this.cut[i] ? 0 : base;
-        if (!b) {
-          // Cut: leaf debris and a stub where it stood.
-          if (hash2(tx, tz, 71) < 0.55) cards.push({ e: A.pick('debris', tx, tz, 1), x: snap(tx + 0.25 + hash2(tx, tz, 72) * 0.5), z: snap(tz + 0.4 + hash2(tx, tz, 73) * 0.4), sway: 0, flip: hash2(tx, tz, 74) < 0.5 });
-          continue;
-        }
-        const fam = b === BRUSH.fern ? (hash2(tx, tz, 5) < 0.08 ? 'mushroom' : 'fern') : b === BRUSH.bramble ? 'bramble' : (hash2(tx, tz, 6) < 0.18 ? 'vine' : 'thicket');
-        const n = b === BRUSH.fern ? (hash2(tx, tz, 9) < 0.35 ? 2 : 1) : b === BRUSH.thicket ? 2 : 1 + (hash2(tx, tz, 9) < 0.5 ? 1 : 0);
-        for (let k = 0; k < n; k++) {
-          const e = A.pick(fam, tx * 7 + k, tz, 13);
-          if (!e) continue;
-          // Distinct depth slots per card in a tile so overlapping leaves never z-fight.
-          const zz = tz + 0.3 + ((k * 0.37 + hash2(tx, tz, 20 + k) * 0.3) % 0.68);
-          cards.push({ e, x: snap(tx + 0.15 + hash2(tx, tz, 30 + k) * 0.7), z: snap(zz), sway: 1, flip: hash2(tx, tz, 40 + k) < 0.5, phase: tx * 0.7 + tz * 0.3 });
-        }
-      }
-    }
-    for (const o of this.w.objects) {
-      if (o.x < x0 || o.x >= x0 + C || o.z < z0 || o.z >= z0 + C) continue;
-      let fam;
-      if (o.kind === 'tree') fam = `tree_${o.type}`;
-      else if (o.kind === 'rock') fam = o.type;
-      else if (o.kind === 'ruin') fam = `ruin_${o.type}`;
-      else continue;
-      const e = A.pick(fam, Math.floor(o.x * 3), Math.floor(o.z * 3), 51) || A.pick('boulder', 1, 1);
-      if (!e) continue;
-      cards.push({ e, x: o.x, z: o.z, sway: o.kind === 'tree' ? 0.6 : 0, flip: o.flip && o.kind !== 'ruin', phase: o.x * 0.5 });
-    }
+    const cards = chunkCards(this.w, this.atlas, this.cut, ch.cx * C, ch.cz * C, C, C);
     ch.cards?.removeFromParent();
     ch.cards?.geometry.dispose();
-    ch.cards = cards.length ? this._cardMesh(cards) : null;
+    ch.cards = cards.length ? cardMesh(cards, this.atlas, this.cardMat) : null;
     if (ch.cards) this.three.add(ch.cards);
-  }
-
-  _cardMesh(cards) {
-    const n = cards.length * 2;   // up to two quads per card (upright + flat part)
-    const pos = new Float32Array(n * 4 * 3), uv = new Float32Array(n * 4 * 2), card = new Float32Array(n * 4 * 4);
-    const idx = [];
-    let q = 0;
-    const AS = this.atlas.canvas.width;
-    const quad = (verts, uvs, attrs) => {
-      for (let v = 0; v < 4; v++) {
-        pos.set(verts[v], (q * 4 + v) * 3);
-        uv.set(uvs[v], (q * 4 + v) * 2);
-        card.set(attrs[v], (q * 4 + v) * 4);
-      }
-      const b = q * 4;
-      idx.push(b, b + 2, b + 1, b + 1, b + 2, b + 3);
-      q++;
-    };
-    for (const c of cards) {
-      const e = c.e;
-      const left = c.x - e.ax / 32, right = left + e.w / 32;
-      let u0 = e.x / AS, u1 = (e.x + e.w) / AS;
-      if (c.flip) [u0, u1] = [u1, u0];
-      const vTop = e.y / AS, vAnchor = (e.y + e.ay) / AS, vBot = (e.y + e.h) / AS;
-      const hUp = (e.ay / 32) * CARD_SCALE;
-      const ph = c.phase ?? 0;
-      // Upright part: top-left, top-right, bottom-left, bottom-right.
-      if (e.ay > 0) {
-        quad(
-          [[left, hUp, c.z], [right, hUp, c.z], [left, 0.002, c.z], [right, 0.002, c.z]],
-          [[u0, vTop], [u1, vTop], [u0, vAnchor], [u1, vAnchor]],
-          [[c.z, c.sway, ph, 1], [c.z, c.sway, ph, 1], [c.z, 0, ph, 1], [c.z, 0, ph, 1]],
-        );
-      }
-      // Flat part (texels below the anchor lie on the ground toward the camera).
-      if (e.h > e.ay) {
-        const zb = c.z + (e.h - e.ay) / 32;
-        quad(
-          [[left, 0.004, c.z], [right, 0.004, c.z], [left, 0.004, zb], [right, 0.004, zb]],
-          [[u0, vAnchor], [u1, vAnchor], [u0, vBot], [u1, vBot]],
-          [[c.z, 0, ph, 0], [c.z, 0, ph, 0], [c.z, 0, ph, 0], [c.z, 0, ph, 0]],
-        );
-      }
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos.subarray(0, q * 12), 3));
-    g.setAttribute('uv', new THREE.BufferAttribute(uv.subarray(0, q * 8), 2));
-    g.setAttribute('aCard', new THREE.BufferAttribute(card.subarray(0, q * 16), 4));
-    g.setIndex(idx);
-    g.computeBoundingSphere();
-    const m = new THREE.Mesh(g, this.cardMat);
-    m.userData.noSnap = true;
-    m.frustumCulled = false;
-    return m;
   }
 
   /** Player position for the x-ray window (internal pixels, GL convention y up). */
@@ -564,6 +472,106 @@ export class JungleWorld {
     this.shadeTex.dispose();
     this.w.brushNow = null;
   }
+}
+
+/**
+ * The cards (undergrowth, cut debris, trees, ruins, rocks) whose ground point lies in the tile rect
+ * [x0, x0 + w) × [z0, z0 + h) of a world. Deterministic: the same tile always gets the same sprites.
+ */
+export function chunkCards(world, A, cut, x0, z0, w, h) {
+  const W = world.size;
+  const cards = [];
+  const snap = (v) => Math.round(v * 32) / 32;
+  for (let tz = z0; tz < z0 + h; tz++) {
+    for (let tx = x0; tx < x0 + w; tx++) {
+      if (tx < 0 || tz < 0 || tx >= W || tz >= W) continue;
+      const i = tz * W + tx;
+      const base = world.brush[i];
+      if (!base) continue;
+      const b = cut && cut[i] ? 0 : base;
+      if (!b) {
+        // Cut: leaf debris and a stub where it stood.
+        const r = hash2(tx, tz, 71);
+        if (r < 0.06 && base >= BRUSH.thicket) cards.push({ e: A.pick('cutstump', tx, tz, 1), x: snap(tx + 0.3 + hash2(tx, tz, 72) * 0.4), z: snap(tz + 0.55 + hash2(tx, tz, 73) * 0.3), sway: 0, flip: hash2(tx, tz, 74) < 0.5 });
+        else if (r < 0.5) cards.push({ e: A.pick('debris', tx, tz, 1), x: snap(tx + 0.5 + (hash2(tx, tz, 72) - 0.5) * 0.4), z: snap(tz + 0.1 + hash2(tx, tz, 73) * 0.3), sway: 0, flip: hash2(tx, tz, 74) < 0.5 });
+        continue;
+      }
+      const fam = b === BRUSH.fern ? (hash2(tx, tz, 5) < 0.08 ? 'mushroom' : 'fern') : b === BRUSH.bramble ? 'bramble' : (hash2(tx, tz, 6) < 0.18 ? 'vine' : 'thicket');
+      const n = b === BRUSH.fern ? (hash2(tx, tz, 9) < 0.35 ? 2 : 1) : b === BRUSH.thicket ? 2 : 1 + (hash2(tx, tz, 9) < 0.5 ? 1 : 0);
+      for (let k = 0; k < n; k++) {
+        const e = A.pick(fam, tx * 7 + k, tz, 13);
+        if (!e) continue;
+        // Distinct depth slots per card in a tile so overlapping leaves never z-fight.
+        const zz = tz + 0.3 + ((k * 0.37 + hash2(tx, tz, 20 + k) * 0.3) % 0.68);
+        cards.push({ e, x: snap(tx + 0.15 + hash2(tx, tz, 30 + k) * 0.7), z: snap(zz), sway: 1, flip: hash2(tx, tz, 40 + k) < 0.5, phase: tx * 0.7 + tz * 0.3 });
+      }
+    }
+  }
+  for (const o of world.objects) {
+    if (o.x < x0 || o.x >= x0 + w || o.z < z0 || o.z >= z0 + h) continue;
+    let fam;
+    if (o.kind === 'tree') fam = `tree_${o.type}`;
+    else if (o.kind === 'rock') fam = o.type;
+    else if (o.kind === 'ruin') fam = `ruin_${o.type}`;
+    else continue;
+    const e = A.pick(fam, Math.floor(o.x * 3), Math.floor(o.z * 3), 51) || A.pick('boulder', 1, 1);
+    if (!e) continue;
+    cards.push({ e, x: o.x, z: o.z, sway: o.kind === 'tree' ? 0.6 : 0, flip: o.flip && o.kind !== 'ruin', phase: o.x * 0.5 });
+  }
+  return cards.filter((c) => c.e);
+}
+
+/** One merged mesh of upright cards (see the file header). */
+export function cardMesh(cards, atlas, material) {
+  const n = cards.length * 2;   // up to two quads per card (upright + flat part)
+  const pos = new Float32Array(n * 4 * 3), uv = new Float32Array(n * 4 * 2), card = new Float32Array(n * 4 * 4);
+  const idx = [];
+  let q = 0;
+  const AS = atlas.canvas.width;
+  const quad = (verts, uvs, attrs) => {
+    for (let v = 0; v < 4; v++) {
+      pos.set(verts[v], (q * 4 + v) * 3);
+      uv.set(uvs[v], (q * 4 + v) * 2);
+      card.set(attrs[v], (q * 4 + v) * 4);
+    }
+    const b = q * 4;
+    idx.push(b, b + 2, b + 1, b + 1, b + 2, b + 3);
+    q++;
+  };
+  for (const c of cards) {
+    const e = c.e;
+    const left = c.x - e.ax / 32, right = left + e.w / 32;
+    let u0 = e.x / AS, u1 = (e.x + e.w) / AS;
+    if (c.flip) [u0, u1] = [u1, u0];
+    const vTop = e.y / AS, vAnchor = (e.y + e.ay) / AS, vBot = (e.y + e.h) / AS;
+    const hUp = (e.ay / 32) * CARD_SCALE;
+    const ph = c.phase ?? 0;
+    if (e.ay > 0) {
+      quad(
+        [[left, hUp, c.z], [right, hUp, c.z], [left, 0.002, c.z], [right, 0.002, c.z]],
+        [[u0, vTop], [u1, vTop], [u0, vAnchor], [u1, vAnchor]],
+        [[c.z, c.sway, ph, 1], [c.z, c.sway, ph, 1], [c.z, 0, ph, 1], [c.z, 0, ph, 1]],
+      );
+    }
+    if (e.h > e.ay) {
+      const zb = c.z + (e.h - e.ay) / 32;
+      quad(
+        [[left, 0.004, c.z], [right, 0.004, c.z], [left, 0.004, zb], [right, 0.004, zb]],
+        [[u0, vAnchor], [u1, vAnchor], [u0, vBot], [u1, vBot]],
+        [[c.z, 0, ph, 0], [c.z, 0, ph, 0], [c.z, 0, ph, 0], [c.z, 0, ph, 0]],
+      );
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos.subarray(0, q * 12), 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv.subarray(0, q * 8), 2));
+  g.setAttribute('aCard', new THREE.BufferAttribute(card.subarray(0, q * 16), 4));
+  g.setIndex(idx);
+  g.computeBoundingSphere();
+  const m = new THREE.Mesh(g, material);
+  m.userData.noSnap = true;
+  m.frustumCulled = false;
+  return m;
 }
 
 /** Push circle p (radius r) out of the box [x0, z0]–[x1, z1]. */

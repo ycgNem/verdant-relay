@@ -28,6 +28,7 @@
 import * as THREE from 'three';
 import { VISUALS } from '../data/visuals.js';
 import { CARD_SCALE } from './PixelView.js';
+import { TERRAIN_ART } from '../data/jungle.js';
 
 const GEOMS = {
   box: (s) => new THREE.BoxGeometry(...s),
@@ -171,6 +172,45 @@ export class Assets {
       }, undefined, () => { console.warn(`Sprite failed to load: ${def.file}`); resolve(); });
     }));
     await Promise.all(jobs);
+    await this._loadTerrain();
+  }
+
+  /**
+   * Terrain art (public/terrain, STYLE.md): for each terrain kind, the PixelLab Wang tile whose four
+   * corners are all that terrain, as raw RGBA ({ data, w, h }) for TerrainBaker. Only the kinds listed
+   * in TERRAIN_ART are used; the rest stay procedural (flat AI base tiles read as a grid).
+   */
+  async _loadTerrain() {
+    this.terrainArt = null;
+    try {
+      const base = `${import.meta.env.BASE_URL}terrain/`;
+      const res = await fetch(`${base}manifest.json`, { cache: 'no-cache' });
+      if (!res.ok) return;
+      const man = await res.json();
+      const out = {};
+      for (const set of Object.values(man.sets || {})) {
+        const [meta, img] = await Promise.all([
+          fetch(base + set.meta).then((r) => r.json()),
+          new Promise((ok, bad) => { const im = new Image(); im.onload = () => ok(im); im.onerror = bad; im.src = base + set.png; }),
+        ]);
+        const c = document.createElement('canvas');
+        c.width = img.width; c.height = img.height;
+        const g = c.getContext('2d', { willReadFrequently: true });
+        g.drawImage(img, 0, 0);
+        for (const t of meta.tileset_data?.tiles || []) {
+          const corners = new Set(Object.values(t.corners || {}));
+          if (corners.size !== 1) continue;
+          const kind = set[[...corners][0]];
+          if (!TERRAIN_ART.includes(kind) || out[kind]) continue;
+          const bb = t.bounding_box;
+          const d = g.getImageData(bb.x, bb.y, bb.width, bb.height);
+          out[kind] = { data: d.data, w: bb.width, h: bb.height };
+        }
+      }
+      this.terrainArt = Object.keys(out).length ? out : null;
+    } catch (e) {
+      console.warn('terrain art not loaded', e);
+    }
   }
 
   /** The manifest key actually used for `key` (handles "_2"/"_3" level suffixes). */

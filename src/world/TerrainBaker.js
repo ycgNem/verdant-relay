@@ -150,9 +150,10 @@ export class TerrainBaker {
     // Per-pixel blend noise: a 256 × 256 tileable field mixing two frequencies (edges wander at the
     // tile scale, with small bites at the 3–4 texel scale).
     const n1 = periodicNoise(world.seed ^ 0x1234, 16), n2 = periodicNoise(world.seed ^ 0x9876, 64);
+    const amp = world.blendAmp ?? 1;   // the night map uses tighter edges so lanes stay readable
     this.blend = new Float32Array(256 * 256);
     for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
-      this.blend[y * 256 + x] = (n1(x / 16, y / 16) - 0.5) * 0.85 + (n2(x / 4, y / 4) - 0.5) * 0.45;
+      this.blend[y * 256 + x] = ((n1(x / 16, y / 16) - 0.5) * 0.85 + (n2(x / 4, y / 4) - 0.5) * 0.45) * amp;
     }
   }
 

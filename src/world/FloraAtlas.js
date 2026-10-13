@@ -12,15 +12,16 @@ const ATLAS = 2048;
 
 // family → name patterns (first matching group wins; several sprites per family = variety)
 export const FAMILIES = {
-  fern: [/^fol_(fern|tall_?grass|heliconia|palm_?sapling|grass|reed)/],
-  thicket: [/^fol_(thicket|broadleaf|monstera|elephant|bamboo|shrub|bush|dense)/],
+  fern: [/^fol_(fern|tall_?grass|heliconia|palm_?sapling|grass|fiddlehead|bromeliad|ginger|cycad|agave)/],
+  thicket: [/^fol_(thicket|monstera|elephant|bamboo|shrub|bush|taro|dense)/],
   vine: [/^fol_(vine|tangle|liana|hanging)/],
   bramble: [/^fol_(bramble|thorn)/],
-  debris: [/^fol_(cut|debris)/],
+  debris: [/^dec_cut_leaves/],          // flat leaf litter where undergrowth was cut
+  cutstump: [/^fol_cut_?stump/],
   mushroom: [/^fol_(mush|fung)/],
-  boulder: [/^fol_(boulder|mossy_?rock|rock|stone)/],
+  boulder: [/^fol_(boulder|rock|rubble|stone)/],
   log: [/^fol_(log|rotten)/],
-  stump: [/^fol_(stump)(?!.*cut)/],
+  stump: [/^fol_stump/],
   tree_kapok: [/^tree_(kapok|giant|buttress)/],
   tree_fig: [/^tree_(fig|strangler|banyan|broad|canopy)/],
   tree_palm: [/^tree_(palm)/],
@@ -37,7 +38,7 @@ export const FAMILIES = {
   ruin_stairs: [/^ruin_(stair|steps)/],
 };
 // Fallbacks between families when one has neither art nor a placeholder painter.
-const ALIAS = { tree_fern: 'tree_palm', tree_fallen: 'log', ruin_stairs: 'ruin_wall', ruin_mast: 'ruin_pillar', ruin_greenhouse: 'ruin_pillar', vine: 'thicket', mushroom: 'fern' };
+const ALIAS = { cutstump: 'stump', tree_fern: 'tree_palm', tree_fallen: 'log', ruin_stairs: 'ruin_wall', ruin_mast: 'ruin_pillar', ruin_greenhouse: 'ruin_pillar', vine: 'thicket', mushroom: 'fern' };
 
 export class FloraAtlas {
   constructor(assets) {
@@ -57,10 +58,12 @@ export class FloraAtlas {
       if (!fam) continue;
       const info = assets.spriteInfo(key);
       const def = assets.manifest[key];
-      if (!info?.tex?.image || def.flat) continue;
+      if (!info?.tex?.image || (def.flat && fam !== 'debris')) continue;
       const img = info.tex.image;
       const fw = def.fw || img.width / (def.frames || 1), fh = def.fh || img.height;
-      const e = this._add(img, 0, 0, fw, fh, def.anchor ? def.anchor[0] : fw / 2, def.anchor ? def.anchor[1] : fh - (def.anchorY || 0));
+      // Flat decals lie on the ground entirely (anchor row 0 → no upright part).
+      const e = def.flat ? this._add(img, 0, 0, fw, fh, fw / 2, 0)
+        : this._add(img, 0, 0, fw, fh, def.anchor ? def.anchor[0] : fw / 2, def.anchor ? def.anchor[1] : fh - (def.anchorY || 0));
       if (!e) continue;
       e.key = key;
       this.families[fam].push(e);

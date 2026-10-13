@@ -273,6 +273,354 @@
     },
     "shadow": 0.18
   },
+  "dec_berries": {
+    "file": "dec_berries.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_bolts": {
+    "file": "dec_bolts.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_bones_ribs": {
+    "file": "dec_bones_ribs.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_bones_skull": {
+    "file": "dec_bones_skull.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_branch": {
+    "file": "dec_branch.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_bricks_mossy": {
+    "file": "dec_bricks_mossy.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_burrow": {
+    "file": "dec_burrow.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_cattails": {
+    "file": "dec_cattails.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_clover": {
+    "file": "dec_clover.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_cog": {
+    "file": "dec_cog.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_concrete_chunks": {
+    "file": "dec_concrete_chunks.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_creepers": {
+    "file": "dec_creepers.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_cut_leaves": {
+    "file": "dec_cut_leaves.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_cut_leaves_2": {
+    "file": "dec_cut_leaves_2.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_feathers": {
+    "file": "dec_feathers.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_fern_frond": {
+    "file": "dec_fern_frond.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_flowers_blue": {
+    "file": "dec_flowers_blue.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_flowers_orange": {
+    "file": "dec_flowers_orange.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_flowers_pink": {
+    "file": "dec_flowers_pink.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_flowers_white": {
+    "file": "dec_flowers_white.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_footprints": {
+    "file": "dec_footprints.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_fungus_glow": {
+    "file": "dec_fungus_glow.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_fungus_shelf": {
+    "file": "dec_fungus_shelf.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_leaves_autumn": {
+    "file": "dec_leaves_autumn.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_leaves_brown": {
+    "file": "dec_leaves_brown.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_leaves_green": {
+    "file": "dec_leaves_green.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_leaves_rock": {
+    "file": "dec_leaves_rock.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_lily_lotus": {
+    "file": "dec_lily_lotus.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_lily_pads": {
+    "file": "dec_lily_pads.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_monstera_leaf": {
+    "file": "dec_monstera_leaf.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_moss_patch": {
+    "file": "dec_moss_patch.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_moss_tuft": {
+    "file": "dec_moss_tuft.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_mushrooms_blue": {
+    "file": "dec_mushrooms_blue.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_mushrooms_white": {
+    "file": "dec_mushrooms_white.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_palm_frond": {
+    "file": "dec_palm_frond.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_pebbles": {
+    "file": "dec_pebbles.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_pebbles_mossy": {
+    "file": "dec_pebbles_mossy.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_pot_shards": {
+    "file": "dec_pot_shards.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_puddle": {
+    "file": "dec_puddle.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_puddle_mud": {
+    "file": "dec_puddle_mud.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_reeds": {
+    "file": "dec_reeds.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_root_coil": {
+    "file": "dec_root_coil.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_roots": {
+    "file": "dec_roots.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_roots_twisted": {
+    "file": "dec_roots_twisted.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_sapling": {
+    "file": "dec_sapling.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_seed_pod": {
+    "file": "dec_seed_pod.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_seed_pods": {
+    "file": "dec_seed_pods.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_slab_mossy": {
+    "file": "dec_slab_mossy.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_small_log": {
+    "file": "dec_small_log.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_snail": {
+    "file": "dec_snail.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_soil_sprouts": {
+    "file": "dec_soil_sprouts.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_tin_puddle": {
+    "file": "dec_tin_puddle.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_twig_nest": {
+    "file": "dec_twig_nest.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_twig_pile": {
+    "file": "dec_twig_pile.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_twigs": {
+    "file": "dec_twigs.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_twigs_crossed": {
+    "file": "dec_twigs_crossed.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_vines_hanging": {
+    "file": "dec_vines_hanging.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "dec_web": {
+    "file": "dec_web.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
   "floor_alt_canopy_greenhouse": {
     "file": "floor_alt_canopy_greenhouse.png",
     "ppu": 32,
@@ -344,6 +692,262 @@
     "ppu": 32,
     "tile": true,
     "frames": 1
+  },
+  "fol_agave": {
+    "file": "fol_agave.png",
+    "ppu": 32,
+    "anchor": [
+      32,
+      59
+    ]
+  },
+  "fol_bamboo": {
+    "file": "fol_bamboo.png",
+    "ppu": 32,
+    "anchor": [
+      33,
+      61
+    ]
+  },
+  "fol_bamboo_young": {
+    "file": "fol_bamboo_young.png",
+    "ppu": 32,
+    "anchor": [
+      26,
+      58
+    ]
+  },
+  "fol_boulder": {
+    "file": "fol_boulder.png",
+    "ppu": 32,
+    "anchor": [
+      30,
+      45
+    ]
+  },
+  "fol_bramble": {
+    "file": "fol_bramble.png",
+    "ppu": 32,
+    "anchor": [
+      31,
+      58
+    ]
+  },
+  "fol_bramble_dry": {
+    "file": "fol_bramble_dry.png",
+    "ppu": 32,
+    "anchor": [
+      33,
+      57
+    ]
+  },
+  "fol_bromeliad": {
+    "file": "fol_bromeliad.png",
+    "ppu": 32,
+    "anchor": [
+      31,
+      49
+    ]
+  },
+  "fol_bush_flowering": {
+    "file": "fol_bush_flowering.png",
+    "ppu": 32,
+    "anchor": [
+      32,
+      58
+    ]
+  },
+  "fol_bush_round": {
+    "file": "fol_bush_round.png",
+    "ppu": 32,
+    "anchor": [
+      30,
+      55
+    ]
+  },
+  "fol_cut_stump": {
+    "file": "fol_cut_stump.png",
+    "ppu": 32,
+    "anchor": [
+      31,
+      36
+    ]
+  },
+  "fol_cycad": {
+    "file": "fol_cycad.png",
+    "ppu": 32,
+    "anchor": [
+      32,
+      61
+    ]
+  },
+  "fol_elephant_ear": {
+    "file": "fol_elephant_ear.png",
+    "ppu": 32,
+    "anchor": [
+      32,
+      59
+    ]
+  },
+  "fol_fern": {
+    "file": "fol_fern.png",
+    "ppu": 32,
+    "anchor": [
+      31,
+      58
+    ]
+  },
+  "fol_fern_wide": {
+    "file": "fol_fern_wide.png",
+    "ppu": 32,
+    "anchor": [
+      32,
+      50
+    ]
+  },
+  "fol_fiddlehead": {
+    "file": "fol_fiddlehead.png",
+    "ppu": 32,
+    "anchor": [
+      22,
+      49
+    ]
+  },
+  "fol_ginger": {
+    "file": "fol_ginger.png",
+    "ppu": 32,
+    "anchor": [
+      30,
+      59
+    ]
+  },
+  "fol_grass_short": {
+    "file": "fol_grass_short.png",
+    "ppu": 32,
+    "anchor": [
+      29,
+      45
+    ]
+  },
+  "fol_heliconia": {
+    "file": "fol_heliconia.png",
+    "ppu": 32,
+    "anchor": [
+      31,
+      61
+    ]
+  },
+  "fol_log": {
+    "file": "fol_log.png",
+    "ppu": 32,
+    "anchor": [
+      32,
+      36
+    ]
+  },
+  "fol_monstera": {
+    "file": "fol_monstera.png",
+    "ppu": 32,
+    "anchor": [
+      31,
+      61
+    ]
+  },
+  "fol_mushrooms": {
+    "file": "fol_mushrooms.png",
+    "ppu": 32,
+    "anchor": [
+      28,
+      53
+    ]
+  },
+  "fol_palm_sapling": {
+    "file": "fol_palm_sapling.png",
+    "ppu": 32,
+    "anchor": [
+      31,
+      60
+    ]
+  },
+  "fol_rock_mossy": {
+    "file": "fol_rock_mossy.png",
+    "ppu": 32,
+    "anchor": [
+      28,
+      36
+    ]
+  },
+  "fol_roots": {
+    "file": "fol_roots.png",
+    "ppu": 32,
+    "anchor": [
+      34,
+      52
+    ]
+  },
+  "fol_rubble_ivy": {
+    "file": "fol_rubble_ivy.png",
+    "ppu": 32,
+    "anchor": [
+      32,
+      48
+    ]
+  },
+  "fol_shrub": {
+    "file": "fol_shrub.png",
+    "ppu": 32,
+    "anchor": [
+      29,
+      59
+    ]
+  },
+  "fol_stump": {
+    "file": "fol_stump.png",
+    "ppu": 32,
+    "anchor": [
+      30,
+      49
+    ]
+  },
+  "fol_tall_grass": {
+    "file": "fol_tall_grass.png",
+    "ppu": 32,
+    "anchor": [
+      31,
+      59
+    ]
+  },
+  "fol_taro": {
+    "file": "fol_taro.png",
+    "ppu": 32,
+    "anchor": [
+      33,
+      59
+    ]
+  },
+  "fol_thicket": {
+    "file": "fol_thicket.png",
+    "ppu": 32,
+    "anchor": [
+      32,
+      59
+    ]
+  },
+  "fol_vine_curtain": {
+    "file": "fol_vine_curtain.png",
+    "ppu": 32,
+    "anchor": [
+      32,
+      60
+    ]
+  },
+  "fol_vines": {
+    "file": "fol_vines.png",
+    "ppu": 32,
+    "anchor": [
+      31,
+      61
+    ]
   },
   "fuse": {
     "file": "fuse.png",
@@ -481,84 +1085,44 @@
     "fps": 6
   },
   "pick_biofiber": {
-    "file": "pick_biofiber.png",
+    "file": "pick_biofiber_v2.png",
     "ppu": 32,
-    "frames": 2,
-    "fps": 6,
-    "anims": {
-      "idle": [
-        0,
-        0,
-        0,
-        0,
-        1
-      ]
-    },
-    "shadow": 0.18
+    "anchor": [
+      15,
+      23
+    ]
   },
   "pick_circuits": {
-    "file": "pick_circuits.png",
+    "file": "pick_circuits_v2.png",
     "ppu": 32,
-    "frames": 2,
-    "fps": 6,
-    "anims": {
-      "idle": [
-        0,
-        0,
-        0,
-        0,
-        1
-      ]
-    },
-    "shadow": 0.18
+    "anchor": [
+      15,
+      23
+    ]
   },
   "pick_intel": {
-    "file": "pick_intel.png",
+    "file": "pick_intel_v2.png",
     "ppu": 32,
-    "frames": 2,
-    "fps": 6,
-    "anims": {
-      "idle": [
-        0,
-        0,
-        0,
-        0,
-        1
-      ]
-    },
-    "shadow": 0.18
+    "anchor": [
+      12,
+      18
+    ]
   },
   "pick_med": {
-    "file": "pick_med.png",
+    "file": "pick_med_v2.png",
     "ppu": 32,
-    "frames": 2,
-    "fps": 6,
-    "anims": {
-      "idle": [
-        0,
-        0,
-        0,
-        0,
-        1
-      ]
-    },
-    "shadow": 0.18
+    "anchor": [
+      12,
+      18
+    ]
   },
   "pick_scrap": {
-    "file": "pick_scrap.png",
+    "file": "pick_scrap_v2.png",
     "ppu": 32,
-    "frames": 2,
-    "fps": 6,
-    "anims": {
-      "idle": [
-        0,
-        0,
-        0,
-        0,
-        1
-      ]
-    },
-    "shadow": 0.18
+    "anchor": [
+      15,
+      24
+    ]
   },
   "player": {
     "file": "player.png",
@@ -608,6 +1172,150 @@
         1
       ]
     }
+  },
+  "prop_campfire": {
+    "file": "prop_campfire.png",
+    "ppu": 32,
+    "anchor": [
+      20,
+      31
+    ]
+  },
+  "prop_cell_cache": {
+    "file": "prop_cell_cache.png",
+    "ppu": 32,
+    "anchor": [
+      21,
+      33
+    ]
+  },
+  "prop_crate": {
+    "file": "prop_crate.png",
+    "ppu": 32,
+    "anchor": [
+      20,
+      36
+    ]
+  },
+  "prop_data_drive": {
+    "file": "prop_data_drive.png",
+    "ppu": 32,
+    "anchor": [
+      11,
+      18
+    ]
+  },
+  "prop_data_terminal": {
+    "file": "prop_data_terminal.png",
+    "ppu": 32,
+    "anchor": [
+      19,
+      39
+    ]
+  },
+  "prop_fuse": {
+    "file": "prop_fuse.png",
+    "ppu": 32,
+    "anchor": [
+      16,
+      38
+    ]
+  },
+  "prop_intel_terminal": {
+    "file": "prop_intel_terminal.png",
+    "ppu": 32,
+    "anchor": [
+      20,
+      38
+    ]
+  },
+  "prop_locked_cache": {
+    "file": "prop_locked_cache.png",
+    "ppu": 32,
+    "anchor": [
+      21,
+      32
+    ]
+  },
+  "prop_med_kit": {
+    "file": "prop_med_kit.png",
+    "ppu": 32,
+    "anchor": [
+      22,
+      29
+    ]
+  },
+  "prop_nest": {
+    "file": "prop_nest.png",
+    "ppu": 32,
+    "anchor": [
+      22,
+      36
+    ]
+  },
+  "prop_opened_crate": {
+    "file": "prop_opened_crate.png",
+    "ppu": 32,
+    "anchor": [
+      23,
+      35
+    ]
+  },
+  "prop_power_box": {
+    "file": "prop_power_box.png",
+    "ppu": 32,
+    "anchor": [
+      17,
+      40
+    ]
+  },
+  "prop_pump": {
+    "file": "prop_pump.png",
+    "ppu": 32,
+    "anchor": [
+      16,
+      41
+    ]
+  },
+  "prop_rare_cache": {
+    "file": "prop_rare_cache.png",
+    "ppu": 32,
+    "anchor": [
+      23,
+      31
+    ]
+  },
+  "prop_relay_pylon": {
+    "file": "prop_relay_pylon.png",
+    "ppu": 32,
+    "anchor": [
+      19,
+      71
+    ]
+  },
+  "prop_supply_drop": {
+    "file": "prop_supply_drop.png",
+    "ppu": 32,
+    "anchor": [
+      24,
+      33
+    ]
+  },
+  "prop_tool_chest": {
+    "file": "prop_tool_chest.png",
+    "ppu": 32,
+    "anchor": [
+      20,
+      33
+    ]
+  },
+  "prop_workbench": {
+    "file": "prop_workbench.png",
+    "ppu": 32,
+    "anchor": [
+      20,
+      39
+    ]
   },
   "pulse_beacon": {
     "file": "pulse_beacon.png",
@@ -746,6 +1454,22 @@
       ]
     }
   },
+  "ruin_car_wreck": {
+    "file": "ruin_car_wreck.png",
+    "ppu": 32,
+    "anchor": [
+      61,
+      60
+    ]
+  },
+  "ruin_greenhouse": {
+    "file": "ruin_greenhouse.png",
+    "ppu": 32,
+    "anchor": [
+      63,
+      89
+    ]
+  },
   "ruin_guard": {
     "file": "ruin_guard.png",
     "ppu": 32,
@@ -772,6 +1496,54 @@
       "walk": 7,
       "attack": 6
     }
+  },
+  "ruin_pillar": {
+    "file": "ruin_pillar.png",
+    "ppu": 32,
+    "anchor": [
+      47,
+      100
+    ]
+  },
+  "ruin_radio_mast": {
+    "file": "ruin_radio_mast.png",
+    "ppu": 32,
+    "anchor": [
+      66,
+      97
+    ]
+  },
+  "ruin_stairs": {
+    "file": "ruin_stairs.png",
+    "ppu": 32,
+    "anchor": [
+      63,
+      96
+    ]
+  },
+  "ruin_statue_head": {
+    "file": "ruin_statue_head.png",
+    "ppu": 32,
+    "anchor": [
+      65,
+      87
+    ]
+  },
+  "ruin_train_car": {
+    "file": "ruin_train_car.png",
+    "ppu": 32,
+    "anchor": [
+      62,
+      86
+    ]
+  },
+  "ruin_wall": {
+    "file": "ruin_wall.png",
+    "ppu": 32,
+    "anchor": [
+      62,
+      101
+    ]
   },
   "scav": {
     "file": "scav.png",
@@ -1182,6 +1954,70 @@
         0
       ]
     }
+  },
+  "tree_banyan": {
+    "file": "tree_banyan.png",
+    "ppu": 32,
+    "anchor": [
+      71,
+      132
+    ]
+  },
+  "tree_canopy": {
+    "file": "tree_canopy.png",
+    "ppu": 32,
+    "anchor": [
+      78,
+      134
+    ]
+  },
+  "tree_dead_vine": {
+    "file": "tree_dead_vine.png",
+    "ppu": 32,
+    "anchor": [
+      59,
+      136
+    ]
+  },
+  "tree_fallen_trunk": {
+    "file": "tree_fallen_trunk.png",
+    "ppu": 32,
+    "anchor": [
+      76,
+      92
+    ]
+  },
+  "tree_fern": {
+    "file": "tree_fern.png",
+    "ppu": 32,
+    "anchor": [
+      63,
+      129
+    ]
+  },
+  "tree_kapok": {
+    "file": "tree_kapok.png",
+    "ppu": 32,
+    "anchor": [
+      75,
+      142
+    ]
+  },
+  "tree_palm": {
+    "file": "tree_palm.png",
+    "ppu": 32,
+    "anchor": [
+      33,
+      143
+    ]
+  },
+  "tree_strangler_fig": {
+    "file": "tree_strangler_fig.png",
+    "ppu": 32,
+    "anchor": [
+      77,
+      138
+    ]
   },
   "wall_block": {
     "file": "wall_block.png",

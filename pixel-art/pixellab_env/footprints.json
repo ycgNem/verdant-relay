@@ -1,0 +1,574 @@
+{
+  "fol_fern": {
+    "footprint": null,
+    "cuttable": true
+  },
+  "fol_shrub": {
+    "footprint": null,
+    "cuttable": true
+  },
+  "fol_monstera": {
+    "footprint": null,
+    "cuttable": true
+  },
+  "fol_elephant_ear": {
+    "footprint": null,
+    "cuttable": true
+  },
+  "fol_heliconia": {
+    "footprint": null,
+    "cuttable": true
+  },
+  "fol_tall_grass": {
+    "footprint": null,
+    "cuttable": true
+  },
+  "fol_bamboo": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.45
+    },
+    "cuttable": true,
+    "heavy": true
+  },
+  "fol_palm_sapling": {
+    "footprint": null,
+    "cuttable": true
+  },
+  "fol_thicket": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.7
+    },
+    "cuttable": true
+  },
+  "fol_vines": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.6
+    },
+    "cuttable": true
+  },
+  "fol_bramble_dry": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.6
+    },
+    "cuttable": true,
+    "heavy": true
+  },
+  "fol_mushrooms": {
+    "footprint": null
+  },
+  "fol_boulder": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.8
+    }
+  },
+  "fol_log": {
+    "footprint": {
+      "shape": "box",
+      "w": 1.7,
+      "d": 0.6
+    }
+  },
+  "fol_stump": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.5
+    }
+  },
+  "fol_cut_stump": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.4
+    }
+  },
+  "tree_kapok": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.9
+    }
+  },
+  "tree_strangler_fig": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.8
+    }
+  },
+  "tree_palm": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.3
+    }
+  },
+  "tree_dead_vine": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.5
+    }
+  },
+  "prop_crate": {
+    "footprint": {
+      "shape": "box",
+      "w": 1.0,
+      "d": 0.8
+    }
+  },
+  "prop_tool_chest": {
+    "footprint": {
+      "shape": "box",
+      "w": 1.1,
+      "d": 0.7
+    }
+  },
+  "prop_rare_cache": {
+    "footprint": {
+      "shape": "box",
+      "w": 1.2,
+      "d": 0.7
+    }
+  },
+  "prop_intel_terminal": {
+    "footprint": {
+      "shape": "box",
+      "w": 1.0,
+      "d": 0.7
+    }
+  },
+  "prop_opened_crate": {
+    "footprint": {
+      "shape": "box",
+      "w": 1.0,
+      "d": 0.8
+    }
+  },
+  "prop_fuse": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.3
+    }
+  },
+  "prop_power_box": {
+    "footprint": {
+      "shape": "box",
+      "w": 0.9,
+      "d": 0.5
+    }
+  },
+  "prop_data_terminal": {
+    "footprint": {
+      "shape": "box",
+      "w": 0.9,
+      "d": 0.6
+    }
+  },
+  "prop_pump": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.35
+    }
+  },
+  "prop_cell_cache": {
+    "footprint": {
+      "shape": "box",
+      "w": 1.1,
+      "d": 0.7
+    }
+  },
+  "prop_nest": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.5
+    }
+  },
+  "prop_locked_cache": {
+    "footprint": {
+      "shape": "box",
+      "w": 1.1,
+      "d": 0.7
+    }
+  },
+  "prop_workbench": {
+    "footprint": {
+      "shape": "box",
+      "w": 1.3,
+      "d": 0.6
+    }
+  },
+  "prop_campfire": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.5
+    }
+  },
+  "prop_supply_drop": {
+    "footprint": {
+      "shape": "box",
+      "w": 1.1,
+      "d": 0.8
+    }
+  },
+  "prop_med_kit": {
+    "footprint": {
+      "shape": "box",
+      "w": 0.8,
+      "d": 0.5
+    }
+  },
+  "dec_leaves_brown": {
+    "footprint": null
+  },
+  "dec_leaves_autumn": {
+    "footprint": null
+  },
+  "dec_leaves_green": {
+    "footprint": null
+  },
+  "dec_twigs": {
+    "footprint": null
+  },
+  "dec_twigs_crossed": {
+    "footprint": null
+  },
+  "dec_pebbles": {
+    "footprint": null
+  },
+  "dec_pebbles_mossy": {
+    "footprint": null
+  },
+  "dec_flowers_white": {
+    "footprint": null
+  },
+  "dec_flowers_pink": {
+    "footprint": null
+  },
+  "dec_flowers_blue": {
+    "footprint": null
+  },
+  "dec_roots": {
+    "footprint": null
+  },
+  "dec_roots_twisted": {
+    "footprint": null
+  },
+  "dec_puddle_mud": {
+    "footprint": null
+  },
+  "dec_puddle": {
+    "footprint": null
+  },
+  "dec_lily_pads": {
+    "footprint": null
+  },
+  "dec_lily_lotus": {
+    "footprint": null
+  },
+  "dec_reeds": {
+    "footprint": null
+  },
+  "dec_cattails": {
+    "footprint": null
+  },
+  "dec_fungus_shelf": {
+    "footprint": null
+  },
+  "dec_fungus_glow": {
+    "footprint": null
+  },
+  "dec_bones_skull": {
+    "footprint": null
+  },
+  "dec_bones_ribs": {
+    "footprint": null
+  },
+  "dec_moss_tuft": {
+    "footprint": null
+  },
+  "dec_moss_patch": {
+    "footprint": null
+  },
+  "dec_cut_leaves": {
+    "footprint": null
+  },
+  "dec_cut_leaves_2": {
+    "footprint": null
+  },
+  "dec_leaves_rock": {
+    "footprint": null
+  },
+  "dec_concrete_chunks": {
+    "footprint": null
+  },
+  "dec_bolts": {
+    "footprint": null
+  },
+  "dec_soil_sprouts": {
+    "footprint": null
+  },
+  "dec_clover": {
+    "footprint": null
+  },
+  "dec_seed_pods": {
+    "footprint": null
+  },
+  "dec_palm_frond": {
+    "footprint": null
+  },
+  "dec_branch": {
+    "footprint": null
+  },
+  "dec_slab_mossy": {
+    "footprint": null
+  },
+  "dec_fern_frond": {
+    "footprint": null
+  },
+  "dec_monstera_leaf": {
+    "footprint": null
+  },
+  "dec_small_log": {
+    "footprint": null
+  },
+  "dec_berries": {
+    "footprint": null
+  },
+  "dec_mushrooms_blue": {
+    "footprint": null
+  },
+  "dec_creepers": {
+    "footprint": null
+  },
+  "dec_snail": {
+    "footprint": null
+  },
+  "dec_mushrooms_white": {
+    "footprint": null
+  },
+  "dec_sapling": {
+    "footprint": null
+  },
+  "dec_cog": {
+    "footprint": null
+  },
+  "dec_pot_shards": {
+    "footprint": null
+  },
+  "dec_web": {
+    "footprint": null
+  },
+  "dec_burrow": {
+    "footprint": null
+  },
+  "dec_twig_pile": {
+    "footprint": null
+  },
+  "dec_twig_nest": {
+    "footprint": null
+  },
+  "dec_feathers": {
+    "footprint": null
+  },
+  "dec_footprints": {
+    "footprint": null
+  },
+  "dec_root_coil": {
+    "footprint": null
+  },
+  "dec_tin_puddle": {
+    "footprint": null
+  },
+  "dec_seed_pod": {
+    "footprint": null
+  },
+  "dec_flowers_orange": {
+    "footprint": null
+  },
+  "dec_bricks_mossy": {
+    "footprint": null
+  },
+  "dec_vines_hanging": {
+    "footprint": null
+  },
+  "pick_scrap": {
+    "footprint": null
+  },
+  "pick_circuits": {
+    "footprint": null
+  },
+  "pick_biofiber": {
+    "footprint": null
+  },
+  "pick_intel": {
+    "footprint": null
+  },
+  "pick_med": {
+    "footprint": null
+  },
+  "prop_data_drive": {
+    "footprint": null
+  },
+  "tree_banyan": {
+    "footprint": {
+      "shape": "circle",
+      "r": 1.0
+    }
+  },
+  "tree_fern": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.3
+    }
+  },
+  "tree_canopy": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.8
+    }
+  },
+  "tree_fallen_trunk": {
+    "footprint": {
+      "shape": "box",
+      "w": 3.2,
+      "d": 1.0
+    }
+  },
+  "ruin_wall": {
+    "footprint": {
+      "shape": "box",
+      "w": 2.6,
+      "d": 0.6
+    }
+  },
+  "ruin_pillar": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.6
+    }
+  },
+  "ruin_train_car": {
+    "footprint": {
+      "shape": "box",
+      "w": 3.4,
+      "d": 1.4
+    }
+  },
+  "ruin_greenhouse": {
+    "footprint": {
+      "shape": "box",
+      "w": 3.4,
+      "d": 1.8
+    }
+  },
+  "prop_relay_pylon": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.45
+    }
+  },
+  "ruin_statue_head": {
+    "footprint": {
+      "shape": "circle",
+      "r": 1.3
+    }
+  },
+  "ruin_car_wreck": {
+    "footprint": {
+      "shape": "box",
+      "w": 2.6,
+      "d": 1.3
+    }
+  },
+  "ruin_radio_mast": {
+    "footprint": {
+      "shape": "box",
+      "w": 3.0,
+      "d": 0.8
+    }
+  },
+  "ruin_stairs": {
+    "footprint": {
+      "shape": "box",
+      "w": 2.6,
+      "d": 2.0
+    }
+  },
+  "fol_bramble": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.6
+    },
+    "cuttable": true,
+    "heavy": true
+  },
+  "fol_fern_wide": {
+    "footprint": null,
+    "cuttable": true
+  },
+  "fol_fiddlehead": {
+    "footprint": null,
+    "cuttable": true
+  },
+  "fol_bush_round": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.6
+    },
+    "cuttable": true
+  },
+  "fol_bromeliad": {
+    "footprint": null,
+    "cuttable": true
+  },
+  "fol_bush_flowering": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.6
+    },
+    "cuttable": true
+  },
+  "fol_grass_short": {
+    "footprint": null,
+    "cuttable": true
+  },
+  "fol_ginger": {
+    "footprint": null,
+    "cuttable": true
+  },
+  "fol_taro": {
+    "footprint": null,
+    "cuttable": true
+  },
+  "fol_bamboo_young": {
+    "footprint": null,
+    "cuttable": true
+  },
+  "fol_cycad": {
+    "footprint": null,
+    "cuttable": true
+  },
+  "fol_rock_mossy": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.55
+    }
+  },
+  "fol_roots": {
+    "footprint": null
+  },
+  "fol_rubble_ivy": {
+    "footprint": {
+      "shape": "circle",
+      "r": 0.6
+    }
+  },
+  "fol_vine_curtain": {
+    "footprint": null,
+    "cuttable": true
+  },
+  "fol_agave": {
+    "footprint": null,
+    "cuttable": true
+  }
+}

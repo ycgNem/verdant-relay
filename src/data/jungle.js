@@ -6,6 +6,9 @@ export const LEVEL_NAMES = ['water', 'mud', 'dirt', 'floor', 'moss'];
 
 // Undergrowth per tile. 1 ferns: walkable (slow), rustles · 2 thicket: solid until cut (one slash) ·
 // 3 bramble: solid, thorny; a slash only nicks it, a heavy chop clears it.
+// Terrain kinds drawn from PixelLab art (public/terrain); the others use TerrainBaker's procedural textures.
+export const TERRAIN_ART = ['floor', 'moss', 'paving'];
+
 export const BRUSH = { none: 0, fern: 1, thicket: 2, bramble: 3 };
 
 export const JUNGLE = {

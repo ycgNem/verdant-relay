@@ -14,6 +14,7 @@
 // once. Surviving saves the next 'briefing' immediately (before the banner); a defeat clears the save.
 
 import * as THREE from 'three';
+import { buildDefenseGround } from '../world/DefenseGround.js';
 import '../ui/defense.css';
 import { el, button, resChip, resRow, costLine, bar, toast, modal, resIconHtml, setToastsPaused } from '../ui/ui.js';
 import { showHint } from '../ui/hints.js';
@@ -410,203 +411,13 @@ export class DefenseScene {
   }
 
   /**
-   * Ground: one canvas texture covering the field plus a margin. Uses the art team's tiles
-   * (floor_defense / floor_alt_defense / lane_defense) when the manifest has them, otherwise
-   * procedural pixel textures. Lane edges, the Relay plaza and the field border are drawn on top.
+   * Ground and jungle: the same blended terrain and foliage cards as the day jungle
+   * (src/world/DefenseGround.js), lit by the night lights, sprites tinted like the units.
    */
   _buildGround() {
-    const M = DEFENSE_MAP.margin;
-    const W = DEFENSE_MAP.width, H = DEFENSE_MAP.height;
-    const X0 = -M.left, Z0 = -M.top, TW = W + M.left + M.right, TH = H + M.top + M.bottom;
-    const P = 32;
-    const cv = document.createElement('canvas');
-    cv.width = TW * P;
-    cv.height = TH * P;
-    const g = cv.getContext('2d');
-    const img = g.createImageData(cv.width, cv.height);
-    const data = img.data;
-    const lanes = this._laneTiles();
-    const isLane = (x, y) => lanes.has(`${x},${y}`);
-    const pl = DEFENSE_MAP.plaza;
-    const inPlaza = (x, y) => x >= pl.x0 && x <= pl.x1 && y >= pl.y0 && y <= pl.y1;
-    const inField = (x, y) => x >= 0 && x < W && y >= 0 && y < H;
-
-    const hash = (x, y, s = 0) => {
-      let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 982451653)) | 0;
-      h = Math.imul(h ^ (h >>> 13), 1274126177);
-      return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-    };
-    const noise = (x, y, sc, s) => {
-      const fx = x / sc, fy = y / sc, ix = Math.floor(fx), iy = Math.floor(fy), tx = fx - ix, ty = fy - iy;
-      const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
-      const a = hash(ix, iy, s), b = hash(ix + 1, iy, s), c = hash(ix, iy + 1, s), d = hash(ix + 1, iy + 1, s);
-      return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
-    };
-    const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
-    const pal = (arr) => arr.map(hex);
-    const GRASS = pal(['#1d4434', '#24553c', '#2c6544', '#36784c', '#468d52']);
-    const SLAB = pal(['#4a4c57', '#565863', '#62636c', '#6e6e75']);
-    const DIRT = pal(['#5a3c33', '#6b4a3a', '#7a5642', '#88624a', '#9a7456']);
-    const PLAZA = pal(['#4a5576', '#56628a', '#626f96', '#6e7ba0']);
-    const put = (px, py, c, k = 1) => {
-      const i = (py * cv.width + px) * 4;
-      data[i] = c[0] * k; data[i + 1] = c[1] * k; data[i + 2] = c[2] * k; data[i + 3] = 255;
-    };
-
-    // Art tiles (optional).
-    const tileArt = {};
-    for (const key of ['floor_defense', 'floor_alt_defense', 'lane_defense']) {
-      const info = this.game.assets.spriteInfo(key);
-      if (info?.tex?.image) tileArt[key] = info;
-    }
-    const useArt = !!(tileArt.floor_defense && tileArt.lane_defense);
-
-    for (let ty = 0; ty < TH; ty++) {
-      for (let tx = 0; tx < TW; tx++) {
-        const x = tx + X0, y = ty + Z0;
-        const lane = isLane(x, y), plaza = inPlaza(x, y), field = inField(x, y);
-        const dark = field ? 1 : 0.62;
-        for (let py = 0; py < P; py++) {
-          for (let px = 0; px < P; px++) {
-            const gx = tx * P + px, gy = ty * P + py;
-            const h = hash(gx, gy, 7);
-            let c, k = dark;
-            if (lane && !useArt) {
-              const n = noise(gx, gy, 9, 3);
-              c = DIRT[Math.min(4, Math.floor(n * 4.2 + h * 0.8))];
-              if (h > 0.975) c = hex('#b29a86');
-              else if (h < 0.02) c = hex('#3e2a26');
-            } else if (plaza && !lane) {
-              // Concrete plaza tiles with seams and wear.
-              const seam = px === 0 || py === 0;
-              const n = noise(gx, gy, 14, 5);
-              c = PLAZA[Math.min(3, Math.floor(n * 3.4 + h * 0.6))];
-              if (seam) c = hex('#2c334f');
-              else if (h > 0.985) c = hex('#8b9bb4');
-              if (noise(gx, gy, 6, 9) > 0.78 && h > 0.4) c = GRASS[2];
-            } else if (!useArt) {
-              const n = noise(gx, gy, 20, 1);
-              // Old pavement: rectangular slabs (48×40 px cells) in patches, crumbling at the edges.
-              const cx = Math.floor(gx / 48), cy = Math.floor(gy / 40);
-              const lx = gx - cx * 48, ly = gy - cy * 40;
-              const edgeD = Math.min(lx, 47 - lx, ly, 39 - ly);
-              const slab = field && noise(cx * 48, cy * 40, 150, 2) > 0.55 && hash(cx, cy, 33) > 0.25
-                && !(edgeD < 3 && noise(gx, gy, 4, 12) > 0.55);
-              if (slab) {
-                c = SLAB[Math.min(3, Math.floor(noise(gx, gy, 13, 4) * 2.6 + hash(cx, cy, 34) * 1.2 + h * 0.4))];
-                if (edgeD === 0) c = hex('#2d2b36');
-                else if (edgeD === 1 && (lx === 1 || ly === 1)) c = hex('#7a7a80');
-                // cracks
-                if (Math.abs(noise(gx, gy, 9, 14) - 0.5) < 0.018) c = hex('#2d2b36');
-                if (noise(gx, gy, 6, 8) > 0.74) c = GRASS[1 + Math.floor(h * 2)];
-              } else {
-                c = GRASS[Math.min(4, Math.floor(n * 3.6 + h * 1.2))];
-                if (h > 0.985) c = hex('#63c74d');
-                else if (h > 0.97 && field) c = hex('#99e550');
-                else if (h < 0.012) c = hex('#b55088');      // tiny night flowers
-              }
-            } else {
-              continue;   // drawn from tile art below
-            }
-            put(gx, gy, c, k);
-          }
-        }
-      }
-    }
-    g.putImageData(img, 0, 0);
-
-    // Tile art pass: field floor (with alt variant patches) and lanes.
-    if (useArt) {
-      // Each tile gets a seeded flip / quarter-turn so the repeating art doesn't read as a grid.
-      const draw = (info, tx, ty, vary) => {
-        const im = info.tex.image;
-        const fw = im.width / (info.def.frames || 1);
-        const r = hash(tx, ty, 41);
-        g.save();
-        g.translate(tx * P + P / 2, ty * P + P / 2);
-        if (vary) {
-          g.rotate(Math.floor(r * 4) * Math.PI / 2);
-          if (hash(tx, ty, 42) < 0.5) g.scale(-1, 1);
-        } else if (r < 0.5) g.scale(-1, 1);
-        g.drawImage(im, 0, 0, fw, im.height, -P / 2, -P / 2, P, P);
-        g.restore();
-      };
-      for (let ty = 0; ty < TH; ty++) {
-        for (let tx = 0; tx < TW; tx++) {
-          const x = tx + X0, y = ty + Z0;
-          if (isLane(x, y)) draw(tileArt.lane_defense, tx, ty, false);
-          else if (!inPlaza(x, y)) {
-            // Sparse, isolated alt tiles (the alt art has a central slab; clustering reads as a grid).
-            const alt = tileArt.floor_alt_defense && hash(x, y, 43) < 0.07 && hash(x - 1, y, 43) >= 0.07 && hash(x, y - 1, 43) >= 0.07;
-            draw(alt ? tileArt.floor_alt_defense : tileArt.floor_defense, tx, ty, true);
-          }
-        }
-      }
-      // Darken the margin outside the field.
-      g.fillStyle = 'rgba(6,8,20,0.42)';
-      const fx0 = (0 - X0) * P, fy0 = (0 - Z0) * P, fx1 = (W - X0) * P, fy1 = (H - Z0) * P;
-      g.fillRect(0, 0, cv.width, fy0);
-      g.fillRect(0, fy1, cv.width, cv.height - fy1);
-      g.fillRect(0, fy0, fx0, fy1 - fy0);
-      g.fillRect(fx1, fy0, cv.width - fx1, fy1 - fy0);
-    }
-
-    // Lane edges: dark rim + grass tufts overhanging the path, so lanes read as worn trails.
-    g.fillStyle = 'rgba(30,18,16,0.55)';
-    for (let ty = 0; ty < TH; ty++) {
-      for (let tx = 0; tx < TW; tx++) {
-        const x = tx + X0, y = ty + Z0;
-        if (!isLane(x, y)) continue;
-        const ox = tx * P, oy = ty * P;
-        const edges = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-        for (const [dx, dy] of edges) {
-          if (isLane(x + dx, y + dy)) continue;
-          for (let i = 0; i < P; i++) {
-            const depth = 1 + Math.floor(hash(ox + i, oy + dy * 7 + dx * 13, 21) * 3);
-            for (let d = 0; d < depth; d++) {
-              let px, py;
-              if (dy !== 0) { px = ox + i; py = dy < 0 ? oy + d : oy + P - 1 - d; }
-              else { py = oy + i; px = dx < 0 ? ox + d : ox + P - 1 - d; }
-              g.fillStyle = d === depth - 1 ? 'rgba(20,12,12,0.5)' : 'rgba(54,120,76,0.95)';
-              g.fillRect(px, py, 1, 1);
-            }
-          }
-        }
-      }
-    }
-
-    // Plaza hazard border (amber/dark diagonal stripes) around the Relay.
-    {
-      const x0 = (pl.x0 - X0) * P, y0 = (pl.y0 - Z0) * P, x1 = (pl.x1 + 1 - X0) * P, y1 = (pl.y1 + 1 - Z0) * P;
-      for (let py = y0; py < y1; py++) {
-        for (let px = x0; px < x1; px++) {
-          const edge = Math.min(px - x0, x1 - 1 - px, py - y0, y1 - 1 - py);
-          if (edge >= 4) continue;
-          const tx = Math.floor(px / P) + X0, ty = Math.floor(py / P) + Z0;
-          if (isLane(tx, ty)) continue;
-          g.fillStyle = ((px + py) >> 2) % 2 ? '#c9a640' : '#2a2633';
-          g.fillRect(px, py, 1, 1);
-        }
-      }
-    }
-
-    // Field border: a faint darker line so the playable area reads.
-    g.fillStyle = 'rgba(10,8,20,0.35)';
-    g.fillRect((0 - X0) * P - 2, (0 - Z0) * P - 2, W * P + 4, 2);
-    g.fillRect((0 - X0) * P - 2, (H - Z0) * P, W * P + 4, 2);
-    g.fillRect((W - X0) * P, (0 - Z0) * P, 2, H * P);
-
-    const tex = this._track(new THREE.CanvasTexture(cv));
-    tex.magFilter = THREE.NearestFilter;
-    tex.minFilter = THREE.NearestFilter;
-    tex.generateMipmaps = false;
-    tex.colorSpace = THREE.SRGBColorSpace;
-    const geom = this._track(new THREE.PlaneGeometry(TW, TH));
-    const mat = this._track(new THREE.MeshLambertMaterial({ map: tex }));
-    const ground = new THREE.Mesh(geom, mat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.set(X0 + TW / 2, 0, Z0 + TH / 2);
-    this.three.add(ground);
+    this.ground = buildDefenseGround(this.game, this.run.seed, this._laneTiles(), DEFENSE_VIEW.spriteTint);
+    this.three.add(this.ground.group);
+    this._track(this.ground);
   }
 
   _addVisual(key, x, z, opts) {
@@ -618,26 +429,8 @@ export class DefenseScene {
   }
 
   _buildScenery() {
-    const rng = this.run.rng('defense-scenery');
-    const pick = (base, n) => (n > 1 ? rng.pick([base, ...Array.from({ length: n - 1 }, (_, i) => `${base}_${i + 2}`)]) : base);
-    for (const [x, y] of DEFENSE_MAP.trees) this._addVisual(pick('tree', 3), x + 0.5 + rng.range(-0.15, 0.15), y + 0.5);
-    for (const [x, y] of DEFENSE_MAP.rubble) this._addVisual(pick('rubble', 2), x + 0.5, y + 0.5);
-    for (const [x, y] of DEFENSE_MAP.bushes || []) this._addVisual(pick('bush', 2), x + 0.5 + rng.range(-0.2, 0.2), y + 0.5);
+    // Trees, rocks and the jungle border are foliage cards in the ground (DefenseGround); lamps stay sprites.
     for (const [x, y] of DEFENSE_MAP.lamps || []) this._addVisual('lamp_post', x + 0.5, y + 0.5);
-
-    // Border forest outside the field (behind and beside it; sparse in front so it never hides lanes).
-    const W = DEFENSE_MAP.width, H = DEFENSE_MAP.height;
-    const laneRows = DEFENSE_MAP.lanes.map((l) => l.points[0][1] + 0.5);
-    let placed = 0, tries = 0;
-    while (placed < DEFENSE_MAP.borderTrees && tries++ < 2000) {
-      const x = rng.range(-5, W + 4), z = rng.range(-4.5, H + 3);
-      const outside = x < -0.6 || x > W + 0.4 || z < -0.4 || z > H + 1.6;
-      if (!outside) continue;
-      if (z > H && z < H + 1.6) continue;
-      if (x < 0 && laneRows.some((r) => Math.abs(z - r) < 1.6)) continue;
-      this._addVisual(pick('tree', 3), x, z);   // no size jitter: sprites only take whole-number scales
-      placed++;
-    }
   }
 
   _buildCore() {
@@ -1774,6 +1567,7 @@ export class DefenseScene {
         this._step(dt, false);
       }
     }
+    this.ground?.update(dt);
     this._frameVisuals(dt);
     this._updateHints();
   }
