@@ -1,0 +1,19 @@
+{
+  "relay_core": {
+    "file": "relay_core.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 5
+    }
+  }
+}

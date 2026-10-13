@@ -1,0 +1,53 @@
+{
+  "pulse_beacon": {
+    "file": "pulse_beacon.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 6
+    }
+  },
+  "pulse_beacon_2": {
+    "file": "pulse_beacon_2.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 6
+    }
+  },
+  "pulse_beacon_3": {
+    "file": "pulse_beacon_3.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 6
+    }
+  }
+}

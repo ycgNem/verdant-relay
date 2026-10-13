@@ -411,8 +411,7 @@ def resi_floor():
     t.speckle(C["br2"], 0.03, only=C["br1"])
     # plaster dust and a splinter gap
     t.speckle(C["sl2"], 0.015, only=C["br1"])
-    t.hline(4, 7, 23, C["ink"])
-    t.px(5, 24, C["ink"])
+    t.hline(4, 6, 23, C["br0"])
     return t
 
 
@@ -421,7 +420,15 @@ def resi_alt():
     """Faded kitchen tile laid over the floorboards, broken away at the edges."""
     t = resi_floor()
     t.rng.seed(42)
-    m = coverage(t, 42, edge=0.5)
+    m = coverage(t, 42, edge=0.62)
+    for tx, ty in ((3, 0), (1, 2)):                # a couple of tiles prised up
+        for yy in range(ty * 8, ty * 8 + 8):
+            for xx in range(tx * 8, tx * 8 + 8):
+                m[yy][xx] = False
+    for tx, ty in ((1, 1), (2, 1), (1, 3), (2, 2)):  # keep the centre tiled
+        for yy in range(ty * 8, ty * 8 + 8):
+            for xx in range(tx * 8, tx * 8 + 8):
+                m[yy][xx] = True
     for ty in range(4):
         for tx in range(4):
             x0, y0 = tx * 8, ty * 8

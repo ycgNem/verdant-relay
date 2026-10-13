@@ -1,0 +1,17 @@
+{
+  "beacon": {
+    "file": "beacon.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ]
+    },
+    "animFps": {
+      "idle": 3
+    }
+  }
+}

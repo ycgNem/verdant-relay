@@ -14,6 +14,16 @@ CANE = [C["ink"], C["br0"], C["br1"], C["rust"]]   # shadow, stem, lit stem, gli
 THORN = [C["red0"], C["red"]]
 
 
+def bez(p0, p1, p2, n=40):
+    out = []
+    for i in range(n + 1):
+        t = i / n
+        x = (1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * p1[0] + t * t * p2[0]
+        y = (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * p1[1] + t * t * p2[1]
+        out.append((x, y))
+    return out
+
+
 def arc(cx, cy, r, a0, a1, squash=0.75, n=40):
     out = []
     for i in range(n + 1):
@@ -35,7 +45,7 @@ def cane(p, pts, back=False):
     for x, y in seen:
         p.px(x, y, CANE[1] if back else CANE[2])
         if not back and (x, y - 1) not in S:
-            p.px(x, y - 1, CANE[3] if (x + y) % 3 else CANE[2])
+            p.px(x, y - 1, CANE[3] if (x + y) % 3 == 0 else CANE[2])
     step = 7 if back else 5
     for i in range(3, len(seen) - 1, step):
         x, y = seen[i]
@@ -46,7 +56,8 @@ def cane(p, pts, back=False):
             continue
         if up:
             p.px(x, y - 2, THORN[0])
-            p.px(x + dx, y - 3, THORN[1])
+            p.px(x + dx, y - 3, THORN[0])
+            p.px(x + dx, y - 4, THORN[1])
         else:
             p.px(x, y + 2, THORN[0])
             p.px(x - dx, y + 3, THORN[1])
@@ -56,35 +67,23 @@ def cane(p, pts, back=False):
 def bramble():
     p = Pix(32, 32, seed=501)
     # dense dark core of the tangle (canes behind canes)
-    mass = Pix.ellipse_pts(16, 20, 13, 9)
+    mass = Pix.ellipse_pts(16, 26, 11, 4)
     for x, y in mass:
         p.px(x, y, C["ink"] if (x * 3 + y * 5) % 7 < 3 else C["br0"])
-    for c in (arc(12, 22, 10, 190, 350), arc(21, 23, 9, 200, 345), arc(16, 19, 12, 195, 335),
-              arc(16, 27, 12, 200, 340)):
+    for c in (bez((10, 30), (12, 6), (27, 12)), bez((22, 30), (20, 8), (4, 14)),
+              bez((16, 30), (30, 26), (26, 6))):
         cane(p, c, back=True)
-    for c in (arc(10, 26, 8, 185, 330), arc(22, 26, 8, 210, 355), arc(16, 23, 11, 190, 300),
-              arc(19, 21, 9, 235, 350), arc(16, 31, 13, 205, 335)):
+    # four front canes: arching whips with clear gaps between them, hooked at the ends
+    for c in (bez((5, 30), (4, 2), (24, 9)), bez((27, 30), (29, 4), (9, 14)),
+              bez((13, 30), (16, 12), (29, 18)), bez((19, 30), (14, 14), (2, 20))):
         cane(p, c)
-    # big hooked thorns standing out of the silhouette (the 'don't touch' read)
-    import math as _m
-    for i in range(14):
-        a = _m.radians(180 + i * (180 / 13) + p.rng.uniform(-5, 5))
-        x = 16 + _m.cos(a) * 13.5
-        y = 20 + _m.sin(a) * 9.5
-        ox, oy = _m.cos(a), _m.sin(a)
-        p.px(x, y, THORN[0])
-        p.px(x + ox, y + oy, THORN[0])
-        p.px(x + ox * 2 + (1 if ox > 0 else -1) * 0.6, y + oy * 2, THORN[1])
-    for x, y in ((3, 24), (2, 27), (29, 24), (30, 27)):
-        p.px(x, y, THORN[0])
-        p.px(x + (-1 if x < 16 else 1), y - 1, THORN[1])
     # a few dark, ragged leaves
-    for x, y in ((7, 16), (23, 14), (13, 12), (26, 21)):
+    for x, y in ((7, 18), (22, 11), (14, 15), (26, 23)):
         p.px(x, y, C["g1"])
         p.px(x + 1, y, C["g0"])
         p.px(x, y + 1, C["g0"])
     # blood-red berries
-    for x, y in ((11, 15), (21, 18)):
+    for x, y in ((11, 22), (21, 21)):
         p.px(x, y, C["hot"])
         p.px(x + 1, y, C["red0"])
     p.hline(5, 27, 30, CANE[0])

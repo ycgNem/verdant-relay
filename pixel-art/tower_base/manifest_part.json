@@ -1,0 +1,9 @@
+{
+  "tower_base": {
+    "file": "tower_base.png",
+    "ppu": 32,
+    "frames": 1,
+    "flat": true,
+    "shadow": 0
+  }
+}

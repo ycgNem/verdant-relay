@@ -1,9 +1,94 @@
 {
+  "alarm": {
+    "file": "alarm.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ]
+    },
+    "flat": true,
+    "shadow": 0
+  },
+  "bramble": {
+    "file": "bramble.png",
+    "ppu": 32,
+    "frames": 1,
+    "fps": 1,
+    "anims": {
+      "idle": [
+        0
+      ]
+    }
+  },
+  "burrower": {
+    "file": "burrower.png",
+    "ppu": 32,
+    "frames": 8,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "walk": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "burrowed": [
+        6,
+        7
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "walk": 9,
+      "burrowed": 10
+    }
+  },
+  "bush": {
+    "file": "bush.png",
+    "ppu": 32,
+    "frames": 1,
+    "fps": 1,
+    "anims": {
+      "idle": [
+        0
+      ]
+    }
+  },
+  "bush_2": {
+    "file": "bush_2.png",
+    "ppu": 32,
+    "frames": 1,
+    "fps": 1,
+    "anims": {
+      "idle": [
+        0
+      ]
+    }
+  },
   "cache": {
     "file": "cache.png",
     "ppu": 32,
     "frames": 1,
     "fps": 6
+  },
+  "car_wreck": {
+    "file": "car_wreck.png",
+    "ppu": 32,
+    "frames": 1,
+    "fps": 1,
+    "anims": {
+      "idle": [
+        0
+      ]
+    }
   },
   "cell_cache": {
     "file": "cell_cache.png",
@@ -25,6 +110,45 @@
     "frames": 1,
     "fps": 6
   },
+  "colossus": {
+    "file": "colossus.png",
+    "ppu": 32,
+    "frames": 14,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "walk": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "windup": [
+        6,
+        7
+      ],
+      "rooted": [
+        8,
+        9
+      ],
+      "charge": [
+        10,
+        11,
+        12,
+        13
+      ]
+    },
+    "animFps": {
+      "idle": 3,
+      "walk": 6,
+      "windup": 5,
+      "rooted": 4,
+      "charge": 11
+    }
+  },
   "crate": {
     "file": "crate.png",
     "ppu": 32,
@@ -43,6 +167,78 @@
       ]
     },
     "shadow": 0.18
+  },
+  "floor_alt_canopy_greenhouse": {
+    "file": "floor_alt_canopy_greenhouse.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 1
+  },
+  "floor_alt_collapsed_residential": {
+    "file": "floor_alt_collapsed_residential.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 1
+  },
+  "floor_alt_data_center": {
+    "file": "floor_alt_data_center.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 1
+  },
+  "floor_alt_defense": {
+    "file": "floor_alt_defense.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 1
+  },
+  "floor_alt_flooded_transit": {
+    "file": "floor_alt_flooded_transit.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 1
+  },
+  "floor_alt_overgrown_market": {
+    "file": "floor_alt_overgrown_market.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 1
+  },
+  "floor_canopy_greenhouse": {
+    "file": "floor_canopy_greenhouse.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 1
+  },
+  "floor_collapsed_residential": {
+    "file": "floor_collapsed_residential.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 1
+  },
+  "floor_data_center": {
+    "file": "floor_data_center.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 1
+  },
+  "floor_defense": {
+    "file": "floor_defense.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 1
+  },
+  "floor_flooded_transit": {
+    "file": "floor_flooded_transit.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 1
+  },
+  "floor_overgrown_market": {
+    "file": "floor_overgrown_market.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 1
   },
   "fuse": {
     "file": "fuse.png",
@@ -68,6 +264,24 @@
         1
       ]
     }
+  },
+  "lamp_post": {
+    "file": "lamp_post.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 6,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ]
+    }
+  },
+  "lane_defense": {
+    "file": "lane_defense.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 1
   },
   "locked_cache": {
     "file": "locked_cache.png",
@@ -210,6 +424,113 @@
       ]
     }
   },
+  "rubble": {
+    "file": "rubble.png",
+    "ppu": 32,
+    "frames": 1,
+    "fps": 1,
+    "anims": {
+      "idle": [
+        0
+      ]
+    }
+  },
+  "rubble_2": {
+    "file": "rubble_2.png",
+    "ppu": 32,
+    "frames": 1,
+    "fps": 1,
+    "anims": {
+      "idle": [
+        0
+      ]
+    }
+  },
+  "ruin_guard": {
+    "file": "ruin_guard.png",
+    "ppu": 32,
+    "frames": 8,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "walk": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "attack": [
+        6,
+        7
+      ]
+    },
+    "animFps": {
+      "idle": 3,
+      "walk": 7,
+      "attack": 6
+    }
+  },
+  "seed_carrier": {
+    "file": "seed_carrier.png",
+    "ppu": 32,
+    "frames": 6,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "walk": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "animFps": {
+      "idle": 3,
+      "walk": 8
+    }
+  },
+  "seedling": {
+    "file": "seedling.png",
+    "ppu": 32,
+    "frames": 6,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "walk": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "animFps": {
+      "idle": 4,
+      "walk": 10
+    }
+  },
+  "spores": {
+    "file": "spores.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 3,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ]
+    },
+    "flat": true,
+    "shadow": 0
+  },
   "surge_box": {
     "file": "surge_box.png",
     "ppu": 32,
@@ -229,6 +550,18 @@
       "off": 3
     }
   },
+  "survivor": {
+    "file": "survivor.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 4,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ]
+    }
+  },
   "terminal": {
     "file": "terminal.png",
     "ppu": 32,
@@ -244,6 +577,87 @@
         3
       ]
     }
+  },
+  "tree": {
+    "file": "tree.png",
+    "ppu": 32,
+    "frames": 1,
+    "fps": 1,
+    "anims": {
+      "idle": [
+        0
+      ]
+    }
+  },
+  "tree_2": {
+    "file": "tree_2.png",
+    "ppu": 32,
+    "frames": 1,
+    "fps": 1,
+    "anims": {
+      "idle": [
+        0
+      ]
+    }
+  },
+  "tree_3": {
+    "file": "tree_3.png",
+    "ppu": 32,
+    "frames": 1,
+    "fps": 1,
+    "anims": {
+      "idle": [
+        0
+      ]
+    }
+  },
+  "wall_block": {
+    "file": "wall_block.png",
+    "ppu": 32,
+    "frames": 1,
+    "fps": 1,
+    "anims": {
+      "idle": [
+        0
+      ]
+    }
+  },
+  "wall_canopy_greenhouse": {
+    "file": "wall_canopy_greenhouse.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 1
+  },
+  "wall_collapsed_residential": {
+    "file": "wall_collapsed_residential.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 1
+  },
+  "wall_data_center": {
+    "file": "wall_data_center.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 1
+  },
+  "wall_flooded_transit": {
+    "file": "wall_flooded_transit.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 1
+  },
+  "wall_overgrown_market": {
+    "file": "wall_overgrown_market.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 1
+  },
+  "water": {
+    "file": "water.png",
+    "ppu": 32,
+    "tile": true,
+    "frames": 2,
+    "fps": 2
   },
   "workbench": {
     "file": "workbench.png",

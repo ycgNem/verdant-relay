@@ -1,0 +1,19 @@
+{
+  "burrower": { "file": "burrower.png", "ppu": 32, "frames": 8, "fps": 8,
+                "anims": { "idle": [0, 1], "walk": [2, 3, 4, 5], "burrowed": [6, 7] },
+                "animFps": { "idle": 5, "walk": 9, "burrowed": 10 } },
+  "seed_carrier": { "file": "seed_carrier.png", "ppu": 32, "frames": 6, "fps": 8,
+                    "anims": { "idle": [0, 1], "walk": [2, 3, 4, 5] },
+                    "animFps": { "idle": 3, "walk": 8 } },
+  "seedling": { "file": "seedling.png", "ppu": 32, "frames": 6, "fps": 8,
+                "anims": { "idle": [0, 1], "walk": [2, 3, 4, 5] },
+                "animFps": { "idle": 4, "walk": 10 } },
+  "ruin_guard": { "file": "ruin_guard.png", "ppu": 32, "frames": 8, "fps": 8,
+                  "anims": { "idle": [0, 1], "walk": [2, 3, 4, 5], "attack": [6, 7] },
+                  "animFps": { "idle": 3, "walk": 7, "attack": 6 } },
+  "colossus": { "file": "colossus.png", "ppu": 32, "frames": 14, "fps": 8,
+                "anims": { "idle": [0, 1], "walk": [2, 3, 4, 5], "windup": [6, 7], "rooted": [8, 9], "charge": [10, 11, 12, 13] },
+                "animFps": { "idle": 3, "walk": 6, "windup": 5, "rooted": 4, "charge": 11 } },
+  "survivor": { "file": "survivor.png", "ppu": 32, "frames": 2, "fps": 4,
+                "anims": { "idle": [0, 1] } }
+}

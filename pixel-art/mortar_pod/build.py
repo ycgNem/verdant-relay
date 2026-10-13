@@ -66,7 +66,7 @@ def pod(c, lv, squash=0, swell=0, burn=False, hot=True):
     c.pattern(CX + rx - 2, by - 2, [".g.", ".gd", "gd."], {"g": "#3e8948", "d": "#265c42"})
     # top stem-scar and specular
     c.pts([(CX - 1, cy - ry), (CX, cy - ry), (CX - 1, cy - ry + 1)], "#733e39")
-    c.pts([(CX - rx + 3, cy - 3), (CX - rx + 3, cy - 2), (CX - rx + 4, cy - 4)], "#ead4aa")
+    c.pts([(CX - rx + 3, cy - 3), (CX - rx + 4, cy - 4)], "#ead4aa")
     # moss/lichen spots
     c.pts([(CX + 3, cy + 3), (CX + 4, cy + 3), (CX - 5, cy + 4)], "#3e8948")
     if burn:
@@ -96,7 +96,23 @@ def barrel(c, lv, recoil=0, hot=False):
         for x in range(bx - th, bx + L + th + 2):
             sx = (x - bx) - (y - by)
             v = (x - bx) + (y - by)
-            if not (-1 <= v <= th) or not (0 <= sx <= 2 * L):
+            if not (-1 <= v <= th) or not (-3 <= sx <= 2 * L):
+                continue
+            if sx < 0:
+                # husk lip swelling around the socket
+                if 0 <= v <= th - 1 and sx >= -2:
+                    c.px(x, y, POD[2] if v < th // 2 else POD[1])
+                continue
+            if sx <= 2:
+                # steel socket collar, rivets on the lit side
+                col = STEEL[3] if v <= 1 else (STEEL[2] if v < th - 2 else STEEL[0])
+                if v == -1:
+                    col = STEEL[3]
+                if v == th:
+                    col = STEEL[0]
+                if sx == 1 and v in (1, th // 2 + 1):
+                    col = STEEL[4]
+                c.px(x, y, col)
                 continue
             ring = sx >= 2 * L - 3
             band = any(b0 <= sx <= b0 + 1 for b0 in bands)
@@ -164,7 +180,6 @@ def frame(lv, mode, k):
     burn = lv == 3
     hot_idle = not (mode == "idle" and k == 1)
     pod(c, lv, squash=squash, swell=swell, burn=burn, hot=hot_idle)
-    strap(c, lv, squash)
     tip = barrel(c, lv, recoil=recoil, hot=burn)
     if mode == "idle" and k == 1:
         # breathing: pod top bulges 1px (redraw a lighter crown)
@@ -174,6 +189,14 @@ def frame(lv, mode, k):
     if lv >= 2:
         seed_pouch(c, lv)
     c.outline()
+    if lv == 3 and mode == "idle":
+        tx, ty = int(round(tip[0])), int(round(tip[1]))
+        c.fx()
+        if k == 0:
+            c.pts([(tx - 1, ty + 1), (tx, ty)], FIRE[2]); c.px(tx, ty - 1, FIRE[3])
+        else:
+            c.pts([(tx - 1, ty + 1), (tx - 1, ty)], FIRE[1]); c.px(tx, ty, FIRE[2])
+        c.body()
     if mode == "attack":
         tx, ty = int(round(tip[0])), int(round(tip[1]))
         if k == 0:
