@@ -1,15 +1,103 @@
-/* Jungle exploration HUD additions (the base layout is explore.css). */
+/* Jungle exploration HUD (the shared x-* pieces live in explore.css).
+   Layout rule: the HUD hugs the corners and the edges so the fight around the player stays clear —
+   one compact panel top-left, a small round minimap top-right, one slim objective strip at the bottom.
+   Sizes are calc(var(--u) * N) (N px on a 960-wide stage), so the layout follows the stage, not the
+   internal render resolution. */
 
-.j-stambar { flex: 1; height: calc(var(--u) * 10); }
-.j-st { color: var(--amber); }
-
-/* Sun dial above the day timer: daylight drains away. */
-.j-sun {
-  position: relative; width: calc(var(--u) * 120); height: calc(var(--u) * 6); margin: 0 auto calc(var(--u) * 4);
-  background: #181425; border: calc(var(--u) * 1) solid #3a4466; border-radius: calc(var(--u) * 2); overflow: hidden;
+/* ---- top-left: HP, stamina + med kits, carried loot */
+.j-tl {
+  position: absolute; left: calc(var(--u) * 8); top: calc(var(--u) * 8); width: calc(var(--u) * 168);
+  padding: calc(var(--u) * 4) calc(var(--u) * 6); background: rgba(24, 20, 37, 0.72);
 }
-.j-sunfill { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #e4743b, #fee761); }
+.j-row { display: flex; align-items: center; gap: calc(var(--u) * 4); margin-bottom: calc(var(--u) * 3); }
+.j-row .x-lbl { width: calc(var(--u) * 16); font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); }
+.j-tl .x-hpbar { height: calc(var(--u) * 12); min-width: 0; }
+.j-tl .x-hpbar .barlbl { font-size: max(var(--fq), round(calc(var(--u) * 9 - 0.01px), var(--fq))); }
+.j-stambar { flex: 1; height: calc(var(--u) * 8); min-width: 0; }
+.j-st { color: var(--amber); }
+.j-meds { display: inline-flex; align-items: center; gap: calc(var(--u) * 1); font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); }
+.j-lootrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: calc(var(--u) * 3); }
+.x-res.j-res { padding: calc(var(--u) * 1) calc(var(--u) * 3); gap: calc(var(--u) * 2); font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); }
+
+/* ---- top-right corner: round minimap; its ring is the daylight left (--day 1 → 0) */
+.j-tr {
+  position: absolute; right: calc(var(--u) * 8); top: calc(var(--u) * 8); width: calc(var(--u) * 96);
+  display: flex; flex-direction: column; align-items: center; text-shadow: 1px 1px 0 #000;
+}
+.j-ring {
+  --day: 1; position: relative; width: calc(var(--u) * 96); height: calc(var(--u) * 96); border-radius: 50%; box-sizing: border-box;
+  padding: calc(var(--u) * 3);
+  background: conic-gradient(#fee761 calc(var(--day) * 360deg), rgba(24, 20, 37, 0.85) 0);
+  box-shadow: 0 0 0 calc(var(--u) * 1) #181425;
+}
+.j-ring.amber { background: conic-gradient(var(--amber) calc(var(--day) * 360deg), rgba(24, 20, 37, 0.85) 0); }
+.j-ring.bad { background: rgba(228, 59, 68, 0.75); }
+.j-mini {
+  display: block; width: 100%; height: 100%; border-radius: 50%; image-rendering: pixelated;
+  opacity: 0.86; background: rgba(11, 10, 18, 0.55);
+}
+.j-tabkey {
+  position: absolute; left: calc(var(--u) * -4); bottom: calc(var(--u) * -2); margin: 0;
+  font-size: max(var(--fq), round(calc(var(--u) * 8 - 0.01px), var(--fq))); background: #181425;
+}
+.j-time { margin-top: calc(var(--u) * 2); font-size: max(var(--fq), round(calc(var(--u) * 16 - 0.01px), var(--fq))); line-height: 1.1; }
+.j-district {
+  max-width: calc(var(--u) * 110); text-align: center; line-height: 1.2; color: #a9b6cc;
+  font-size: max(var(--fq), round(calc(var(--u) * 8 - 0.01px), var(--fq)));
+  text-shadow: 1px 0 0 #181425, -1px 0 0 #181425, 0 1px 0 #181425, 0 -1px 0 #181425;
+}
 .x-time.amber { color: var(--amber); }
 .x-time.bad { color: var(--danger); }
 
-.jungle-ui .x-bigcanvas { image-rendering: pixelated; display: block; margin: 0 auto; }
+/* ---- bottom: one slim objective strip */
+.j-strip {
+  position: absolute; left: 50%; bottom: calc(var(--u) * 6); transform: translateX(-50%);
+  display: flex; align-items: center; gap: calc(var(--u) * 8); max-width: calc(var(--u) * 620); white-space: nowrap;
+  padding: calc(var(--u) * 2) calc(var(--u) * 8); background: rgba(24, 20, 37, 0.7);
+  border: calc(var(--u) * 1) solid #3a4466; border-radius: calc(var(--u) * 3);
+  font-size: max(var(--fq), round(calc(var(--u) * 10.5 - 0.01px), var(--fq))); text-shadow: 1px 1px 0 #000;
+}
+.j-objk { color: var(--amber); font-size: max(var(--fq), round(calc(var(--u) * 8 - 0.01px), var(--fq))); letter-spacing: round(0.1em, var(--fpx)); }
+.j-step { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.j-step .x-step { color: var(--text); }
+.x-step.claim { color: var(--good); text-decoration: none; }
+.j-dir { display: inline-flex; align-items: center; gap: calc(var(--u) * 3); }
+.j-dir.obj { color: var(--amber); }
+.j-dir.ext { color: var(--accent); padding-left: calc(var(--u) * 8); border-left: 1px solid #3a4466; }
+.j-dir .x-dirarrow { font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); color: inherit; }
+.j-opts { color: #c47bff; }
+.j-opts:empty { display: none; }
+
+/* The interaction prompt sits just above the strip. */
+.jungle-ui .x-prompt { bottom: calc(var(--u) * 34); }
+
+/* Off-screen arrows: positioned by their top-left corner (JungleScene._edgeArrow). */
+.jungle-ui .x-edge { width: calc(var(--u) * 34); height: calc(var(--u) * 34); }
+
+/* Banners stay in the middle band, clear of the corner HUD. */
+.jungle-ui .x-banner { max-width: calc(var(--u) * 600); }
+
+/* ---- big map (Tab): the day is paused while it is open */
+.jungle-ui .x-bigmap { cursor: default; }
+.jungle-ui .x-bigbox { width: calc(var(--u) * 760); max-width: 96%; padding: calc(var(--u) * 8) calc(var(--u) * 10); box-sizing: border-box; }
+.jungle-ui .x-bigtitle { align-self: stretch; margin-bottom: calc(var(--u) * 5); }
+.jungle-ui .x-bigcanvas {
+  width: 100%; height: calc(var(--u) * 360); image-rendering: pixelated; display: block; cursor: grab; touch-action: none;
+  border: calc(var(--u) * 1) solid #3a4466; box-sizing: border-box;
+}
+.jungle-ui .x-bigcanvas.drag { cursor: grabbing; }
+.j-paused {
+  color: var(--amber); font-size: max(var(--fq), round(calc(var(--u) * 9 - 0.01px), var(--fq))); letter-spacing: round(0.1em, var(--fpx));
+  border: 1px solid var(--amber); border-radius: calc(var(--u) * 2); padding: 0 calc(var(--u) * 4);
+}
+.j-bigfoot {
+  align-self: stretch; display: flex; justify-content: space-between; align-items: flex-start; gap: calc(var(--u) * 10);
+  margin-top: calc(var(--u) * 5); font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq)));
+}
+.j-bigsteps { line-height: 1.35; }
+.j-bighelp { text-align: right; white-space: nowrap; }
+.jungle-ui .x-legend { width: auto; align-self: stretch; justify-content: flex-start; }
+.x-legicon { width: calc(var(--u) * 12); height: calc(var(--u) * 12); image-rendering: pixelated; }
+/* While the big map is open the world is frozen: hide the live overlays that would sit on top of it. */
+.j-mapopen .toasts, .j-mapopen .x-edge, .j-mapopen .x-prompt, .j-mapopen .hint { visibility: hidden; }
+.j-tl, .j-tr, .j-strip { transition: opacity 0.15s steps(2); }

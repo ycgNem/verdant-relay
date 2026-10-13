@@ -14,9 +14,19 @@
   --amber: #feae34;
   --leaf: #3e8948;
   /* Pixel fonts (Google Fonts, linked in index.html); the monospace stack is the offline fallback. */
-  --font: 'Tiny5', 'Consolas', 'Courier New', monospace;            /* body + HUD (8 px grid) */
+  --font: 'VR Glyphs', 'Tiny5', 'Consolas', 'Courier New', monospace;   /* body + HUD (8 px grid) */
   --font-display: 'Silkscreen', 'Tiny5', 'Consolas', monospace;      /* logo + headlines (chunky caps) */
   --font-label: 'Silkscreen', 'Tiny5', 'Consolas', monospace;        /* small uppercase labels (8 px grid) */
+}
+
+/* Glyph fixes for Tiny5 (critic F #15): "~" (a flat dash in Tiny5), "8" (reads as a theta) and "4", redrawn
+   on Tiny5's exact pixel grid by tools/make_glyph_font.py. unicode-range keeps every other character on
+   Tiny5 (and Tiny5's line metrics, since this face has no space). */
+@font-face {
+  font-family: 'VR Glyphs';
+  src: url('./fonts/vr-glyphs.ttf') format('truetype');
+  unicode-range: U+0038, U+007E;
+  font-display: block;
 }
 
 * { box-sizing: border-box; }

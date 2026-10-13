@@ -7,7 +7,8 @@ export const SKILLS = {
   // Scavenger
   pack_rat_1: { branch: 'Scavenger', name: 'Pack Rat I', desc: 'Loot magnet radius +50%.' },
   pack_rat_2: { branch: 'Scavenger', name: 'Pack Rat II', desc: 'Containers yield 10% more Scrap.', req: 'pack_rat_1' },
-  safe_hands: { branch: 'Scavenger', name: 'Safe Hands', desc: 'Ignore the first hazard hit each expedition.' },
+  // Safe Hands: spore clouds (SPORES in src/data/jungle.js: safeHands) hurt half as much and don't drain stamina.
+  safe_hands: { branch: 'Scavenger', name: 'Safe Hands', desc: 'Spore clouds deal half damage and no longer drain your stamina.' },
   field_medic: { branch: 'Scavenger', name: 'Field Medic', desc: 'Start each expedition carrying a med kit.' },
   quick_extraction: { branch: 'Scavenger', name: 'Quick Extraction', desc: 'Extraction and objectives are 25% faster to interact with.' },
   lush_finds: { branch: 'Scavenger', name: 'Lush Finds', desc: 'Higher chance of Biofiber in containers.' },

@@ -122,7 +122,7 @@ Pushing to `main` runs `.github/workflows/deploy.yml`, which builds with Vite an
 - [x] Open-world day: objectives at sites, pylons as return/drop points, supplies, wildlife per chunk, dusk hunters
 - [x] Screen-space lighting, ambience, foreground leaves; menus and night map use the jungle renderer
 - [x] PixelLab environment art (terrain, undergrowth, trees, ruins, props, decals)
-- [ ] PixelLab character art (player 8-way with slash/chop/roll, creatures)
+- [x] PixelLab character art (player 8-way with slash/chop/roll, creatures)
 - [ ] Critic playtest + fixes on the new loop; balance pass (day length, wildlife, economy)
 
 ## Acceptance checklist

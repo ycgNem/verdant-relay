@@ -10,9 +10,12 @@
 //   · ambient occlusion pools under trees, ruins and thickets (dithered, 3 steps)
 //   · ground detail is scattered on top: dec_* sprites from the manifest, plus procedural leaf litter,
 //     twigs, pebbles and flowers drawn texel by texel
+//   · ruin paving is broken up so its 32-px slab motif never reads as a grid (PAVING, critic F #13):
+//     world-space noise blobs that ignore tile borders punch out missing slabs (soil showing, shadowed
+//     north lip, lit south edge), spread moss over the stone and stain it; then cracks and rubble.
 // Canopy shade, sun dapples and colour grading are applied later, in screen space (src/core/PostFx.js).
 
-import { LEVEL, BRUSH, JUNGLE } from '../data/jungle.js';
+import { LEVEL, BRUSH, JUNGLE, PAVING } from '../data/jungle.js';
 import { makeNoise, hash2 } from './noise.js';
 
 export const CHUNK_PX = JUNGLE.chunk * 32;
@@ -147,6 +150,7 @@ export class TerrainBaker {
       this.tex[kind] = art ? tileArt(art) : { data: makeTexture(kind, (world.seed + kind.length * 977) >>> 0), w: TEX, h: TEX };
     }
     this.decals = this._collectDecals();
+    this.paveNoise = makeNoise((world.seed ^ 0x2c1b3c6d) >>> 0);
     // Per-pixel blend noise: a 256 × 256 tileable field mixing two frequencies (edges wander at the
     // tile scale, with small bites at the 3–4 texel scale).
     const n1 = periodicNoise(world.seed ^ 0x1234, 16), n2 = periodicNoise(world.seed ^ 0x9876, 64);
@@ -211,6 +215,20 @@ export class TerrainBaker {
     // Ambient occlusion field at 4 texels per cell.
     const ao = this._aoField(cx, cz);
     const AOW = P / 4 + 1;
+    const pf = this._paveField(cx, cz);
+    // Paving state of texel (x, y) (chunk coords, may be -1 / P): 0 stone, 1 missing slab, 2 moss.
+    const PV = PAVING;
+    const paveAt = (x, y) => {
+      if (y < -1) y = -1;   // (the level border is one texel wide)
+      if (lv[(y + 1) * B + x + 1] !== 5) return -1;
+      const xx = Math.max(0, Math.min(P - 1, x)), yy = Math.max(0, Math.min(P - 1, y));
+      const ax = xx >> 2, ay = yy >> 2, fx = (xx & 3) / 4, fy = (yy & 3) / 4;
+      const j = this.blend[(((oy + y) & 255) << 8) | ((ox + x) & 255)] * PV.edgeNoise;
+      const lerp = (F) => (F[ay * AOW + ax] * (1 - fx) + F[ay * AOW + ax + 1] * fx) * (1 - fy) + (F[(ay + 1) * AOW + ax] * (1 - fx) + F[(ay + 1) * AOW + ax + 1] * fx) * fy;
+      if (lerp(pf.hole) + j > PV.hole) return 1;
+      if (lerp(pf.moss) + j + (BAYER4[(y & 3) * 4 + (x & 3)] - 0.5) * PV.mossDither > PV.moss) return 2;
+      return 0;
+    };
     // Pass 2: texture + edges + AO.
     const img = g.createImageData(P, P);
     const D = img.data;
@@ -229,7 +247,32 @@ export class TerrainBaker {
         const up = order[lv[y * B + x + 1]], down = order[lv[(y + 2) * B + x + 1]];
         const left = order[lv[(y + 1) * B + x]], right = order[lv[(y + 1) * B + x + 2]];
         let m = 1;
-        if (k === 0 && (up > 0 || left > 0 || right > 0 || down > 0)) { r = foam[0]; gg = foam[1]; b = foam[2]; }
+        let paved = false;
+        if (k === 5) {
+          const pv = paveAt(x, y);
+          if (pv === 1) {
+            // Missing slab: soil shows through; the slab edge north of it casts a 2-texel shadow.
+            const ft = this.tex.floor, fi = ((wy % ft.h) * ft.w + (wx % ft.w)) * 4;
+            r = ft.data[fi]; gg = ft.data[fi + 1]; b = ft.data[fi + 2];
+            m = paveAt(x, y - 1) !== 1 || paveAt(x, y - 2) !== 1 ? 0.45 : 0.8;
+            paved = true;
+          } else {
+            if (pv === 2) {
+              const mt = this.tex.moss, mi = ((wy % mt.h) * mt.w + (wx % mt.w)) * 4;
+              r = mt.data[mi]; gg = mt.data[mi + 1]; b = mt.data[mi + 2];
+            } else {
+              // Stains: low-frequency discolouration in 2 dithered steps (crosses slab borders).
+              const ax = x >> 2, ay = y >> 2;
+              const st = pf.stain[ay * AOW + ax];
+              const q = Math.floor(st * 2 + BAYER4[(y & 3) * 4 + (x & 3)]);
+              const f = q <= 0 ? 1 - PV.stain : q >= 2 ? 1 + PV.stain * 0.5 : 1;
+              r *= f; gg *= f * (q <= 0 ? 1.04 : 1); b *= f * (q <= 0 ? 0.92 : 1);
+            }
+            if (paveAt(x, y - 1) === 1) { m = 1.3; paved = true; }   // lit broken edge south of a hole
+          }
+        }
+        if (paved) { /* hole shading done */ }
+        else if (k === 0 && (up > 0 || left > 0 || right > 0 || down > 0)) { r = foam[0]; gg = foam[1]; b = foam[2]; }
         else if (up < h) m = 1.22;                       // lit north rim of higher ground
         else if (down < h) m = 0.62;                     // shaded south step
         else if (left < h && h > 1) m = 1.1;
@@ -248,7 +291,54 @@ export class TerrainBaker {
     g.putImageData(img, 0, 0);
     // Pass 3: ground detail.
     this._scatter(g, cx, cz, lv, B);
+    this._ruinDetail(g, cx, cz, lv, B, paveAt);
     return c;
+  }
+
+  /** Low-frequency fields for broken paving at 4 texels per cell: { hole, moss, stain } (0..1). */
+  _paveField(cx, cz) {
+    const P = CHUNK_PX, N = P / 4 + 1, n = this.paveNoise, sc = PAVING.scale;
+    const hole = new Float32Array(N * N), moss = new Float32Array(N * N), stain = new Float32Array(N * N);
+    const x0 = cx * JUNGLE.chunk, z0 = cz * JUNGLE.chunk;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const x = x0 + i / 8, z = z0 + j / 8;
+      hole[j * N + i] = n.fbm(x * sc, z * sc, 3);
+      moss[j * N + i] = n.fbm(x * sc * 0.8 + 71.3, z * sc * 0.8 - 17.9, 3);
+      stain[j * N + i] = n.fbm(x * sc * 1.6 - 40.1, z * sc * 1.6 + 93.7, 2);
+    }
+    return { hole, moss, stain };
+  }
+
+  /** Cracks and rubble on ruin paving (texel-level, deterministic per chunk). */
+  _ruinDetail(g, cx, cz, lv, B, paveAt) {
+    const P = CHUNK_PX, seed = this.world.seed;
+    const stone = (x, y) => x >= 0 && y >= 0 && x < P && y < P && paveAt(x, y) === 0;
+    // Cracks: wandering 1-texel dark lines with a lit texel beside them, often across slab borders.
+    for (let k = 0, made = 0; k < PAVING.cracks * 8 && made < PAVING.cracks; k++) {
+      let x = Math.floor(hash2(cx * 53 + k, cz, seed + 41) * P), y = Math.floor(hash2(cx, cz * 53 + k, seed + 42) * P);
+      if (!stone(x, y)) continue;
+      made++;
+      const len = 8 + Math.floor(hash2(k, cx + cz, seed + 43) * 22);
+      let dx = hash2(k, 1, seed + 44) < 0.5 ? 1 : -1;
+      for (let s = 0; s < len; s++) {
+        if (!stone(x, y)) break;
+        g.fillStyle = '#1b1d1c'; g.fillRect(x, y, 1, 1);
+        if (stone(x + 1, y)) { g.fillStyle = '#7a8176'; g.fillRect(x + 1, y, 1, 1); }
+        const r = hash2(k * 97 + s, cx * 7 + cz, seed + 45);
+        if (r < 0.45) y += 1; else if (r < 0.85) x += dx; else { x += dx; y += 1; }
+        if (r > 0.97) dx = -dx;
+      }
+    }
+    // Rubble: 2–4 texel concrete chips, lit top-left, dark bottom-right.
+    for (let k = 0, made = 0; k < PAVING.rubble * 8 && made < PAVING.rubble; k++) {
+      const x = Math.floor(hash2(cx * 71 + k, cz, seed + 51) * P), y = Math.floor(hash2(cx, cz * 71 + k, seed + 52) * P);
+      if (lv[(y + 1) * B + x + 1] !== 5) continue;
+      made++;
+      const w = 2 + Math.floor(hash2(k, 3, seed + 53) * 3), h = 1 + Math.floor(hash2(k, 4, seed + 54) * 2);
+      g.fillStyle = '#121413'; g.fillRect(x + 1, y + 1, w, h);
+      g.fillStyle = '#5b625a'; g.fillRect(x, y, w, h);
+      g.fillStyle = '#878f83'; g.fillRect(x, y, w - 1, 1);
+    }
   }
 
   _aoField(cx, cz) {

@@ -10,27 +10,15 @@
   padding: calc(var(--u) * 6) calc(var(--u) * 8);
   text-shadow: 1px 1px 0 #000;
 }
-.x-title { font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); letter-spacing: round(0.08em, var(--fpx)); color: var(--muted); margin-bottom: calc(var(--u) * 3); }
+
 .x-row { display: flex; align-items: center; gap: calc(var(--u) * 6); margin-bottom: calc(var(--u) * 4); }
 .x-lbl { font-weight: bold; color: var(--good); font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 
-/* ---- top-left: health, meds, cooldowns, carried loot */
-.x-tl { position: absolute; left: calc(var(--u) * 10); top: calc(var(--u) * 10); width: calc(var(--u) * 250); }
+/* ---- health bar, chips, carried-loot chips (laid out by jungle.css) */
 .x-hpbar { flex: 1; height: calc(var(--u) * 16); }
 .x-hpbar .barlbl { font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); }
 .x-chip { font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); white-space: nowrap; }
-.x-cd {
-  position: relative; flex: 1; height: calc(var(--u) * 16); background: #181425; border: calc(var(--u) * 1) solid #3a4466;
-  border-radius: calc(var(--u) * 2); overflow: hidden; display: grid; place-items: center;
-}
-.x-cd-fill { position: absolute; left: 0; top: 0; bottom: 0; background: #3a4466; }
-.x-cd.ready .x-cd-fill { background: #265c42; }
-.x-cd.ready { border-color: var(--good); }
-.x-cd-l { position: relative; font-size: max(var(--fq), round(calc(var(--u) * 9.5 - 0.01px), var(--fq))); color: var(--text); white-space: nowrap; }
-.x-weapon { margin-top: calc(var(--u) * 1); }
 
-.x-loot { position: absolute; left: calc(var(--u) * 10); top: calc(var(--u) * 92); width: calc(var(--u) * 250); }
-.x-lootrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: calc(var(--u) * 4); }
 .x-res {
   display: flex; align-items: center; gap: calc(var(--u) * 3); color: var(--c); font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq)));
   background: rgba(58, 68, 102, 0.35); border-radius: calc(var(--u) * 2); padding: calc(var(--u) * 2) calc(var(--u) * 4);
@@ -42,31 +30,15 @@
 .x-res.bump { animation: x-bump 0.35s ease-out; }
 @keyframes x-bump { 0% { transform: scale(1.35); background: rgba(254, 174, 52, 0.45); } 100% { transform: scale(1); } }
 
-/* ---- top-centre: timer */
-.x-timer { position: absolute; left: 50%; top: calc(var(--u) * 8); transform: translateX(-50%); text-align: center; text-shadow: 2px 2px 0 #000; }
+/* ---- clock */
 .x-time { font-size: max(var(--fq), round(calc(var(--u) * 26 - 0.01px), var(--fq))); font-weight: bold; letter-spacing: round(0.05em, var(--fpx)); }
-.x-timesub { font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); color: var(--muted); }
 
-/* ---- top-right: minimap above the objective panel (one column, so they never overlap) */
-.x-tr {
-  position: absolute; right: calc(var(--u) * 10); top: calc(var(--u) * 10); width: calc(var(--u) * 240);
-  display: flex; flex-direction: column; align-items: stretch; gap: calc(var(--u) * 6);
-}
-.x-minibox { text-align: right; }
-.x-mini {
-  display: block; width: 100%; box-sizing: border-box; image-rendering: pixelated; background: rgba(11, 10, 18, 0.75);
-  border: calc(var(--u) * 2) solid #3a4466; box-shadow: 0 0 0 calc(var(--u) * 1) #181425; border-radius: calc(var(--u) * 2);
-}
-.x-minihint { font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); color: var(--muted); margin-top: calc(var(--u) * 3); text-shadow: 1px 1px 0 #000; line-height: 1.4; }
-
-.x-obj { box-sizing: border-box; width: 100%; font-size: max(var(--fq), round(calc(var(--u) * 11.5 - 0.01px), var(--fq))); }
-.x-objtitle { font-size: max(var(--fq), round(calc(var(--u) * 13 - 0.01px), var(--fq))); color: var(--amber); font-weight: bold; margin-bottom: calc(var(--u) * 3); }
+/* ---- objective steps and direction arrows */
 .x-step { line-height: 1.35; color: var(--muted); }
 .x-step.cur { color: var(--text); }
 .x-step.done { color: var(--good); text-decoration: line-through; text-decoration-color: rgba(99, 199, 77, 0.5); }
-.x-extract { margin-top: calc(var(--u) * 5); padding-top: calc(var(--u) * 4); border-top: 1px solid #3a4466; display: flex; align-items: center; gap: calc(var(--u) * 5); }
+
 .x-dirarrow { display: inline-block; color: var(--accent); font-size: max(var(--fq), round(calc(var(--u) * 14 - 0.01px), var(--fq))); }
-.x-optlist:not(:empty) { margin-top: calc(var(--u) * 5); padding-top: calc(var(--u) * 4); border-top: 1px solid #3a4466; }
 
 /* ---- bottom-centre: interaction prompt */
 .x-prompt {
@@ -87,12 +59,6 @@
 .x-ring .key { margin: 0; background: #181425; min-width: calc(var(--u) * 16); text-align: center; }
 .x-ptime { color: var(--amber); font-weight: bold; font-variant-numeric: tabular-nums; }
 .x-ptime:empty { display: none; }
-.x-card {
-  background: rgba(24, 20, 37, 0.92); border: calc(var(--u) * 2) solid #5a6988; border-radius: calc(var(--u) * 3);
-  padding: calc(var(--u) * 5) calc(var(--u) * 10); font-size: max(var(--fq), round(calc(var(--u) * 11.5 - 0.01px), var(--fq))); max-width: calc(var(--u) * 380); line-height: 1.4;
-  text-shadow: 1px 1px 0 #000;
-}
-.x-cardt { color: var(--amber); font-weight: bold; margin-bottom: calc(var(--u) * 2); }
 
 /* ---- off-screen direction arrows */
 .x-edge {
@@ -105,11 +71,6 @@
 @keyframes x-threat { from { opacity: 1; } to { opacity: 0.45; } }
 @keyframes x-pulse { from { opacity: 0.65; } to { opacity: 1; } }
 
-.x-vignette {
-  position: absolute; inset: 0; pointer-events: none; opacity: 0;
-  box-shadow: inset 0 0 calc(var(--u) * 120) calc(var(--u) * 30) rgba(228, 59, 68, 0.7);
-}
-
 /* ---- big map (Tab) */
 .x-bigmap { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(11, 10, 18, 0.55); z-index: 25; }
 .x-bigbox { padding: calc(var(--u) * 10) calc(var(--u) * 12); }
@@ -118,7 +79,6 @@
 .x-bigcanvas { display: block; width: calc(var(--u) * 636); image-rendering: pixelated; background: rgba(11, 10, 18, 0.8); }
 .x-legend { display: flex; flex-wrap: wrap; gap: calc(var(--u) * 4) calc(var(--u) * 12); margin-top: calc(var(--u) * 6); font-size: max(var(--fq), round(calc(var(--u) * 10.5 - 0.01px), var(--fq))); }
 .x-leg { display: inline-flex; align-items: center; gap: calc(var(--u) * 4); }
-.x-leg i { display: inline-block; width: calc(var(--u) * 9); height: calc(var(--u) * 9); border: 1px solid #181425; }
 
 /* ---- banners */
 .x-banner {
@@ -133,8 +93,7 @@
 .explore-ui .overlay { cursor: default; }
 
 /* ---- juice / readability */
-/* Panels fade while a threat is behind them (ExploreScene._fadeHudOverThreats). */
-.x-tl, .x-loot, .x-timer, .x-tr { transition: opacity 0.15s steps(2); }
+/* HUD boxes fade while a threat is behind them (JungleScene._fadeHudOverThreats). */
 .x-fade { opacity: 0.22; }
 /* Paused: the world prompt dims with the world. */
 .x-hud.paused .x-prompt, .x-hud.paused .x-edge { opacity: 0.35; animation: none; }
@@ -147,7 +106,4 @@
 .x-bigtitle { align-self: stretch; }
 .x-legend { width: calc(var(--u) * 636); justify-content: center; }
 
-.x-title .muted { font-family: var(--font); letter-spacing: 0; }
 .x-banner { width: max-content; max-width: 92%; }
-/* Timer subtitle sits on bright floors (Data Center): hard 1-px outline like the floating numbers. */
-.x-timesub { color: #a9b6cc; text-shadow: 1px 0 0 #181425, -1px 0 0 #181425, 0 1px 0 #181425, 0 -1px 0 #181425, 1px 1px 0 #000; }

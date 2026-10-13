@@ -27,8 +27,9 @@
 
 import * as THREE from 'three';
 import { VISUALS } from '../data/visuals.js';
-import { CARD_SCALE } from './PixelView.js';
-import { TERRAIN_ART } from '../data/jungle.js';
+import { CARD_SCALE, SPRITE_CARD } from './PixelView.js';
+import { TERRAIN_ART, ATMOS, OPENED_LOOK, PYLON_GLOW } from '../data/jungle.js';
+import { radialGlowTexture } from './PixelGlow.js';
 
 const GEOMS = {
   box: (s) => new THREE.BoxGeometry(...s),
@@ -119,6 +120,80 @@ function makeRing(r, color) {
   m.userData.pxSnap = true;
   m.userData.ring = true;
   return m;
+}
+
+// Occlusion silhouette (critic F #1): a second draw of a creature's sprite that only lands where
+// something in FRONT of it already wrote depth (depthFunc GREATER) — foliage cards, trunks, ruins,
+// props. It paints the sprite's edge texels solid in a flat colour (a 1-texel outline) and fills the
+// inside with an ordered-dither checker, so a player or enemy under brush stays a readable shape.
+// Pixel-exact: hard alpha, Bayer dither on screen pixels, no blending. Texels below the anchor (under
+// the ground plane) are skipped. Colours: ATMOS.silhouette (src/data/jungle.js).
+class SilhouetteMaterial extends THREE.SpriteMaterial {
+  constructor(params, texel) {
+    super(params);
+    this.isSilhouetteMaterial = true;
+    this.uTexel = { value: texel };
+    this.uFill = { value: ATMOS.silhouette.fill };
+    this.uInner = { value: ATMOS.silhouette.inner };
+  }
+  onBeforeCompile(shader) {
+    shader.uniforms.spriteCard = SPRITE_CARD;
+    shader.uniforms.uTexel = this.uTexel;
+    shader.uniforms.uFill = this.uFill;
+    shader.uniforms.uInner = this.uInner;
+    shader.vertexShader = shader.vertexShader
+      .replace('uniform float rotation;', 'uniform float rotation; uniform vec2 spriteCard; varying float vAboveAnchor;')
+      .replace('vec2 rotatedPosition;', 'vAboveAnchor = alignedPosition.y; vec2 rotatedPosition;')
+      .replace('mvPosition.xy += rotatedPosition;', 'mvPosition.x += rotatedPosition.x; mvPosition.yz += rotatedPosition.y * spriteCard;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('uniform float opacity;', `uniform float opacity;
+uniform vec2 uTexel;
+uniform float uFill, uInner;
+varying float vAboveAnchor;
+const float SIL_BAYER[16] = float[16](0.03125,0.53125,0.15625,0.65625,0.78125,0.28125,0.90625,0.40625,0.21875,0.71875,0.09375,0.59375,0.96875,0.46875,0.84375,0.34375);`)
+      .replace('#include <map_fragment>', `
+	if (vAboveAnchor < 0.0) discard;
+	if (texture2D(map, vMapUv).a < 0.5) discard;
+	float edge = 0.0;
+	edge += step(texture2D(map, vMapUv + vec2(uTexel.x, 0.0)).a, 0.5);
+	edge += step(texture2D(map, vMapUv - vec2(uTexel.x, 0.0)).a, 0.5);
+	edge += step(texture2D(map, vMapUv + vec2(0.0, uTexel.y)).a, 0.5);
+	edge += step(texture2D(map, vMapUv - vec2(0.0, uTexel.y)).a, 0.5);
+	if (edge < 0.5) {
+		int bx = int(mod(gl_FragCoord.x, 4.0)), by = int(mod(gl_FragCoord.y, 4.0));
+		if (SIL_BAYER[by * 4 + bx] >= uFill) discard;
+		diffuseColor.rgb *= uInner;
+	}`);
+  }
+  customProgramCacheKey() { return 'vr-silhouette-sprite'; }
+}
+
+/** Attach an occlusion silhouette to a sprite visual (see SilhouetteMaterial). */
+function addSilhouette(vis, color) {
+  const body = vis.body;
+  const G = vis.geom;
+  const mat = new SilhouetteMaterial({ map: vis.tex, color, transparent: true, depthWrite: false, depthFunc: THREE.GreaterDepth, fog: false },
+    new THREE.Vector2(1 / G.iw, 1 / G.ih));
+  // Same depth as the body's own visible texels must NOT count as "in front": bias toward the camera.
+  mat.polygonOffset = true;
+  mat.polygonOffsetFactor = 0;
+  mat.polygonOffsetUnits = -4;
+  const spr = new THREE.Sprite(mat);
+  spr.center.copy(body.center);
+  spr.renderOrder = 40;          // after every opaque card and every normal sprite
+  spr.userData.noSnap = true;    // inherits the body's per-draw pixel snap (it is the body's child)
+  spr.name = 'silhouette';
+  body.add(spr);
+  vis.sil = spr;
+  vis.silColor = color;
+}
+
+/** Recolour (or hide with null) a visual's occlusion silhouette. */
+export function setSilhouette(root, color) {
+  const vis = root?.userData.vis;
+  if (!vis?.sil) return;
+  vis.sil.visible = !!color;
+  if (color && color !== vis.silColor) { vis.silColor = color; vis.sil.material.color.set(color); }
 }
 
 // Stand-ins while a key has no art of its own (the Feral Scavenger borrows the v1 Rival Scavenger).
@@ -264,6 +339,50 @@ export class Assets {
     return `background-image:url(${import.meta.env.BASE_URL}sprites/${def.file});background-size:${img.width * scale}px ${img.height * scale}px;background-position:0 0;width:${fw * scale}px;height:${fh * scale}px;image-rendering:pixelated;background-repeat:no-repeat;`;
   }
 
+  /**
+   * A "spent" look derived from an existing sprite (critic F #14: opened containers per type), registered
+   * as a new manifest key and returned (null if `key` has no sprite). Modes:
+   *   'dark'   glowing texels (screens, lamps, gems) switched off — a dead terminal
+   *   'open'   glow off + the top face hollowed into a dark interior — an open chest
+   *   'gutted' like 'open', and the whole thing dimmed — a cracked, emptied cache
+   * Pixel-exact: per-texel recolour of the original, same size and anchor.
+   */
+  spentVariant(key, mode) {
+    const k = this.resolveKey(key);
+    if (!k) return null;
+    const nk = `${k}__${mode}`;
+    if (this.textures[nk]) return nk;
+    const def = this.manifest[k];
+    const img = this.textures[k].image;
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0);
+    const d = g.getImageData(0, 0, c.width, c.height);
+    spendPixels(d.data, c.width, c.height, mode);
+    g.putImageData(d, 0, 0);
+    const tex = new THREE.CanvasTexture(c);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    this.textures[nk] = tex;
+    this.manifest[nk] = { ...def, anims: undefined, frames: 1, fw: def.fw || img.width / (def.frames || 1) };
+    return nk;
+  }
+
+  /** Ground light pool for activated pylons: { tex, w, h, color, strength } (PYLON_GLOW, PixelGlow.js). */
+  get pylonGlow() {
+    const G = PYLON_GLOW;
+    return { tex: radialGlowTexture(Math.round(G.w * PPU), Math.round(G.h * PPU), { steps: G.steps, power: G.power }), w: G.w, h: G.h, color: G.color, strength: G.strength };
+  }
+
+  /** Sprite key for an opened container of `type` whose closed sprite is `closedKey` (OPENED_LOOK), or null. */
+  openedVariant(type, closedKey) {
+    const mode = OPENED_LOOK[type];
+    return mode ? this.spentVariant(closedKey, mode) : null;
+  }
+
   setTint(color) {
     this.tint.set(color);
     for (const root of this._live) applyColor(root.userData.vis, this.tint);
@@ -341,6 +460,9 @@ export class Assets {
       const shadowR = def.shadow ?? (def.flat ? 0 : Math.min(1.4, w * 0.36));
       if (opts.shadow !== false && shadowR > 0) root.add(makeShadow(shadowR));
       if (opts.ring) root.add(makeRing(Math.max(0.3, shadowR), opts.ring));   // hostile marker (enemies)
+      // Occlusion silhouette for creatures: the player, and anything with a hostile ring.
+      const silColor = opts.silhouette ?? (key === 'player' ? ATMOS.silhouette.player : opts.ring ? ATMOS.silhouette.enemyDim : null);
+      if (silColor && vis.kind === 'sprite') addSilhouette(vis, silColor);
       setFrame(vis, 0);
     } else {
       const parts = VISUALS[key] || VISUALS[key.replace(/_\d+$/, '')];
@@ -389,6 +511,46 @@ export class Assets {
       }
     });
     root.removeFromParent();
+  }
+}
+
+/** Recolour RGBA bytes in place for spentVariant (see there). */
+function spendPixels(D, W, H, mode) {
+  const fw = W;   // single-frame props
+  let top = H, bot = 0, left = W, right = 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < fw; x++) if (D[(y * W + x) * 4 + 3] > 127) { top = Math.min(top, y); bot = Math.max(bot, y); left = Math.min(left, x); right = Math.max(right, x); }
+  const hsv = (r, g, b) => {
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), dl = mx - mn;
+    let h = 0;
+    if (dl) h = mx === r ? ((g - b) / dl + 6) % 6 : mx === g ? (b - r) / dl + 2 : (r - g) / dl + 4;
+    return [h * 60, mx ? dl / mx : 0, mx / 255];
+  };
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      if (D[i + 3] < 128) continue;
+      let r = D[i], g = D[i + 1], b = D[i + 2];
+      const [h, s, v] = hsv(r, g, b);
+      // Emissive texels: very bright saturated, or any cyan / violet / magenta light.
+      const glow = (v > 0.8 && s > 0.45) || (s > 0.45 && v > 0.5 && ((h > 165 && h < 200) || (h > 255 && h < 320)));
+      // A lit amber/green screen face around the glyphs (terminals).
+      const screen = mode === 'dark' && s > 0.55 && v > 0.35 && h > 25 && h < 60;
+      if (glow) { r = 30; g = 34; b = 36; }
+      else if (screen) { r *= 0.3; g *= 0.3; b *= 0.32; }
+      if (mode !== 'dark') {
+        // Hollow top face: the upper part of the body seen from above becomes a dark interior with a
+        // lit far rim (light from the top-left) and a 1-texel shadow line under the near rim.
+        const fy = (y - top) / Math.max(1, bot - top), fx = (x - left) / Math.max(1, right - left);
+        if (fy > 0.08 && fy < 0.4 && fx > 0.12 && fx < 0.88) {
+          const edge = fy < 0.14 ? 1 : fy > 0.34 ? 2 : 0;
+          if (edge === 1) { r = r * 0.55 + 20; g = g * 0.55 + 16; b = b * 0.55 + 12; }
+          else if (edge === 2) { r = 14; g = 10; b = 9; }
+          else { const k = 0.22 + (fy - 0.14) * 0.5; r = 34 * k + 8; g = 24 * k + 6; b = 18 * k + 6; }
+        }
+        if (mode === 'gutted') { r *= 0.72; g *= 0.7; b *= 0.74; }
+      }
+      D[i] = r; D[i + 1] = g; D[i + 2] = b;
+    }
   }
 }
 
@@ -556,6 +718,15 @@ export function updateVisual(root, dt) {
   const tint = TINT;
   const vis = root?.userData.vis;
   if (!vis) return;
+  if (vis.sil) {
+    // Hidden while the body is faded (burrowed, dissolving); enemies: bright once alerted (the scene
+    // sets root.userData.alert), dim while their awareness is unknown.
+    vis.sil.visible = vis.body.visible && vis.opacity >= 0.5;
+    if (vis.key !== 'player' && root.userData.alert !== undefined) {
+      const c = root.userData.alert ? ATMOS.silhouette.enemy : ATMOS.silhouette.enemyDim;
+      if (c !== vis.silColor) { vis.silColor = c; vis.sil.material.color.set(c); }
+    }
+  }
   if (vis.anims && vis.anim) {
     const a = vis.anims[vis.anim];
     vis.animT += dt * (vis.animSpeed || 1);

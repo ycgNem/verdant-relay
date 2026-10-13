@@ -16,7 +16,9 @@ export const CONFIG = {
   // UI font sizes snap to whole multiples of it (Game.fit → --fq).
   // sceneClickGuard: seconds after a scene switch during which mouse clicks on the new UI are swallowed
   // (a click that dismissed the last screen must not land on a button of the next one).
-  ui: { fontGrid: 8, sceneClickGuard: 0.3 },
+  // minIntegerFill: a scene's fixed internal size (night map 1280×720) is shown at a whole-number scale
+  // only if that fills at least this share of the window's area; otherwise it is stretched (Game._layout).
+  ui: { fontGrid: 8, sceneClickGuard: 0.3, minIntegerFill: 0.9 },
 
   player: {
     hp: 100,
@@ -103,11 +105,10 @@ export const CONFIG = {
     reinforceMinDist: 7,       // runtime spawns: at least this far from the player
     reinforceMaxDist: 14,
     spawnInTime: 0.7,          // seconds a reinforcement spends emerging (harmless, telegraphed)
-    enemyDrop: { scrap: [2, 4], componentChance: 0.15, medChance: 0.04 },
+    enemyDrop: { scrap: [1, 3], componentChance: 0.15, medChance: 0.04 },   // jungle kills: a small top-up, not income
     ambushCount: [2, 3],       // districts with ambushChance: enemies that burst out of a container
     alarmSpawn: 3,             // reinforcements when a security laser is tripped
-    spore: { damage: 6, tick: 0.6 },
-    extraSpores: { canopy_greenhouse: 6 },   // extra spore patches scattered by district
+    // Spore pods (the jungle hazard) are tuned in SPORES, src/data/jungle.js.
     // Elite objective enemy (Clear the Blockage). HP multiplier comes from byNight.eliteHp.
     // windupMult: longer, clearer charge telegraphs; supportTypes: the only enemies allowed beside it.
     // scale: gameplay size (radius, knockback resistance); the sprite itself stays 1:1 (no mixels) and
@@ -200,7 +201,7 @@ export const JUICE = {
     knock: 0.12,          // tiles the corpse slides along the killing hit
     decalLife: 5,         // splat decal on the floor (fades over its last second)
     decalSize: 0.9,       // × enemy size
-    decalShade: 0.6,      // splat colour = the enemy's dark burst colour × this
+    decalShade: 0.92,     // splat colour = the enemy's dark burst colour × this (the splat shades its own core darker)
     maxDecals: 28,
   },
   muzzle: { size: 0.42, life: 0.05, light: 2.2, lightDist: 3.2, lightLife: 0.06 },
@@ -242,6 +243,29 @@ export const JUICE = {
     critShake: 1.5,
     coreShock: 2.6,          // radius of the shockwave ring on the plaza when the Relay is hit
     bossDeathFlash: 0.45,
+  },
+  // Jungle machete feel (Player / JungleScene.meleeHit / Fx.smear). Index = combo step (0, 1, 2 finisher).
+  //   stop: hit-stop on connect (s, real time; the kill stop replaces it when the blow kills)
+  //   kick: camera kick along the swing (tiles; 1/32 = one pixel) · shake: screen shake amp (stage px)
+  //   smearFrames: seconds per smear frame (the pixel arc has 3–4 frames) · smearY: blade height of the arc
+  //   whiteFlash: enemy white silhouette flash (s) · knockback: × the weapon's knockback · hitStun: seconds an enemy
+  //   can't steer after a hit (so the knockback reads) · noLungeAfterE: no swing lunge while E is held or this
+  //   long after releasing it (s)
+  melee: {
+    stop: [0.045, 0.045, 0.06], chopStop: 0.08, killStop: 0.07, chopKillStop: 0.1,
+    kick: [2 / 32, 2 / 32, 3 / 32], chopKick: 5 / 32, whiffKick: 1 / 32,
+    shake: [1.2, 1.2, 2], chopShake: 3.5,
+    smearFrames: [0.035, 0.035, 0.04], chopSmearFrames: 0.045, smearY: 0.5, smearScale: 0.9,
+    whiteFlash: 0.08, knockback: 1.35, hitStun: 0.14,
+    noLungeAfterE: 0.3,
+  },
+  // In-world telegraphs (ExploreEnemy / Fx). glint: eye-glint star on a wind-up (s) · ring: dithered
+  // landing ring frames · lob: the Spitter's arcing sap glob (radius of the splash, flight time clamp,
+  // apex height per tile of distance, puddle decal life).
+  tele: {
+    glint: 0.14, ringFrames: 6,
+    lob: { radius: 0.62, minFlight: 0.5, maxFlight: 0.95, apex: 0.28, apexMin: 0.8, puddle: 2.5 },
+    laneDust: 0.35,          // dust puffs per second per tile of a Razorback's charge lane while it winds up
   },
 };
 

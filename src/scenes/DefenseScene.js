@@ -14,7 +14,7 @@
 // once. Surviving saves the next 'briefing' immediately (before the banner); a defeat clears the save.
 
 import * as THREE from 'three';
-import { buildDefenseGround } from '../world/DefenseGround.js';
+import { buildDefenseGround, makePlinth } from '../world/DefenseGround.js';
 import '../ui/defense.css';
 import { el, button, resChip, resRow, costLine, bar, toast, modal, resIconHtml, setToastsPaused } from '../ui/ui.js';
 import { showHint } from '../ui/hints.js';
@@ -445,38 +445,44 @@ export class DefenseScene {
   }
 
   _buildPads() {
-    // Corner-bracket marker texture for empty pads / selection.
+    // Pad marker: a dashed 1-texel rim hugging the plinth's top face (texel-exact, 32 × 32 = one tile),
+    // with solid corners — reads as "build here" without the old hazard-bracket look.
     const c = document.createElement('canvas');
     c.width = c.height = 32;
     const g = c.getContext('2d');
-    g.fillStyle = 'rgba(255,255,255,0.14)';
-    g.fillRect(2, 2, 28, 28);
     g.fillStyle = '#ffffff';
-    for (const [x, y, w, h] of [[0, 0, 9, 2], [0, 0, 2, 9], [23, 0, 9, 2], [30, 0, 2, 9], [0, 30, 9, 2], [0, 23, 2, 9], [23, 30, 9, 2], [30, 23, 2, 9]]) g.fillRect(x, y, w, h);
+    const rx0 = 1, rx1 = 30, ry0 = 2, ry1 = 29;
+    for (let x = rx0; x <= rx1; x++) if (((x - rx0) & 3) < 2 || x - rx0 < 3 || rx1 - x < 3) { g.fillRect(x, ry0, 1, 1); g.fillRect(x, ry1, 1, 1); }
+    for (let y = ry0; y <= ry1; y++) if (((y - ry0) & 3) < 2 || y - ry0 < 3 || ry1 - y < 3) { g.fillRect(rx0, y, 1, 1); g.fillRect(rx1, y, 1, 1); }
     const tex = this._track(new THREE.CanvasTexture(c));
     tex.magFilter = tex.minFilter = THREE.NearestFilter;
     tex.generateMipmaps = false;
-    this.markerGeom = this._track(new THREE.PlaneGeometry(1.1, 1.1));
+    this.markerGeom = this._track(new THREE.PlaneGeometry(1, 1));
     this.markerTex = tex;
     // Occupied pads keep their corner brackets in the tower's type colour (towers are small at night
     // zoom: the coloured pad says "Arc" vs "Beacon" vs "Snare" at a glance). One material per type.
     this.typeMarkMats = {};
 
     this.pads = DEFENSE_MAP.pads.map(([x, y], i) => {
-      const base = this._addVisual('tower_base', x + 0.5, y + 0.5, { shadow: false });
-      if (i === 0) this.padBaseY = base.userData.vis.kind === 'model' ? 0.33 : 0;
+      // In-world stone / timber plinth (DefenseGround.makePlinth) instead of the metal pad sprite.
+      const base = makePlinth(i * 7 + 3, DEFENSE_VIEW.woodPlinths?.includes(i));
+      base.position.set(x + 0.5, 0.02, y + 0.5 + base.userData.zOffset);
+      this.three.add(base);
+      this._track(base.geometry, base.material, base.material.map);
+      if (i === 0) this.padBaseY = 0;
       const mat = this._track(new THREE.MeshBasicMaterial({ map: tex, color: '#feae34', transparent: true, opacity: 0.6, depthWrite: false }));
       const marker = new THREE.Mesh(this.markerGeom, mat);
       marker.rotation.x = -Math.PI / 2;
       marker.position.set(x + 0.5, this.padBaseY + 0.03, y + 0.5);
       marker.renderOrder = 2;
+      marker.userData.pxSnap = true;
       this.three.add(marker);
       return { i, x: x + 0.5, z: y + 0.5, base, marker, mat };
     });
     const selMat = this._track(new THREE.MeshBasicMaterial({ map: tex, color: '#2ce8f5', transparent: true, opacity: 0.95, depthWrite: false }));
     this.selMarker = new THREE.Mesh(this.markerGeom, selMat);
     this.selMarker.rotation.x = -Math.PI / 2;
-    this.selMarker.scale.setScalar(1.22);
+    this.selMarker.userData.pxSnap = true;
     this.selMarker.renderOrder = 3;
     this.selMarker.visible = false;
     this.three.add(this.selMarker);
@@ -1510,7 +1516,10 @@ export class DefenseScene {
 
   _banner(title, sub, cls) {
     this.bannerEl?.remove();
-    this.bannerEl = el(`div.df-banner.${cls}.ui-block`, { onclick: () => { this.endTimer = Math.min(this.endTimer, 0.01); } },
+    // Dismiss on pointerdown (and swallow it): the scene switches on the next frame, and the next
+    // screen (the briefing) ignores the rest of this click — see BriefingScene._guardInput.
+    const dismiss = (e) => { e.stopPropagation(); e.preventDefault(); this.endTimer = Math.min(this.endTimer, 0.01); };
+    this.bannerEl = el(`div.df-banner.${cls}.ui-block`, { onpointerdown: dismiss },
       el('div.df-bannertitle', title), el('div.df-bannersub', sub), el('div.small.muted', 'click to continue'));
     this.uiRoot.append(this.bannerEl);
   }

@@ -42,6 +42,7 @@ export const DEFENSE_VIEW = {
   res: [1280, 720],
   view: { x0: 0, y0: 49, x1: 721, y1: 457 },
   spriteTint: '#9fb4e8',
+  woodPlinths: [2, 6, 9, 13],        // build pads drawn as timber platforms (the rest are stone plinths)
   background: '#0a0d1a',
   light: {
     hemiSky: '#6f84c8', hemiGround: '#1b1a2e', hemi: 1.6,

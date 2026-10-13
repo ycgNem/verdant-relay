@@ -24,8 +24,8 @@ How the engine pieces fit together. `DESIGN.md` says what the game is; `PLAN.md`
 | `game.assets` | sprite/visual factory (below) |
 | `game.setResMult(m)` | render at base×m (resets on scene switch) |
 | `game.setInternalRes(w, h)` | render at a fixed internal size until the next scene switch (night: `DEFENSE_VIEW.res` = 1280×720) |
-| `game.fit()` | size the stage (exact base aspect; whole-number multiple with `meta.settings.integerScale`) |
-| `game.width/height` | current internal resolution |
+| `game.fit()` | size the stage: always a whole-number CSS scale (device px). Default: adaptive internal size nearest the base res (1280×720 chunky → 426×240 ×3, 1920×1080 → 480×270 ×4); `meta.settings.integerScale` = exact base res, bigger borders. A fixed `setInternalRes` is integer-scaled when that fills ≥ `CONFIG.ui.minIntegerFill`, else stretched |
+| `game.width/height` | current internal resolution — changes with the window, so size per frame (PostFx) or rely on `_applyRes` re-sizing the scene's PixelCamera |
 | `game.shake(amp, time)` | screen shake (respects the settings toggle) |
 | `game.flash(color, opacity)` | full-screen flash |
 | `game.mouseOnPlane(camera, y)` | mouse ray ∩ horizontal plane → Vector3 |
@@ -45,14 +45,22 @@ Module functions (import from `../core/Assets.js`):
 - `flashVisual(root, color, time)` — hit flash. `setBaseColor(root, '#88aaff')` — persistent tint (slowed); `'#ffffff'` clears.
 - `setOpacity(root, a)` — e.g. burrowed enemies. `setStatus(root, color)` — status light on placeholder props.
 - `game.assets.disposeVisual(root)`; `game.assets.setTint(color)` — ambient tint for all sprites (night: bluish).
+- Occlusion silhouettes: sprites of `player` and of anything made with `{ring}` get a child sprite drawn with depthFunc GREATER —
+  a solid 1-texel outline + dithered fill in a flat colour wherever foliage/trees/ruins/props cover them (`ATMOS.silhouette`).
+  `opts.silhouette` sets/overrides the colour (`false`/null = none); `setSilhouette(root, color|null)`; enemies switch dim → bright
+  when the scene sets `root.userData.alert` (JungleScene does, from `enemy.alerted`).
+- `game.assets.spentVariant(key, 'dark'|'open'|'gutted')` → a derived sprite key (glow off / hollowed top / dimmed);
+  `openedVariant(type, closedKey)` picks per `OPENED_LOOK`. `game.assets.pylonGlow` → the activated-pylon light pool (`PYLON_GLOW`, `src/core/PixelGlow.js`).
 - `root.userData.vis.height` — visual height in world units (for HP bars / labels).
 - `game.assets.spriteInfo(key)` → `{tex, def}` for tiles; `game.assets.iconStyle(key, px)` → CSS string for DOM icons.
 
 ## The jungle (day) — `src/world/`
 
 - `JungleGen.generateWorld(seed, districtKeys)` → plain data: `size` (192), `level` (vertex terrain levels, `LEVEL`),
-  `pave`, `brush` (per tile, `BRUSH`), `region`, `trail`, `site`, `objects` (trees/ruins/rocks), `sites`, `containers`,
+  `pave`, `brush` (per tile, `BRUSH`), `region`, `trail`, `site`, `objects` (trees/ruins/rocks), `sites` (`lost`: no trail,
+  ringed by thick brush), `containers` (`yield`: Scrap multiplier by distance from the Relay / nearest pylon), `spores`,
   `pylons`, `center`. `worldForRun(game, run, keys)` caches it per run seed; `compass(dx, dz)`; `clearDisc(world, x, z, r)`.
+- `SporePods(scene, world.spores)` (`src/entities/`): the spore-pod hazard — `update(dt)`, `hittables(out)`, `dispose()`.
 - `JungleWorld(game, scene3d, data, cutMask)`: chunk streaming (`update(dt, focusX, focusZ)`, `warm(x, z)`), queries
   (`brushAt solidAt opaqueAt blockedAt(x, z, throughBrush) levelAt speedAt shadeAt lineOfSight`), movement
   `moveBody(p, dx, dz, r, {throughBrush, onBrush})`, `blockedCircle`, `addCollider(obj)`, the machete
@@ -60,7 +68,11 @@ Module functions (import from `../core/Assets.js`):
   `shadeTex` (canopy density for PostFx). `JungleWorld.regrow(data, cut, seed)` between days.
   Exports `makeCardMaterial`, `chunkCards(world, atlas, cut, x0, z0, w, h)`, `cardMesh(cards, atlas, mat)` (the night map reuses them).
 - `TerrainBaker(world, assets, terrainArt).bake(cx, cz)` → a 512 × 512 canvas for chunk (cx, cz). `world.blendAmp` tightens edges.
+  Ruin paving is broken up in world space (missing slabs, moss, stains, cracks, rubble — `PAVING`).
 - `FloraAtlas(assets)`: one atlas of every static world sprite, grouped in `FAMILIES` (regex on manifest keys); `pick(fam, a, b)`.
+  Brush families are colour-graded in the atlas (`BRUSH_LOOK`): low pale ferns, dark tall thickets, red-brown brambles.
+- The card shader's see-through window (`ATMOS.xray*`) is a round 8×8-Bayer fade around the player (no hard rim).
+- `DefenseGround.makePlinth(seed, wood)` → a texel-drawn stone / timber build-pad plinth (flat Lambert mesh, `userData.zOffset`).
 - `Ambience(scene3d, world).update(dt, cx, cz, dusk)`: pollen, falling leaves, fireflies, light shafts.
 - `DefenseGround.buildDefenseGround(game, seed, laneTiles, tint)` → `{ group, update(dt), dispose() }`.
 - Persistent state: `run.world` (`run.worldState(size, cell)` decodes it, `run.storeWorld(state)` stores it; bitsets in base64).
@@ -119,7 +131,8 @@ Fields: `seed night phase relayHp relayMax playerHp meds weapon res{scrap,circui
   draw to put sprites (`isSprite`) and flat decals (`userData.pxSnap`) on whole pixels; `userData.noSnap` opts out.
   Sprites are upright cards: a sprite `h` tiles tall on screen is `h × CARD_SCALE` (tan 55° ≈ 1.43) world units tall, which is what
   `vis.height` reports; a world height `y` shows as `y / CARD_SCALE` tiles on screen. Sprite scales must be whole numbers (makeVisual rounds).
-  Day renders at base res (480×270, 15 tiles across); night renders at 1280×720 with the field at 32 px/tile.
+  Day renders at the adaptive base res (~426–512 px wide, 13–16 tiles across); night renders at 1280×720 with the field at 32 px/tile
+  (whole-number scale at 720p/1440p/2160p; at 1080p it is stretched ×1.5 — a pixel-exact night zoom would need a panning camera).
 - Lighting: hemisphere + directional, Lambert materials. Day warm; night blue with a cyan point light at the core.
 
 ## Tutorial hints (`src/ui/hints.js`)

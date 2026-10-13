@@ -16,7 +16,7 @@
 import * as THREE from 'three';
 import { CONFIG, JUICE } from '../data/config.js';
 import { EXPLORE_ENEMIES } from '../data/enemies.js';
-import { setAnim, setFacing, updateVisual, flashVisual, setBaseColor } from '../core/Assets.js';
+import { setAnim, setFacing, updateVisual, flashVisual, setBaseColor, animLength, animHitFrac, setAnimSpeed } from '../core/Assets.js';
 import { shade } from '../core/Fx.js';
 import { rayLength, castRay } from '../world/collide.js';
 import { nightTune } from '../data/config.js';
@@ -98,7 +98,7 @@ export class ExploreEnemy {
     this.barBg.renderOrder = 20; this.barFill.renderOrder = 21;
     scene.three.add(this.barBg, this.barFill);
     if (this.state === 'spawn') {
-      scene.fx.telegraph({ x, z }, { radius: this.radius + 0.35, color: '#feae34', time: this.stateT, fade: 0.1 });
+      scene.fx.ringTele({ x, z }, { radius: this.radius + 0.35, color: '#feae34', color2: '#8f563b', time: this.stateT, fade: 0.1 });
       this.vis.position.set(x, -1.2, z);
     }
     this._syncVisual(0);
@@ -123,25 +123,32 @@ export class ExploreEnemy {
     this.hp -= dmg;
     this.barT = 2.5;
     this.lastHit = { x: dx, z: dz };
-    flashVisual(this.vis, '#ffffff', 0.09);
     const fx = this.scene.fx;
     const H = JUICE.hitStop;
+    const M = JUICE.melee;
+    const melee = src === 'slash' || src === 'chop';
+    // White silhouette flash (the whole sprite, not a tint), held through the hit-stop.
+    if (melee) fx.hitFlash(this.vis, M.whiteFlash * (src === 'chop' ? 1.5 : 1));
+    else flashVisual(this.vis, '#ffffff', 0.09);
     const big = this.elite || this.objective;
     fx.text({ x: this.x, z: this.z }, String(dmg), {
       color: big ? '#feae34' : src === 'chop' ? '#fee761' : '#ead4aa', cls: big ? 'elite' : '',
       y: this.vis.userData.vis.height + 0.55, life: 0.6, key: this, value: dmg,
     });
-    fx.burst({ x: this.x, z: this.z }, { color: this.bloodColor, count: 4, speed: 1.8, up: 1.5, life: 0.3, size: 0.06, vx: dx * 1.5, vz: dz * 1.5 });
+    fx.burst({ x: this.x, z: this.z }, { color: this.bloodColor, color2: shade(this.bloodColor, 1.3), count: melee ? 7 : 4, speed: 2.2, up: 1.6, life: 0.32, size: 2 / 32, vx: dx * 2.4, vz: dz * 2.4 });
     // Impact spark on the side the hit came from.
     fx.flash({ x: this.x - dx * this.radius * 0.6, y: this.vis.userData.vis.height * 0.45, z: this.z - dz * this.radius * 0.6 }, { color: '#ffffff', size: big ? 0.42 : 0.3, life: 0.05 });
-    if (src === 'slash' || src === 'chop') fx.hitStop(src === 'chop' ? H.cutterHit * 1.8 : H.cutterHit);
-    else if (dmg >= H.heavyDamage || big) fx.hitStop(H.heavyHit);
+    // Melee hit-stop is applied once per swing by the scene (JungleScene.meleeHit); other hits here.
+    if (!melee && (dmg >= H.heavyDamage || big)) fx.hitStop(H.heavyHit);
     this.game.sfx.play('hit');
-    // Knockback (heavier enemies resist; lunges and charges carry through).
+    // Knockback (heavier enemies resist; lunges and charges carry through). A short hit-stun stops the
+    // enemy steering against it, so the shove reads.
     if (this.state !== 'attack') {
       const resist = this.def.size * this.scale;
-      this.kb.x += dx * kb / resist;
-      this.kb.z += dz * kb / resist;
+      const k = melee ? M.knockback : 1;
+      this.kb.x += dx * kb * k / resist;
+      this.kb.z += dz * kb * k / resist;
+      if (melee) { this.stunT = M.hitStun; this.vel.x *= 0.2; this.vel.z *= 0.2; }
     }
     if (!this.alerted) this.alert(true);
     if (this.hp <= 0) this.die();
@@ -262,8 +269,16 @@ export class ExploreEnemy {
         if (d.attack !== 'melee' && this.stateT > this.windup * lockAt && playerTarget) {
           this.face = toP;
           this.aimDir = { ...toP };
-          if (this.tele) this.tele.group.rotation.y = Math.atan2(-toP.x, -toP.z);
-          this._resizeLane();
+          if (d.shot === 'glob') this._aimLob(p.pos.x, p.pos.z);
+          else {
+            if (this.tele && !this.tele.setDir) this.tele.group.rotation.y = Math.atan2(-toP.x, -toP.z);
+            this._resizeLane();
+          }
+        }
+        // The Razorback paws up dust along its lane.
+        if (d.attack === 'charge' && Math.random() < dt * JUICE.tele.laneDust * (this.curLen || 1)) {
+          const u = Math.random() * (this.curLen || 1);
+          sc.fx.burst({ x: this.x + this.aimDir.x * u, y: -0.3, z: this.z + this.aimDir.z * u }, { color: '#b86f50', color2: '#e4a672', count: 2, speed: 0.6, up: 1.2, life: 0.35, size: 2 / 32, gravity: 5 });
         }
         if (this.stateT <= 0) this._startAttack();
         break;
@@ -304,7 +319,8 @@ export class ExploreEnemy {
       }
     }
 
-    // Movement + knockback.
+    // Movement + knockback (no steering while reeling from a machete hit).
+    if (this.stunT > 0) { this.stunT -= dt; move = null; }
     if (this.state !== 'attack') {
       const tx = move ? move.x * speed : 0, tz = move ? move.z * speed : 0;
       const k = 1 - Math.exp(-12 * dt);
@@ -353,23 +369,52 @@ export class ExploreEnemy {
     this.hitDone = false;
     this.vel.x *= 0.2; this.vel.z *= 0.2;
     setAnim(this.vis, 'windup', true);
+    // The wind-up anim stretches over the whole wind-up, so the strike pose lands on the commit.
+    const wl = animLength(this.vis, 'windup');
+    this.windAnimSpeed = wl > 0 ? Math.max(0.5, Math.min(2, wl / this.windup)) : 1;
+    // A short eye glint: readable, and visible even when the telegraph itself is under foliage.
+    this._glint();
     if (d.attack === 'melee') {
-      // The lunge lands exactly where the circle is drawn.
+      // The lunge lands exactly where the dithered ring is drawn.
       const travel = Math.min(d.lunge, Math.max(0.4, dist));
       const solidLen = rayLength(sc.world, this.x, this.z, toP.x, toP.z, travel, (x, y) => sc.world.solidAt(x, y));
       const reach = Math.max(0.3, Math.min(travel, solidLen - this.radius));
       this.lungeTarget = { x: this.x + toP.x * reach, z: this.z + toP.z * reach };
-      this.tele = sc.fx.telegraph(this.lungeTarget, { radius: this.radius + 0.55, color: '#e43b44', time: this.windup, fade: 0.12 });
+      this.tele = sc.fx.ringTele(this.lungeTarget, { radius: this.radius + 0.45, color: '#ff0044', color2: '#e43b44', time: this.windup, fade: 0.1 });
+    } else if (d.attack === 'ranged' && d.shot === 'glob') {
+      // Lobbed sap: a ground ring follows you while it aims, then locks; the glob lands in it.
+      this.lobTarget = { x: sc.player.pos.x, z: sc.player.pos.z };
+      const L = JUICE.tele.lob;
+      const est = Math.max(L.minFlight, Math.min(L.maxFlight, dist / d.shotSpeed));
+      this.tele = sc.fx.ringTele(this.lobTarget, { radius: L.radius, color: '#ff4d8d', color2: '#b55088', time: this.windup + est, fade: 0.05 });
+      this._aimLob(sc.player.pos.x, sc.player.pos.z);
     } else if (d.attack === 'ranged') {
       const len = rayLength(sc.world, this.x, this.z, toP.x, toP.z, d.range);
-      this.tele = sc.fx.telegraph({ x: this.x, z: this.z }, { dir: toP, length: Math.max(0.5, len), width: 0.22, color: d.shot === 'glob' ? '#ff4d8d' : '#ff7a3c', time: this.windup, fade: 0.08 });
+      this.tele = sc.fx.telegraph({ x: this.x, z: this.z }, { dir: toP, length: Math.max(0.5, len), width: 0.22, color: '#ff7a3c', time: this.windup, fade: 0.08 });
       this.teleLen = this.curLen = len;
     } else if (d.attack === 'charge') {
       const len = this._laneLength(toP);
-      this.tele = sc.fx.telegraph({ x: this.x, z: this.z }, { dir: toP, length: len, width: this.radius * 2 + 0.3, color: '#e43b44', time: this.windup, fade: 0.1 });
+      // Cracked, dusty ground along the lane; it stays under the beast while it charges.
+      this.tele = sc.fx.chargeLane({ x: this.x, z: this.z }, { dir: toP, length: len, width: this.radius * 2 + 0.3, time: this.windup, fade: d.chargeTime + 0.15 });
       this.teleLen = this.curLen = len;
     }
-    this.game.sfx.play(d.attack === 'charge' ? 'alarm' : 'zap');
+    this.game.sfx.play(d.attack === 'charge' ? 'snort' : 'glint');
+  }
+
+  /** Eye glint: a small red-white star at head height on the side it faces. */
+  _glint() {
+    const h = this.vis.userData.vis.height;
+    this.scene.fx.flash({ x: this.x + this.face.x * this.radius * 0.35, y: h * 0.78, z: this.z + this.face.z * this.radius * 0.35 }, { color: '#ff4040', size: 9 / 32, life: JUICE.tele.glint });
+  }
+
+  /** Spitter: aim the lob at (tx, tz), clamped to its range; the landing ring follows. */
+  _aimLob(tx, tz) {
+    const d = this.def;
+    let dx = tx - this.x, dz = tz - this.z;
+    const l = Math.hypot(dx, dz);
+    if (l > d.range) { dx *= d.range / l; dz *= d.range / l; }
+    this.lobTarget = { x: this.x + dx, z: this.z + dz };
+    this.tele?.move?.(this.lobTarget.x, this.lobTarget.z);
   }
 
   _laneLength(dir) {
@@ -384,8 +429,9 @@ export class ExploreEnemy {
     const d = this.def;
     const sc = this.scene;
     const len = d.attack === 'charge' ? this._laneLength(this.aimDir) : rayLength(sc.world, this.x, this.z, this.aimDir.x, this.aimDir.z, d.range);
+    if (this.tele.setDir) this.tele.setDir(this.aimDir, len);   // pixel lane: redrawn for the new direction
     // The lane lies along the group's local -Z, so scaling Z stretches it to the new wall distance.
-    this.tele.group.scale.z = Math.max(0.1, len) / Math.max(0.1, this.teleLen);
+    else this.tele.group.scale.z = Math.max(0.1, len) / Math.max(0.1, this.teleLen);
     this.curLen = len;
   }
 
@@ -393,14 +439,32 @@ export class ExploreEnemy {
     const d = this.def;
     const sc = this.scene;
     this.state = 'attack';
+    const tele = this.tele;
     this.tele = null;
     setAnim(this.vis, 'attack', true);
+    const al = animLength(this.vis, 'attack');
+    this.atkAnimSpeed = 1;
     if (d.attack === 'melee') {
       const lx = this.lungeTarget.x - this.x, lz = this.lungeTarget.z - this.z;
       const ll = Math.hypot(lx, lz) || 1;
       this.aimDir = { x: lx / ll, z: lz / ll };
       this.stateT = (ll / d.lunge) * d.lungeTime + 0.02;
+      // The strike frame lands mid-lunge, where contact happens.
+      if (al > 0) this.atkAnimSpeed = Math.max(0.7, Math.min(2.5, (animHitFrac(this.vis, 'attack', 0.4) * al) / Math.max(0.05, this.stateT * 0.55)));
       this.game.sfx.play('cutter');
+    } else if (d.attack === 'ranged' && d.shot === 'glob') {
+      const L = JUICE.tele.lob;
+      const h = this.vis.userData.vis.height;
+      const t = this.lobTarget || { x: sc.player.pos.x, z: sc.player.pos.z };
+      const ox = this.x + this.face.x * this.radius * 0.5, oz = this.z + this.face.z * this.radius * 0.5;
+      const dist = Math.hypot(t.x - ox, t.z - oz);
+      const time = Math.max(L.minFlight, Math.min(L.maxFlight, dist / d.shotSpeed));
+      // The landing ring keeps closing until the glob lands (the flight owns it now).
+      const ring = tele?.retime ? (tele.retime(time), tele) : sc.fx.ringTele(t, { radius: L.radius, color: '#ff4d8d', color2: '#b55088', time, fade: 0.05 });
+      sc.shots.lob({ x: ox, z: oz, tx: t.x, tz: t.z, time, apex: Math.max(L.apexMin, dist * L.apex), y0: h * 0.55, radius: L.radius, damage: this.damage, source: d.name, ring });
+      sc.fx.burst({ x: ox, y: h * 0.55 - 0.4, z: oz }, { color: '#ff4d8d', color2: '#b55088', count: 5, speed: 1.2, up: 1.8, life: 0.25, size: 2 / 32 });
+      this.game.sfx.play('spit');
+      this.stateT = 0;
     } else if (d.attack === 'ranged') {
       const ox = this.x + this.aimDir.x * (this.radius + 0.1), oz = this.z + this.aimDir.z * (this.radius + 0.1);
       sc.shots.fire({ team: 'enemy', kind: d.shot || 'bolt', x: ox, z: oz, dx: this.aimDir.x, dz: this.aimDir.z, speed: d.shotSpeed, range: d.range + 0.5, damage: this.damage, source: d.name });
@@ -411,6 +475,9 @@ export class ExploreEnemy {
       this.stateT = ((this.curLen ?? this.teleLen) / d.chargeSpeed) + 0.05;
       this.game.sfx.play('boom');
     }
+    this.atkTime = Math.max(0.05, this.stateT);
+    // Keep showing the attack anim through the recovery until it has played out.
+    this.atkAnimT = al > 0 ? al / this.atkAnimSpeed : 0;
   }
 
   _contact(dist) {
@@ -439,6 +506,10 @@ export class ExploreEnemy {
       if (Math.random() < 0.5) this.scene.fx.burst({ x: this.x, y: -0.35, z: this.z }, { color: '#733e39', count: 1, speed: 1.5, up: 2, life: 0.3, size: 0.07 });
     } else if (this.state === 'windup') {
       ox = (Math.random() - 0.5) * 0.06; oz = (Math.random() - 0.5) * 0.06;
+    } else if (this.state === 'attack' && this.key === 'skitter') {
+      // The Skitter's attack frames are a wing-raise: it leaps along its lunge.
+      const k = 1 - Math.max(0, this.stateT) / (this.atkTime || 0.2);
+      y = Math.sin(Math.min(1, k) * Math.PI) * 0.3;
     }
     const vis = v.userData.vis;
     if (vis.kind === 'model' && this.moving) {
@@ -447,10 +518,14 @@ export class ExploreEnemy {
     }
     v.position.set(this.x + ox, y, this.z + oz);
     setFacing(v, this.face.x, this.face.z);
-    if (this.state === 'windup') setAnim(v, 'windup');
-    else if (this.state === 'attack') setAnim(v, 'attack');
-    else if (this.moving) setAnim(v, 'walk');
-    else setAnim(v, 'idle');
+    this.atkAnimT = (this.atkAnimT || 0) - dt;
+    if (this.state === 'windup') { setAnim(v, 'windup'); setAnimSpeed(v, this.windAnimSpeed || 1); }
+    else if (this.state === 'attack' || (this.state === 'recover' && this.atkAnimT > 0)) { setAnim(v, 'attack'); setAnimSpeed(v, this.atkAnimSpeed || 1); }
+    else {
+      setAnimSpeed(v, 1);
+      if (this.moving) setAnim(v, 'walk');
+      else setAnim(v, 'idle');
+    }
     if (this.state === 'windup' && vis.kind === 'model') flashVisual(v, '#ff6060', 0.03);
     updateVisual(v, dt);
     // HP bar: always for elites / objective targets, otherwise briefly after a hit.

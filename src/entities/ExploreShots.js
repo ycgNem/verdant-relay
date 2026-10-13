@@ -4,7 +4,7 @@
 
 import * as THREE from 'three';
 import { CONFIG, JUICE } from '../data/config.js';
-import { canvasTex } from '../core/Fx.js';
+import { canvasTex, lobShadowTexture } from '../core/Fx.js';
 
 // Streak shots are camera-facing tracer quads (2 px wide, growing out of the muzzle to `trail`) with
 // a bright head pixel; the sap glob is a little pixel sprite.
@@ -164,6 +164,7 @@ export class Shots {
       this.list.splice(i, 1);
     }
     this._updateSweeps(dt);
+    this._updateLobs(dt);
   }
 
   _impact(s, color, hitSomething = false, fizzle = false) {
@@ -182,6 +183,65 @@ export class Shots {
       fx.burst({ x: s.x - s.dx * 0.1, y: this.h - 0.45, z: s.z - s.dz * 0.1 }, { color: '#8b9bb4', color2: '#5a6988', count: 3, speed: 1, up: 1, life: 0.35, size: 3 / 32, gravity: 6, vx: -s.dx, vz: -s.dz });
     }
     if (s.kind === 'glob') fx.ring({ x: s.x, z: s.z }, { color: '#ff4d8d', radius: 0.7, life: 0.3 });
+  }
+
+  /**
+   * Lobbed sap glob (Spitter): arcs from (x, z) to the locked target (tx, tz) over `time` seconds, with a
+   * ground shadow under it, and splashes everything within `radius` of the target on landing. The
+   * landing spot is marked by a dithered ring (Fx.ringTele) for the whole flight, so it is dodged by
+   * stepping out of the ring or rolling. o: { x, z, tx, tz, time, apex, y0, radius, damage, source }
+   */
+  lob(o) {
+    const sprite = this._mesh('glob');
+    if (!this._shadowMat) this._shadowMat = new THREE.MeshBasicMaterial({ map: lobShadowTexture(), transparent: false, alphaTest: 0.5, depthWrite: false });
+    if (!this._shadowGeo) this._shadowGeo = new THREE.PlaneGeometry(7 / 32, 3 / 32);
+    const shadow = new THREE.Mesh(this._shadowGeo, this._shadowMat);
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.userData.pxSnap = true;
+    shadow.renderOrder = 1;
+    this.three.add(shadow);
+    const L = { ...o, t: 0, sprite, shadow };
+    L.ring = o.ring || this.scene.fx.ringTele({ x: o.tx, z: o.tz }, { radius: o.radius, color: '#ff4d8d', color2: '#b55088', time: o.time, fade: 0.05 });
+    (this.lobs ||= []).push(L);
+    this._placeLob(L);
+    return L;
+  }
+
+  _placeLob(L) {
+    const k = Math.min(1, L.t / L.time);
+    const x = L.x + (L.tx - L.x) * k, z = L.z + (L.tz - L.z) * k;
+    const y = (L.y0 ?? 0.6) * (1 - k) + 0.12 * k + L.apex * 4 * k * (1 - k);
+    L.sprite.position.set(x, y, z);
+    L.shadow.position.set(x, 0.02, z);
+    L.cx = x; L.cz = z;
+  }
+
+  _updateLobs(dt) {
+    if (!this.lobs?.length) return;
+    const sc = this.scene;
+    for (let i = this.lobs.length - 1; i >= 0; i--) {
+      const L = this.lobs[i];
+      L.t += dt;
+      this._placeLob(L);
+      // a thin sap drip trails the glob
+      if (Math.random() < dt * 14) sc.fx.burst({ x: L.cx, y: L.sprite.position.y - 0.45, z: L.cz }, { color: '#b55088', count: 1, speed: 0.2, up: 0, life: 0.25, size: 1 / 32, gravity: 6 });
+      if (L.t < L.time) continue;
+      // splash
+      const p = sc.player;
+      if (p && !p.dead && Math.hypot(p.pos.x - L.tx, p.pos.z - L.tz) < L.radius + p.r * 0.5) {
+        const dx = L.tx - L.x, dz = L.tz - L.z, dl = Math.hypot(dx, dz) || 1;
+        p.hurt(L.damage, dx / dl, dz / dl, L.source);
+      }
+      const fx = sc.fx;
+      fx.burst({ x: L.tx, y: 0, z: L.tz }, { color: '#ff4d8d', color2: '#b55088', count: 12, speed: 2.2, up: 2.2, life: 0.4, size: 2 / 32, y: 0.1 });
+      fx.burst({ x: L.tx, y: 0, z: L.tz }, { color: '#ffffff', color2: '#ff9ec4', count: 4, speed: 1.4, up: 2.8, life: 0.25, size: 1 / 32, y: 0.15 });
+      fx.decal({ x: L.tx, z: L.tz }, { color: '#68386c', radius: L.radius * 0.75, life: JUICE.tele.lob.puddle });
+      this.scene.game.sfx.play('splat');
+      L.sprite.removeFromParent();
+      this.pool.glob.push(L.sprite);
+      L.shadow.removeFromParent();
+      this.lobs.splice(i, 1);
+    }
   }
 
   /** Pulse Cutter arc: a fading wedge on the ground in front of the player. */
@@ -218,10 +278,16 @@ export class Shots {
 
   clearEnemyShots() {
     for (const s of this.list) if (s.team === 'enemy') s.dead = true;
+    for (const L of this.lobs || []) { L.ring.cancel(); L.sprite.removeFromParent(); this.pool.glob.push(L.sprite); L.shadow.removeFromParent(); }
+    if (this.lobs) this.lobs.length = 0;
   }
 
   dispose() {
     for (const s of this.list) { s.mesh.removeFromParent(); s.mesh.userData.head?.removeFromParent(); }
+    for (const L of this.lobs || []) { L.sprite.removeFromParent(); L.shadow.removeFromParent(); }
+    this.lobs = [];
+    this._shadowMat?.dispose();
+    this._shadowGeo?.dispose();
     for (const s of this.sweeps) disposeTree(s.m);
     this.list = [];
     this.sweeps = [];

@@ -50,7 +50,10 @@ district consequences, player HP. All of it resets when the run ends. Permanent 
 **One persistent jungle per run.** The world (`src/world/JungleGen.js`) is a 192 × 192-tile jungle generated from the run
 seed, the same every day: the Relay sits in a clearing at its centre, the five districts are noisy sectors around it
 (`src/data/jungle.js` REGION_LOOK). Rivers and swamp pools cut through it, old trails link the Relay to ruin sites,
-feral camps, landmarks and one dead **relay pylon** per district. Everything else is thick, layered undergrowth.
+feral camps, landmarks and one dead **relay pylon** per district. Trails meander in S-bends (~1.3–1.5× the straight
+line) and a few dead-end in the brush. **Lost sites** (most major ruins, some minor ones and landmarks) have no trail at
+all and sit behind a ring of thicket and bramble: you cut your way in. Everything else is thick, layered undergrowth,
+densest away from trails and clearings, so cutting cross-country is a real shortcut.
 What you change persists across the run (`run.world`): undergrowth you cut, supplies you open, pylons you activate,
 the map you have explored. Each night ~18% of cut undergrowth grows back (never trails).
 
@@ -74,14 +77,17 @@ roll 22, regen 40/s after 0.5 s; empty = exhausted (slower, weaker swings, slowe
 three slashes). Skitters and Crawlers slip through undergrowth, Razorbacks bulldoze it, Feral Scavengers need paths.
 
 **A day:**
-1. The Relay drone drops you at the Relay, or at the activated pylon closest to today's objective.
-2. Today's objective is in the district you picked at the briefing, at real sites on the map (marked ◆ from the start).
-3. Loot supplies (crates, chests, rare caches, intel terminals; ~70 hidden caches deep in the brush), do optionals
+1. The Relay drone drops you at the Relay, or at an activated pylon if that still leaves a trek of ≥ 50 m to the
+   objective (start → every step) and saves ≥ 12 m (`DAY.minTrek`, `DAY.pylonSaving`).
+2. Today's objective is in the district you picked at the briefing, at real sites on the map (marked ◆ from the start):
+   sites ≥ 45 m from the Relay first, lost sites before trail-side ones (`DAY.objectiveMinDist`).
+3. Loot supplies (crates, chests, rare caches, intel terminals; ~34 hidden caches deep in the brush, ≥ 3 tiles off any
+   trail), do optionals
    (nest, stranded engineer, data drive, locked cache — announced when you get near).
 4. Activate pylons (hold E 2.5 s): they become return points for the rest of the run and map their surroundings.
 5. **Return** to the Relay or any activated pylon (hold E 2 s) to bank what you carry. Allowed any time; the
    objective's skill point and boon only count if it was done.
-- **Daylight** lasts 330 s. At **sunset** the light shrinks around you over 70 s of dusk and **hunters** come in
+- **Daylight** lasts 300 s. At **sunset** the light shrinks around you over 70 s of dusk and **hunters** come in
   packs (every 18 s → 9 s at full dark, +1 per pack from night 4). There is no hard fail: the jungle just gets worse.
 - **Death:** carried loot (and carried med kits) is lost — nights 1–2 a drone salvages 30% / 20% — and you return
   with 35 HP. Cut trails, pylons, towers, banked resources and research are kept.
@@ -90,10 +96,20 @@ three slashes). Skitters and Crawlers slip through undergrowth, Razorbacks bulld
 scaled by night. It appears ≥ 11 tiles away, despawns far behind you, and stays dead for the day once killed.
 Feral camps hold 2–4 Feral Scavengers. **Enemies:** Bramble Crawler (lunge), Skitter (fast), Feral Scavenger (spear
 thrust), Spitter (rooted, lobs sap over the brush), Razorback (wind-up, charge, crashes through brush). Every big
-attack is telegraphed.
+attack is telegraphed. Kills sometimes drop 1–3 Scrap (a top-up, not income).
 
-**Loot** (carried until you return) and container yields are as in v1 (table below), rolled per container with
-that district's multipliers. Med kits heal 25; carry at most 2.
+**Spore pods** (`SPORES`, `src/entities/SporePods.js`): the hazard, 28 in the Canopy Greenhouse and 5 in each other
+district, beside trails and clearings; they regrow every day. Walk within ~1.3 tiles and a pod swells (0.7 s ring
+telegraph), then bursts into a dithered cloud (radius 1.9, 5 s): 5 damage every 0.6 s and −30 stamina/s while you
+stand in it. Any machete hit pops it at once (the heavy chop reaches about as far as the cloud). **Safe Hands**
+halves the damage and stops the drain.
+
+**Loot** (carried until you return): base yields below, rolled per container with that district's multipliers and
+a **distance multiplier**: Scrap ×0.45 within 12 m of the Relay or any pylon, rising to ×0.9 beyond 50 m
+(`JUNGLE.lootDistance`); rare caches closer than 28 m become tool chests. Per site: major 2–4 containers, minor 1–2,
+camp/landmark 0–1, +1 at lost sites. **Budget:** a normal day (objective + ~11 containers + ~20 kills) banks ~70–100
+Scrap (offline estimate over 12 worlds: mean 80, p10 62, p90 101; the Market's ×1.3 sits at the top). Med kits heal 25;
+carry at most 2.
 
 | Container | Yield | Hold E |
 |---|---|---|
@@ -160,7 +176,7 @@ and the Relay HP it began with (the build can't be changed), after a 3-second "G
 **Waves** (`src/data/waves.js`):
 - N1: Crawlers + Skitters. N2: first Razorback. N3: Spitters. N4: Burrowers + Seed Carriers.
 - N5: Ruin Guards. N6: Colossus + a thinner support wave (28 enemies), so the night is a boss fight rather than a swarm.
-- Enemy HP ×0.8 / 1.9 / 2.3 / 2.05 / 2.4 / 2.5 for N1–N6. Total wave HP is about 270 / 1750 / 4080 / 5540 / 6570 / 6550
+- Enemy HP ×0.9 / 1.9 / 2.3 / 2.05 / 2.4 / 2.5 for N1–N6. Total wave HP is about 355 / 1750 / 4080 / 5540 / 6570 / 6550
   (N6 includes the boss). District threats (extra groups) are half size on night 1 and ¾ on night 2.
 - Tuned by full-run simulation of the real defense code (balance round 4) with budgets that accumulate over the nights
   (~70 / 90 / 100 / 100 / 100 / 105 Scrap per expedition plus bounties, objective boons). A well-played run (towers funnelled
@@ -169,7 +185,7 @@ and the Relay HP it began with (the build can't be changed), after a 3-second "G
   Relay (sometimes reaching it with a sliver of health). A typical run with three defensive skills plays out about the same;
   without unlocks the boss usually reaches the Relay but the night holds. A run without skills falls on N5; level-1 turret
   spam falls on N4; a build spread mid-map bleeds ~45–95 a night from N4 and usually falls on N6.
-  On night 1 one turret costs ~25–30 HP, two towers ~5–20 and no towers ~60. Most Relay damage comes from tanks
+  On night 1 (13 enemies after the critic-F pass) one turret costs ~27–35 HP, two towers ~0–5 and no towers ~70. Most Relay damage comes from tanks
   (Razorbacks, Ruin Guards) reaching the core.
 - Wave-size boons (and Intel Sabotage) scale the whole wave and remove enemies from the largest groups, so −10% always removes some.
   Together they are capped at −20%.

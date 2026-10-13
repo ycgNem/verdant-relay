@@ -31,8 +31,8 @@ export const DISTRICTS = {
   },
   canopy_greenhouse: {
     name: 'Canopy Greenhouse',
-    env: 'Dense vegetation, spore hazards, plant-based enemies.',
-    enemyNote: 'Crawlers, Spitters, spore patches',
+    env: 'The densest jungle, thick with spore pods that burst into choking clouds.',
+    enemyNote: 'Crawlers, Spitters, spore pods',
     bonusText: 'Biofiber ×2',
     loot: { scrap: 0.9, circuits: 0.8, biofiber: 2, intel: 1, med: 1 },
     rooms: ['greenhouse', 'courtyard', 'greenhouse', 'street'],

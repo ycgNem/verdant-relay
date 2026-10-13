@@ -24,6 +24,12 @@ const SOUNDS = {
   cut: { type: 'noise', f: 2400, f2: 1200, q: 0.7, dur: 0.09, vol: 0.16 },
   rustle: { type: 'noise', f: 3000, f2: 2200, q: 0.6, dur: 0.14, vol: 0.06 },
   flesh: { type: 'noise', f: 400, f2: 180, q: 1.5, dur: 0.08, vol: 0.22, thump: 110 },
+  kill: { type: 'noise', f: 600, f2: 140, q: 1.2, dur: 0.16, vol: 0.26, thump: 80 },     // melee killing blow
+  crack: { type: 'noise', f: 1400, f2: 260, q: 0.8, dur: 0.2, vol: 0.24, thump: 52 },    // heavy chop hits the ground
+  glint: { type: 'triangle', f: 1700, f2: 2600, dur: 0.06, vol: 0.05 },                 // wind-up eye glint
+  snort: { type: 'noise', f: 220, f2: 520, q: 2.2, dur: 0.22, vol: 0.2, thump: 60 },     // Razorback paws the ground
+  spit: { type: 'noise', f: 700, f2: 300, q: 2.5, dur: 0.12, vol: 0.16 },               // Spitter lobs a glob
+  splat: { type: 'noise', f: 380, f2: 120, q: 1.8, dur: 0.14, vol: 0.18, thump: 90 },    // the glob lands
 };
 
 export class Sfx {

@@ -134,3 +134,92 @@ export function buildDefenseGround(game, seed, laneTiles, tint) {
     },
   };
 }
+
+// ------------------------------------------------------------------ build-pad plinths
+
+const PLINTH_W = 32, PLINTH_TOP = 26, PLINTH_FACE = 7, PLINTH_H = PLINTH_TOP + PLINTH_FACE + 1;
+
+/**
+ * An in-world tower plinth for a night-map build pad (critic F #14/#15, replaces the metal pad with
+ * hazard brackets): a weathered stone block, or a timber platform (`wood`), drawn texel by texel at 32 px
+ * per tile — top face, lit north/west bevels, a shaded front face showing its height, moss and cracks.
+ * Returns a flat Lambert mesh (lit by the night lights like the ground) centred on the tile, its front
+ * face hanging south of it. `seed` varies the wear.
+ */
+export function makePlinth(seed, wood = false) {
+  const c = document.createElement('canvas');
+  c.width = PLINTH_W; c.height = PLINTH_H;
+  const g = c.getContext('2d');
+  const r = (i) => hash2(seed * 13 + i, i * 7, 911);
+  const px = (x, y, col) => { g.fillStyle = col; g.fillRect(x, y, 1, 1); };
+  const x0 = 2, x1 = PLINTH_W - 3, y0 = 1, y1 = PLINTH_TOP;   // top face (inclusive)
+  const top = wood ? ['#3a2618', '#4a3220', '#5a3e28', '#6b4b30'] : ['#3f4442', '#4c524e', '#5a615b', '#687068'];
+  const face = wood ? ['#22160e', '#2c1d12', '#382517'] : ['#262a29', '#2f3432', '#3a3f3c'];
+  const moss = ['#24401f', '#2f5228', '#3e6631'];
+  // Front face (the block's height, shaded), with vertical joints.
+  for (let y = y1 + 1; y <= y1 + PLINTH_FACE; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const k = y === y1 + PLINTH_FACE ? 0 : (x - x0) % (wood ? 7 : 9) === 0 ? 0 : y === y1 + 1 ? 2 : 1;
+      px(x, y, face[k]);
+    }
+  }
+  // Top face: stone slabs (2 × 2 blocks with offset joints) or planks, with value noise for wear.
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const n = hash2(x + seed * 31, y, 77);
+      let k = n < 0.18 ? 0 : n < 0.62 ? 1 : n < 0.93 ? 2 : 3;
+      if (wood) {
+        if ((y - y0) % 6 === 5) k = 0;                                    // gaps between planks
+        else if ((x + ((y - y0) / 6 | 0) * 11) % 16 === 0) k = 0;          // plank ends
+      } else {
+        const row = (y - y0) < 13 ? 0 : 1;
+        if (y - y0 === 13 || (x - x0 + row * 7) % 14 === 0) k = 0;        // slab joints
+      }
+      if (y === y0 || x === x0) k = Math.min(3, k + 2);                     // lit north / west bevel
+      if (y === y1 || x === x1) k = Math.max(0, k - 1);
+      px(x, y, top[k]);
+    }
+  }
+  // Cracks (stone) or nail heads (wood).
+  if (wood) {
+    for (let p = 0; p < 10; p++) px(x0 + 2 + Math.floor(r(p) * (x1 - x0 - 3)), y0 + 2 + 6 * Math.floor(r(p + 20) * 4), '#8a7a5a');
+  } else {
+    for (let k = 0; k < 2; k++) {
+      let x = x0 + 4 + Math.floor(r(k + 40) * (x1 - x0 - 8)), y = y0 + 2 + Math.floor(r(k + 50) * 8);
+      for (let s = 0; s < 6 + Math.floor(r(k + 60) * 8) && y < y1; s++) {
+        px(x, y, '#1c1f1e');
+        const q = r(k * 31 + s + 70);
+        if (q < 0.5) y++; else x += q < 0.75 ? 1 : -1;
+      }
+    }
+  }
+  // Moss creeping over the edges (more at the bottom-left, the damp side).
+  for (let k = 0; k < 26; k++) {
+    const side = r(k + 100);
+    const x = side < 0.5 ? x0 + Math.floor(r(k + 110) * 4) : x0 + Math.floor(r(k + 120) * (x1 - x0));
+    const y = side < 0.5 ? y0 + Math.floor(r(k + 130) * (y1 - y0 + PLINTH_FACE)) : y1 - Math.floor(r(k + 140) * 3) + Math.floor(r(k + 150) * 4);
+    px(x, y, moss[Math.floor(r(k + 160) * 3)]);
+  }
+  // Dark 1-texel outline around the block (pixel-art separation from the ground).
+  const d = g.getImageData(0, 0, PLINTH_W, PLINTH_H);
+  const solid = (x, y) => x >= 0 && y >= 0 && x < PLINTH_W && y < PLINTH_H && d.data[(y * PLINTH_W + x) * 4 + 3] > 0;
+  const edge = [];
+  for (let y = 0; y < PLINTH_H; y++) for (let x = 0; x < PLINTH_W; x++) {
+    if (!solid(x, y) && (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1))) edge.push([x, y]);
+  }
+  for (const [x, y] of edge) px(x, y, '#121414');
+  const tex = new THREE.CanvasTexture(c);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mat = new THREE.MeshLambertMaterial({ map: tex, transparent: true, alphaTest: 0.5, depthWrite: false });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(PLINTH_W / 32, PLINTH_H / 32), mat);
+  m.rotation.x = -Math.PI / 2;
+  m.renderOrder = 1;
+  m.userData.pxSnap = true;
+  // Centre the top face on the tile: the texture's top-face centre is (y0 + y1) / 2 texels from its top.
+  m.userData.zOffset = (PLINTH_H / 2 - (y0 + y1 + 1) / 2) / 32;
+  m.userData.dispose = () => { m.geometry.dispose(); mat.dispose(); tex.dispose(); };
+  return m;
+}

@@ -39,7 +39,8 @@ export const FOOTPRINTS = {
   ruin_stairs: { shape: 'box', w: 2, d: 0.9, opaque: false },
 };
 
-const BAYER_GLSL = 'const float BAYER[16] = float[16](0.03125,0.53125,0.15625,0.65625,0.78125,0.28125,0.90625,0.40625,0.21875,0.71875,0.09375,0.59375,0.96875,0.46875,0.84375,0.34375);\nfloat bayer4(vec2 p){ int x = int(mod(p.x, 4.0)); int y = int(mod(p.y, 4.0)); return BAYER[y * 4 + x]; }\n';
+// 8 × 8 ordered dither (recursive Bayer): 64 levels, so a fade over a few pixels shows no steps.
+const BAYER_GLSL = 'float bayer2(vec2 a){ a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }\nfloat bayer8(vec2 a){ return (bayer2(0.25 * a) * 0.25 + bayer2(0.5 * a)) * 0.25 + bayer2(a); }\n';
 
 export function makeCardMaterial(tex) {
   return new THREE.ShaderMaterial({
@@ -50,6 +51,8 @@ export function makeCardMaterial(tex) {
       uPlayerPx: { value: new THREE.Vector2(-999, -999) },
       uPlayerZ: { value: -999 },
       uXray: { value: ATMOS.xrayRadius * 32 },
+      uXrayMax: { value: ATMOS.xrayMax },
+      uXrayInner: { value: ATMOS.xrayInner },
       uTint: { value: new THREE.Color(1, 1, 1) },
     },
     vertexShader: `
@@ -72,7 +75,7 @@ export function makeCardMaterial(tex) {
       uniform sampler2D map;
       uniform vec2 uPlayerPx;
       uniform float uPlayerZ;
-      uniform float uXray;
+      uniform float uXray, uXrayMax, uXrayInner;
       uniform vec3 uTint;
       varying vec2 vUv;
       varying float vBaseZ;
@@ -82,9 +85,11 @@ export function makeCardMaterial(tex) {
         vec4 c = texture2D(map, vUv);
         if (c.a < 0.5) discard;
         if (vUpright > 0.5 && vBaseZ > uPlayerZ + 0.06) {
-          vec2 d = (gl_FragCoord.xy - uPlayerPx) * vec2(1.0, 0.75);
-          float r = length(d);
-          if (r < uXray && bayer4(gl_FragCoord.xy) < 0.72 - 0.25 * smoothstep(uXray * 0.6, uXray, r)) discard;
+          // See-through window: a round dithered hole that fades smoothly to nothing at its rim
+          // (no hard edge, so no visible box or ring). The player's silhouette shows through the rest.
+          vec2 d = (gl_FragCoord.xy - uPlayerPx) * vec2(1.0, 0.85);
+          float k = uXrayMax * (1.0 - smoothstep(uXray * uXrayInner, uXray, length(d)));
+          if (bayer8(gl_FragCoord.xy) < k) discard;
         }
         gl_FragColor = vec4(c.rgb * uTint, 1.0);
         #include <colorspace_fragment>

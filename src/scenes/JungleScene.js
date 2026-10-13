@@ -34,7 +34,9 @@ import { Ambience } from '../world/Ambience.js';
 import { Player } from '../entities/Player.js';
 import { ExploreEnemy } from '../entities/ExploreEnemy.js';
 import { Shots } from '../entities/ExploreShots.js';
+import { SporePods } from '../entities/SporePods.js';
 import { JungleMap, MAP_MARKERS } from '../ui/JungleMap.js';
+import { MAP_VIEW, HUD } from '../data/hud.js';
 import { el, button, bar, toast, modal, fmtTime, resChip, resIcon, resIconHtml, setToastsPaused } from '../ui/ui.js';
 import { showHint } from '../ui/hints.js';
 import { openSettingsOverlay } from './SettingsScene.js';
@@ -84,6 +86,9 @@ export class JungleScene {
     // ---- 3D
     this.three = new THREE.Scene();
     this.three.background = new THREE.Color('#0b120c');
+    // Flat white ambient so lit (Lambert) bits — splat decals, placeholder models — show their own colour
+    // instead of black; the real lighting is screen-space (PostFx).
+    this.three.add(new THREE.AmbientLight('#ffffff', ATMOS.ambientLight));
     this.camera = new PixelCamera({ dist: 30, near: 1, far: 90 });
     this.camera.setSize(game.width, game.height);
     game.assets.setTint('#ffffff');
@@ -136,6 +141,7 @@ export class JungleScene {
     this._buildRelay();
     this._buildPylons();
     this._buildContainers();
+    this.spores = new SporePods(this, this.data.spores || []);   // hazard (regrows daily)
     this._setupObjective();
     this._setupOptionals();
     this.map = new JungleMap(this.data, this.state.explored);
@@ -163,18 +169,25 @@ export class JungleScene {
 
   /** The Relay drone drops you at the activated pylon closest to today's objective (or at the Relay). */
   _chooseStart() {
-    const goal = this.objTargets[0];
-    if (!goal) return;
-    let best = null, bd = Math.hypot(goal.x - this.relayPos.x, goal.z - this.relayPos.z);
+    // The trek: start → first step → … → last step (one target per step).
+    const legs = [];
+    for (const t of this.objTargets) if (!legs.some((l) => l.step === t.step)) legs.push(t);
+    if (!legs.length) return;
+    let rest = 0;
+    for (let i = 1; i < legs.length; i++) rest += Math.hypot(legs[i].x - legs[i - 1].x, legs[i].z - legs[i - 1].z);
+    const trek = (p) => Math.hypot(legs[0].x - p.x, legs[0].z - p.z) + rest;
+    // A pylon only takes over if it still leaves a real trek (DAY.minTrek) and saves a good stretch.
+    let best = null, bd = trek(this.relayPos) - DAY.pylonSaving;
     for (const p of this.data.pylons) {
       if (!this.state.pylons.has(p.id)) continue;
-      const d = Math.hypot(goal.x - p.x, goal.z - p.z);
-      if (d < bd - 8) { bd = d; best = p; }
+      const d = trek(p);
+      if (d >= DAY.minTrek && d < bd) { bd = d; best = p; }
     }
+    this.trek = best ? bd : trek(this.relayPos);
     if (!best) return;
     this.player.pos.set(best.x, 0, best.z + 1.6);
     this.startPylon = best;
-    this.later(1.2, () => this.toast('The drone dropped you at your pylon — closest to today\'s objective', 'good', 3.2));
+    this.later(1.2, () => this.toast(`The drone dropped you at your pylon — ${Math.round(bd)} m from today's objective`, 'good', 3.2));
   }
 
   later(t, fn) { this.timers.push({ t, fn }); }
@@ -198,6 +211,9 @@ export class JungleScene {
     }
     return V1_FALLBACK[name] || name;
   }
+
+  /** Sprite for an opened container: a per-type spent look (Assets.openedVariant) or the opened crate. */
+  _openedName(type) { return this.game.assets.openedVariant(type, this._propKey(type)) || 'opened'; }
 
   _visual(name, x, z, opts = {}) {
     const v = this.game.assets.makeVisual(this._propKey(name), opts);
@@ -227,7 +243,7 @@ export class JungleScene {
       const on = this.state.pylons.has(p.id);
       const v = this._visual('pylon', p.x, p.z);
       const it = this._addInteractable({
-        kind: on ? 'extract' : 'pylon', pylon: p, x: p.x, z: p.z, vis: v, radius: on ? DAY.pylonRadius : 1.6,
+        kind: on ? 'extract' : 'pylon', pylon: p, x: p.x, z: p.z, vis: v, radius: DAY.pylonRadius,
         hold: on ? DAY.extractHold : DAY.pylonHold, keepProgress: !on, objectiveHold: on,
         verb: () => (it.kind === 'extract' ? 'Extract here (bank your loot)' : 'Activate the relay pylon'),
         onComplete: (t) => this._completePylon(t),
@@ -240,7 +256,9 @@ export class JungleScene {
   _pylonGlow(it, on) {
     if (it.glow) it.glow.visible = on;
     if (!on || it.glow) return;
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(3, 1.6), new THREE.MeshBasicMaterial({ map: glowTexture(), color: '#2ce8f5', transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
+    // Soft dithered light pool (texel-exact, PixelGlow) instead of a stretched 20 × 10 blob.
+    const G = this.game.assets.pylonGlow;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(G.w, G.h), new THREE.MeshBasicMaterial({ map: G.tex, color: G.color, transparent: true, opacity: G.strength, depthWrite: false, blending: THREE.AdditiveBlending }));
     m.rotation.x = -Math.PI / 2;
     m.position.set(it.x, 0.02, it.z);
     m.userData.pxSnap = true;
@@ -272,14 +290,14 @@ export class JungleScene {
     for (const c of this.data.containers) {
       const opened = this.state.opened.has(c.id);
       // Hidden caches only show once you are close (they sit in the brush).
-      const v = this._visual(opened ? 'opened' : c.type, c.x, c.z);
+      const v = this._visual(opened ? this._openedName(c.type) : c.type, c.x, c.z);
       if (!opened) this.world.addCollider({ kind: 'prop', x: c.x, z: c.z - 0.05, r: 0.3 });
       const district = DISTRICTS[DISTRICT_KEYS[c.region]] || this.D;
       this._addInteractable({
         kind: 'container', type: c.type, cont: c, x: c.x, z: c.z, vis: v, done: opened, radius: 1.35,
         hold: X().containers[c.type].hold, keepProgress: true,
         verb: () => `Open ${CONTAINER_NAMES[c.type]}`,
-        onComplete: (it) => this._openContainer(it, rollLoot(makeRng(subSeed(run.seed, 'loot', c.id)), c.type, district, run)),
+        onComplete: (it) => this._openContainer(it, rollLoot(makeRng(subSeed(run.seed, 'loot', c.id)), c.type, district, run, c.yield ?? 1)),
       });
     }
   }
@@ -287,13 +305,18 @@ export class JungleScene {
   // ================================================================== objectives
 
   /** Pick today's objective sites in the target district (never a site used on an earlier day). */
-  _sitesIn(types, n = 1, exclude = []) {
+  _sitesIn(types, n = 1, exclude = [], deep = false) {
     const ri = this.regionIdx;
     const all = this.data.sites.filter((s) => s.region === ri && !this.state.used.has(s.id) && !exclude.includes(s));
     const out = [];
-    for (const t of types) {
-      for (const s of this.rng.shuffle(all.filter((x) => x.type === t))) { if (out.length < n && !out.includes(s)) out.push(s); }
-    }
+    // deep (primary objectives): far from the Relay first (a real trek), then lost sites (off-trail: cut
+    // your way in), then by type order. Otherwise just by type order.
+    const rel = this.relayPos;
+    const far = (s) => (Math.hypot(s.x - rel.x, s.z - rel.z) >= DAY.objectiveMinDist ? 0 : 1);
+    const rank = (s) => (deep ? far(s) * 100 + (s.lost ? 0 : 10) : 0) + types.indexOf(s.type);
+    const cand = this.rng.shuffle(all.filter((x) => types.includes(x.type)));
+    cand.sort((a, b) => rank(a) - rank(b));
+    for (const s of cand) if (out.length < n) out.push(s);
     // Fall back to any site in the region, then anywhere.
     if (out.length < n) for (const s of this.rng.shuffle(this.data.sites.filter((x) => x.region === ri && !out.includes(x) && !exclude.includes(x) && x.type !== 'pylon'))) if (out.length < n) out.push(s);
     if (out.length < n) for (const s of this.rng.shuffle(this.data.sites.filter((x) => !out.includes(x) && !exclude.includes(x) && x.type !== 'pylon'))) if (out.length < n) out.push(s);
@@ -316,7 +339,7 @@ export class JungleScene {
     def.steps.forEach((step, si) => {
       const count = step.count || 1;
       const types = step.room === 'side' ? ['minor', 'landmark', 'camp'] : ['major', 'minor'];
-      const sites = this._sitesIn(types, count, used);
+      const sites = this._sitesIn(types, count, used, step.room !== 'side');
       sites.forEach((s) => {
         used.push(s);
         this.state.used.add(s.id);
@@ -348,6 +371,10 @@ export class JungleScene {
       this._removeVis(it);
       this.toast(`Got the ${step.prop}`, 'good');
       this.game.sfx.play('pickup');
+    } else if (it.vis && step.prop === 'cell_cache') {
+      // The cracked power-cell cache goes dark (its cell is gone), instead of glowing on.
+      const k = this.game.assets.spentVariant(this._propKey('cell_cache'), 'dark');
+      if (k) { this._removeVis(it); it.vis = this._visual(k, it.x, it.z); } else setAnim(it.vis, 'on');
     } else if (it.vis) setAnim(it.vis, 'on');
     this.fx.burst({ x: it.x, z: it.z }, { color: '#feae34', color2: '#ffffff', count: 16, speed: 2.2, up: 3, life: 0.5, y: 0.6 });
     this._advanceStep(it.step, count);
@@ -523,7 +550,7 @@ export class JungleScene {
     this.state.opened.add(it.cont.id);
     this.game.sfx.play('open');
     this._removeVis(it);
-    it.vis = this._visual('opened', it.x, it.z);
+    it.vis = this._visual(this._openedName(it.type), it.x, it.z);
     this.fx.burst({ x: it.x, z: it.z }, { color: '#e4a672', color2: '#feae34', count: 10, speed: 2, up: 3, life: 0.4, y: 0.4 });
     this._spill(loot, it.x, it.z, true);
     if (!this.warned.loot) {
@@ -657,6 +684,7 @@ export class JungleScene {
   hittables() {
     const out = this.enemies.filter((e) => !e.dead);
     for (const n of this.nests) if (!n.dead) out.push({ x: n.x, z: n.z, radius: n.radius, dead: false, hit: (dmg, _dx, _dz, _kb, src) => this._hitNest(n, dmg, src) });
+    this.spores?.hittables(out);   // a hit pops a spore pod
     return out;
   }
 
@@ -674,11 +702,17 @@ export class JungleScene {
       da = Math.atan2(Math.sin(da), Math.cos(da));
       return Math.abs(da) <= half + Math.atan2(rad, d) ? { d, dx: dx / d, dz: dz / d } : null;
     };
+    const M = JUICE.melee;
+    const chop = power >= 2;
+    const step = chop ? 3 : Math.min(2, spec.step ?? 0);
+    let kills = 0, hitAt = null;
     for (const t of this.hittables()) {
       const h = inArc(t.x, t.z, t.radius || 0.3);
       if (!h) continue;
       t.hit(spec.damage, h.dx, h.dz, spec.knockback, src, spec.stagger || 0);
       hits++;
+      if (t.dead) kills++;
+      if (!hitAt || h.d < hitAt.d) hitAt = { d: h.d, x: t.x, z: t.z };
     }
     // Undergrowth: tiles whose centre is in the arc (and the tile right in front of you).
     let cut = 0, nicked = 0;
@@ -691,14 +725,40 @@ export class JungleScene {
       if (b === -1) {
         nicked++;
         fx.burst({ x: tx + 0.5, y: 0.4, z: tz + 0.5 }, { color: '#c23a3a', color2: '#5c2f2e', count: 4, speed: 2, up: 1.5, life: 0.3, size: 1.5 / 32 });
+        fx.burst({ x: tx + 0.5, y: 0.5, z: tz + 0.5 }, { color: '#4a2428', count: 2, speed: 1.4, up: 1.6, life: 0.6, size: 1 / 32, aspect: 2, gravity: 3, drag: 2, flutter: 1.2 });
       } else if (b > 0) {
         cut++;
-        const cols = b === BRUSH.bramble ? ['#4a2428', '#c23a3a'] : b === BRUSH.fern ? ['#4b8139', '#62983f'] : ['#2a5628', '#4b8139'];
-        fx.burst({ x: tx + 0.5, y: 0.5, z: tz + 0.6 }, { color: cols[0], color2: cols[1], count: b === BRUSH.fern ? 5 : 9, speed: 2.4, up: 2.6, life: 0.55, size: 2 / 32, gravity: 6, vx: Math.cos(angle) * 1.5, vz: Math.sin(angle) * 1.5 });
+        this._cutDebris(tx, tz, b, angle);
       }
     }
-    this._slashFx(x, z, angle, R, spec.arc, power, hits > 0);
-    if (hits) this.game.sfx.play('flesh');
+    // The swing itself: a hand-pixelled smear (3 combo arcs, heavy chop), one hit-stop per swing,
+    // a camera kick along the blow and a little shake.
+    fx.smear(x, z, angle, {
+      range: R, arc: spec.arc, sign: step === 1 ? -1 : 1, kind: chop ? 'chop' : step === 2 ? 'heavy' : 'slash',
+      frame: chop ? M.chopSmearFrames : M.smearFrames[step], y: M.smearY, scale: M.smearScale,
+      // unless the swing points away from the camera (behind the player), draw it over the undergrowth
+      onTop: Math.sin(angle) > -0.4,
+    });
+    if (hits) {
+      fx.hitStop(kills ? (chop ? M.chopKillStop : M.killStop) : chop ? M.chopStop : M.stop[step]);
+      const hx = hitAt.x - Math.cos(angle) * 0.25, hz = hitAt.z - Math.sin(angle) * 0.25;
+      fx.flash({ x: hx, y: 0.6, z: hz }, { color: chop ? '#fee761' : '#ffffff', size: chop ? 0.55 : 0.45, life: 0.06 });
+      this.game.sfx.play(kills ? 'kill' : 'flesh');
+      this.game.shake(chop ? M.chopShake : M.shake[step], 0.1);
+    }
+    const kick = hits ? (chop ? M.chopKick : M.kick[step]) : cut ? M.whiffKick : 0;
+    if (kick) { this.camFocus.x += Math.cos(angle) * kick; this.camFocus.z += Math.sin(angle) * kick; }
+    if (chop) {
+      // The heavy blow bites into the ground in front of you.
+      const cx = x + Math.cos(angle) * R * 0.6, cz = z + Math.sin(angle) * R * 0.6;
+      if (this.world.levelAt(cx, cz) > LEVEL.water) {
+        fx.crack({ x: cx, z: cz });
+        fx.burst({ x: cx, y: 0, z: cz }, { color: '#8f563b', color2: '#5a4430', count: 10, speed: 2.2, up: 2.4, life: 0.45, size: 2 / 32, gravity: 10, y: 0.1 });
+        fx.burst({ x: cx, y: 0, z: cz }, { color: '#b86f50', color2: '#e4a672', count: 5, speed: 1, up: 0.8, life: 0.6, size: 3 / 32, gravity: 1, drag: 3, y: 0.1 });
+      }
+      this.game.sfx.play('crack');
+      if (!hits) this.game.shake(M.chopShake * 0.5, 0.08);
+    }
     if (cut) {
       this.game.sfx.play('cut');
       // Cutting is loud: anything nearby comes to look.
@@ -709,54 +769,31 @@ export class JungleScene {
       this.warned.bramble = true;
       this.toast('Thorny bramble: a heavy chop (hold RMB) clears it', 'amber', 3);
     }
-    if (hits) this.game.shake(power >= 2 ? 3.5 : 1.6, 0.1);
   }
 
-  _slashFx(x, z, angle, R, arc, power, hit) {
-    if (!this._slashMats) {
-      this._slashMats = [
-        new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }),
-        new THREE.MeshBasicMaterial({ color: '#d8f0e8', transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide }),
-      ];
-      this.slashes = [];
-    }
-    const g = new THREE.Group();
-    const segs = 14;
-    const edge = new THREE.Mesh(new THREE.RingGeometry(R - (power >= 2 ? 0.16 : 0.1), R, segs, 1, -arc / 2, arc), this._slashMats[0].clone());
-    const body = new THREE.Mesh(new THREE.RingGeometry(R * 0.45, R - 0.1, segs, 1, -arc / 2, arc), this._slashMats[1].clone());
-    if (power >= 2) { edge.material.color.set('#fee761'); body.material.color.set('#feae34'); }
-    g.add(body, edge);
-    g.rotation.x = -Math.PI / 2;
-    g.rotation.z = -angle;
-    g.position.set(x, 0.5, z);
-    g.renderOrder = 5;
-    this.three.add(g);
-    this.slashes.push({ g, t: 0, life: power >= 2 ? 0.16 : 0.11 });
-    if (hit) this.fx.flash({ x: x + Math.cos(angle) * R * 0.8, y: 0.6, z: z + Math.sin(angle) * R * 0.8 }, { color: '#ffffff', size: 0.45, life: 0.05 });
+  /** Debris from a cut undergrowth tile: leaf chips that see-saw down, plus stem / bark / thorn bits. */
+  _cutDebris(tx, tz, b, angle) {
+    const fx = this.fx;
+    const ca = Math.cos(angle), sa = Math.sin(angle);
+    // leaf chips show their pale undersides as they tumble (bright enough to read in canopy shade)
+    const leaves = b === BRUSH.bramble ? ['#c23a3a', '#4a2428'] : b === BRUSH.fern ? ['#99e550', '#62983f'] : ['#63c74d', '#2a5628'];
+    const chips = b === BRUSH.bramble ? ['#e4a672', '#733e39'] : b === BRUSH.fern ? ['#3e8948', '#c0d470'] : ['#8f563b', '#e4a672'];
+    const p = { x: tx + 0.5, y: 0.5, z: tz + 0.55 };
+    fx.burst(p, { color: leaves[0], color2: leaves[1], count: b === BRUSH.fern ? 6 : 10, speed: 2.2, up: 2.6, life: 1.0, size: 2 / 32, aspect: 1.5, gravity: 3, drag: 2.4, flutter: 1.6, vx: ca * 1.8, vz: sa * 1.8 });
+    fx.burst(p, { color: leaves[1], color2: leaves[0], count: b === BRUSH.fern ? 3 : 5, speed: 2.6, up: 2.2, life: 0.55, size: 2 / 32, gravity: 7, vx: ca * 2.2, vz: sa * 2.2 });
+    fx.burst({ x: p.x, y: 0.2, z: p.z }, { color: chips[0], color2: chips[1], count: b === BRUSH.fern ? 3 : 6, speed: 3, up: 2, life: 0.4, size: 1 / 32, aspect: b === BRUSH.fern ? 1 : 2, gravity: 13, vx: ca * 1.2, vz: sa * 1.2 });
   }
 
-  _updateSlashes(dt) {
-    if (!this.slashes) return;
-    for (let i = this.slashes.length - 1; i >= 0; i--) {
-      const s = this.slashes[i];
-      s.t += dt;
-      const k = s.t / s.life;
-      const [body, edge] = s.g.children;
-      edge.material.opacity = 0.9 * (1 - k);
-      body.material.opacity = 0.35 * (1 - k);
-      s.g.scale.setScalar(0.9 + 0.1 * Math.min(1, k * 2));
-      if (k >= 1) {
-        s.g.removeFromParent();
-        s.g.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
-        this.slashes.splice(i, 1);
-      }
-    }
-  }
+  /** Old wedge FX were replaced by Fx.smear (pixel arcs); kept so the frame loop's call stays valid. */
+  _updateSlashes() {}
 
   /** A Razorback bulldozes through undergrowth. */
   crashBrush(tx, tz) {
     const b = this.world.hitBrush(tx, tz, 2);
-    if (b > 0) this.fx.burst({ x: tx + 0.5, y: 0.5, z: tz + 0.5 }, { color: '#2a5628', color2: '#5a4430', count: 6, speed: 2.5, up: 2.5, life: 0.5, size: 2 / 32, gravity: 6 });
+    if (b > 0) {
+      this.fx.burst({ x: tx + 0.5, y: 0.5, z: tz + 0.5 }, { color: '#2a5628', color2: '#5a4430', count: 6, speed: 2.5, up: 2.5, life: 0.5, size: 2 / 32, gravity: 6 });
+      this.fx.burst({ x: tx + 0.5, y: 0.6, z: tz + 0.5 }, { color: '#2a5628', color2: '#4b8139', count: 6, speed: 2, up: 2.4, life: 0.9, size: 1 / 32, aspect: 2, gravity: 3, drag: 2.4, flutter: 1.5 });
+    }
   }
 
   alertNear(x, z, r, src, noise = false) {
@@ -1165,16 +1202,91 @@ export class JungleScene {
   }
 
   toggleMap(open = !this.mapOpen) {
+    if (open === this.mapOpen) return;
     this.mapOpen = open;
-    this.hud.bigmap.style.display = open ? '' : 'none';
+    const h = this.hud;
+    h.bigmap.style.display = open ? '' : 'none';
+    setToastsPaused(this.game.ui, open);
+    this.game.ui.classList.toggle('j-mapopen', open);
+    this.player.reticle.visible = !open;
+    this.game.stage.style.cursor = open ? '' : 'none';
     if (open) {
       for (const b of this.game.ui.querySelectorAll('.x-banner')) b.remove();
-      const dpr = window.devicePixelRatio || 1;
-      const st = this.game.stage;
-      const px = Math.floor(Math.min(st.clientWidth * 0.62, st.clientHeight * 0.78) * dpr / this.data.size) * this.data.size;
-      this.hud.big.width = this.hud.big.height = Math.max(this.data.size, px);
-      this.hud.big.style.width = this.hud.big.style.height = `${Math.max(this.data.size, px) / dpr}px`;
+      h.bigSteps.innerHTML = this._stepsHtml(true);
+      this._sizeBig();
+      // Frame the explored area (plus the Relay and you); a far objective sticks to the map edge.
+      const extra = this._markers().filter((m) => m.type === 'relay' || m.type === 'player');
+      this.bigView = this.map.fitView(h.big.width, h.big.height, extra);
+      this._updateBigMap(0);
     }
+  }
+
+  /** Match the big-map canvas to its CSS box in device pixels (the map is drawn pixel-exact). */
+  _sizeBig() {
+    const cv = this.hud.big, dpr = window.devicePixelRatio || 1;
+    const w = Math.max(64, Math.round(cv.clientWidth * dpr)), hh = Math.max(64, Math.round(cv.clientHeight * dpr));
+    if (cv.width === w && cv.height === hh) return;
+    cv.width = w; cv.height = hh;
+    if (this.bigView) this.bigView.ppt = this.map.clampZoom(this.bigView.ppt, w, hh);
+  }
+
+  /** Drag to pan, wheel to zoom (around the cursor). */
+  _bindBigMap(cv) {
+    const dpr = () => window.devicePixelRatio || 1;
+    let drag = null;
+    cv.addEventListener('pointerdown', (e) => {
+      if (!this.bigView) return;
+      drag = { x: e.clientX, y: e.clientY };
+      cv.setPointerCapture?.(e.pointerId);
+      cv.classList.add('drag');
+    });
+    cv.addEventListener('pointermove', (e) => {
+      if (!drag || !this.bigView) return;
+      const k = dpr() / this.bigView.ppt;
+      this.bigView.cx -= (e.clientX - drag.x) * k;
+      this.bigView.cz -= (e.clientY - drag.y) * k;
+      drag.x = e.clientX; drag.y = e.clientY;
+      this.map.clampView(this.bigView);
+    });
+    const end = () => { drag = null; cv.classList.remove('drag'); };
+    cv.addEventListener('pointerup', end);
+    cv.addEventListener('pointercancel', end);
+    cv.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const r = cv.getBoundingClientRect();
+      this._zoomBig(e.deltaY < 0 ? 1 : -1, (e.clientX - r.left) * dpr(), (e.clientY - r.top) * dpr());
+    }, { passive: false });
+  }
+
+  _zoomBig(dir, px, py) {
+    const v = this.bigView, cv = this.hud.big;
+    if (!v) return;
+    if (px == null) { px = cv.width / 2; py = cv.height / 2; }
+    const ppt = this.map.clampZoom(v.ppt + dir * Math.max(1, Math.round(v.ppt * 0.25)), cv.width, cv.height);
+    if (ppt === v.ppt) return;
+    // Keep the tile under the cursor where it is.
+    const wx = v.cx + (px - cv.width / 2) / v.ppt, wz = v.cz + (py - cv.height / 2) / v.ppt;
+    v.ppt = ppt;
+    v.cx = wx - (px - cv.width / 2) / ppt;
+    v.cz = wz - (py - cv.height / 2) / ppt;
+    this.map.clampView(v);
+  }
+
+  /** While the big map is open (the day is paused): pan / zoom keys, then draw. `dt` is real time. */
+  _updateBigMap(dt) {
+    const v = this.bigView;
+    if (!v) return;
+    const input = this.game.input;
+    this._sizeBig();
+    const k = (MAP_VIEW.panSpeed * dt) / v.ppt;
+    const key = (...codes) => codes.some((c) => input.isDown(c));
+    v.cx += ((key('KeyD', 'ArrowRight') ? 1 : 0) - (key('KeyA', 'ArrowLeft') ? 1 : 0)) * k;
+    v.cz += ((key('KeyS', 'ArrowDown') ? 1 : 0) - (key('KeyW', 'ArrowUp') ? 1 : 0)) * k;
+    if (input.wasPressed('Equal') || input.wasPressed('NumpadAdd')) this._zoomBig(1);
+    if (input.wasPressed('Minus') || input.wasPressed('NumpadSubtract')) this._zoomBig(-1);
+    if (input.wasPressed('Space')) { v.cx = this.player.pos.x; v.cz = this.player.pos.z; }
+    this.map.clampView(v);
+    this.map.drawBig(this.hud.big, v, this._markers(), this.game.time);
   }
 
   _banner(title, sub) {
@@ -1195,6 +1307,8 @@ export class JungleScene {
     }
     if ((input.wasPressed('Tab') || input.wasPressed('KeyM')) && !this.paused) this.toggleMap();
     if (this.paused || this.finished) return;
+    // The big map pauses the day: the world, the timer and every entity freeze while it is open.
+    if (this.mapOpen) { this._updateBigMap(dt); return; }
 
     dt *= this.timeScale * this.fx.step(dt);
     this.time += dt;
@@ -1212,6 +1326,7 @@ export class JungleScene {
     this._updateObjectiveSpawns();
     this._updateEnemies(dt);
     this._updateNests(dt);
+    this.spores.update(dt);
     this.shots.update(dt);
     this._updatePickups(dt);
     this._updateSlashes(dt);
@@ -1261,6 +1376,8 @@ export class JungleScene {
     // X-ray window for foliage in front of the player (GL pixel coordinates: y up).
     const body = cam.toPixel(new THREE.Vector3(this.player.pos.x, 0.75, this.player.pos.z));
     this.world.setPlayer(body.x, this.game.height - body.y, this.player.pos.z);
+    // Occlusion silhouettes (Assets.js): enemies show bright once alerted, dim while unaware.
+    for (const e of this.enemies) if (e.vis) e.vis.userData.alert = !!e.alerted;
   }
 
   _updateDay(dt) {
@@ -1305,14 +1422,20 @@ export class JungleScene {
   _updateInteract(dt) {
     const pl = this.player;
     const input = this.game.input;
-    let best = null, bd = Infinity;
+    // Overlapping prompts: Relay / pylons beat objectives beat containers (DAY.interactRank), nearest
+    // first within a rank — unless you stand right on top of a lower-ranked one (point-blank exception).
+    let best = null, bd = Infinity, br = Infinity, near = null, nd = Infinity;
     for (const it of this.interactables) {
       if (it.done) continue;
       const d = Math.hypot(it.x - pl.pos.x, it.z - pl.pos.z);
       if (d > 4) continue;
       if (it.walkOver && d < 0.75 && it.enabled()) { this._complete(it); continue; }
-      if (d <= it.radius && d < bd) { bd = d; best = it; }
+      if (d > it.radius) continue;
+      const r = DAY.interactRank[it.kind] ?? 1;
+      if (r < br || (r === br && d < bd)) { best = it; bd = d; br = r; }
+      if (d < nd) { near = it; nd = d; }
     }
+    if (near && near !== best && nd <= DAY.interactPointBlank && bd - nd >= DAY.interactPointBlankLead) best = near;
     const ht = this.holdTarget;
     if (ht && !ht.done && input.isDown('KeyE') && Math.hypot(ht.x - pl.pos.x, ht.z - pl.pos.z) <= ht.radius + X().holdGrace) best = ht;
     if (this.holdTarget && this.holdTarget !== best) {
@@ -1379,46 +1502,54 @@ export class JungleScene {
     const ui = this.game.ui;
     ui.classList.add('explore-ui', 'jungle-ui');
     const h = {};
+    // Top-left: one compact panel — health, stamina + med kits, carried loot (banked when you return).
     h.hp = bar('x-hpbar', 'var(--good)');
     h.stam = bar('j-stambar', '#feae34');
-    h.meds = el('span.x-chip', '');
-    h.weapon = el('div.x-weapon.small.muted', `${this.player.weapon.name} · LMB slash · hold RMB chop · Space roll`);
-    const tl = el('div.x-tl.x-panel', {}, el('div.x-row', {}, el('span.x-lbl', 'HP'), h.hp.node), el('div.x-row', {}, el('span.x-lbl.j-st', 'ST'), h.stam.node, h.meds), h.weapon);
+    h.meds = el('span.x-chip.j-meds', { title: 'Med kits (Q)' }, '');
     h.loot = {};
-    const lootRow = el('div.x-lootrow', {}, RESOURCE_KEYS.map((k) => {
+    const lootRow = el('div.j-lootrow', { title: 'Carried loot: banked when you return to the Relay or a pylon' }, RESOURCE_KEYS.map((k) => {
       const r = RESOURCES[k];
       const n = el('b', '0');
-      const chip = el('span.x-res', { style: { '--c': r.color }, title: `${r.label}: ${r.desc}` }, resIcon(k), n, el('span.lbl', r.short));
+      const chip = el('span.x-res.j-res', { style: { '--c': r.color }, title: `${r.label}: ${r.desc}` }, resIcon(k), n);
       h.loot[k] = { n, chip, v: -1 };
       return chip;
     }));
-    const loot = el('div.x-loot.x-panel', {}, el('div.x-title', {}, 'CARRIED ', el('span.muted', '· banked when you return')), lootRow);
-    h.sun = el('div.j-sun', {}, el('div.j-sunfill'), el('div.j-sundot'));
-    h.timer = el('div.x-time', '');
-    h.timerSub = el('div.x-timesub', this.D.name);
-    const timer = el('div.x-timer', {}, h.sun, h.timer, h.timerSub);
-    h.mini = el('canvas.x-mini');
-    h.mini.width = h.mini.height = 160;
-    const mini = el('div.x-minibox', {}, h.mini, el('div.x-minihint', {}, el('span.key', 'Tab'), ' map'));
-    h.objTitle = el('div.x-objtitle', this.objDef.name);
-    h.steps = el('div.x-steps');
-    h.objDir = el('div.x-extract', {}, el('span.x-dirarrow.amber', '➤'), el('span', ''));
-    h.extract = el('div.x-extract', {}, el('span.x-dirarrow', '➤'), el('span', ''));
-    h.optList = el('div.x-optlist');
-    const obj = el('div.x-obj.x-panel', {}, el('div.x-title.amber', 'OBJECTIVE'), h.objTitle, h.steps, h.objDir, h.extract, h.optList);
-    const tr = el('div.x-tr', {}, mini, obj);
+    h.tl = el('div.j-tl.x-panel', {},
+      el('div.j-row', {}, el('span.x-lbl', 'HP'), h.hp.node),
+      el('div.j-row', {}, el('span.x-lbl.j-st', 'ST'), h.stam.node, h.meds),
+      lootRow);
+    // Top-right corner: a small round minimap ringed by the daylight left; clock and district under it.
+    h.mini = el('canvas.j-mini');
+    h.ring = el('div.j-ring', {}, h.mini, el('span.key.j-tabkey', 'Tab'));
+    h.timer = el('div.x-time.j-time', '');
+    h.timerSub = el('div.j-district', this.D.name);
+    h.tr = el('div.j-tr', {}, h.ring, h.timer, h.timerSub);
+    // Bottom strip: the current objective step, where it is, and the nearest return point.
+    h.steps = el('span.j-step');
+    h.objDir = el('span.j-dir.obj', {}, el('span.x-dirarrow', '➤'), el('span', ''));
+    h.extract = el('span.j-dir.ext', {}, el('span.x-dirarrow', '➤'), el('span', ''));
+    h.optList = el('span.j-opts');
+    h.strip = el('div.j-strip', { title: this.objDef.name }, el('span.j-objk', 'OBJECTIVE'), h.steps, h.objDir, h.extract, h.optList);
     h.promptRing = el('span.x-ring', {}, el('span.key', 'E'));
     h.promptText = el('span.x-plabel');
     h.promptTime = el('span.x-ptime');
     h.prompt = el('div.x-prompt', {}, el('div.x-ptext', {}, h.promptRing, h.promptText, h.promptTime));
     h.arrowObj = el('div.x-edge.obj', {}, el('span', '▲'));
     h.arrowExt = el('div.x-edge.ext', {}, el('span', '▲'));
+    // Big map (Tab): pauses the day; zoom + pan.
     h.big = el('canvas.x-bigcanvas');
-    const legend = el('div.x-legend', {}, ['objective', 'optional', 'relay', 'pylon_on', 'pylon_off', 'player'].map((k) =>
-      el('span.x-leg', {}, el('i', { style: { background: MAP_MARKERS[k].color } }), MAP_MARKERS[k].label)));
-    h.bigmap = el('div.x-bigmap', { style: { display: 'none' } },
-      el('div.x-bigbox.x-panel', {}, el('div.x-bigtitle', {}, el('b', 'The Jungle'), el('span.muted', ` · today: ${this.D.name} — ${this.objDef.name}`), el('span.muted.x-bigclose', 'Tab / Esc to close')), h.big, legend));
-    h.root = el('div.x-hud', {}, tl, loot, timer, tr, h.prompt, h.arrowObj, h.arrowExt, h.bigmap);
+    const legend = el('div.x-legend', {}, ['player', 'relay', 'pylon_on', 'pylon_off', 'objective', 'optional', 'container'].map((k) =>
+      el('span.x-leg', {}, JungleMap.legendIcon(k, 12 * this.game.stage.clientWidth / 960), MAP_MARKERS[k].label)));
+    h.bigSteps = el('div.j-bigsteps');
+    h.bigmap = el('div.x-bigmap.ui-block', { style: { display: 'none' }, onclick: (e) => { if (e.target === h.bigmap) this.toggleMap(false); } },
+      el('div.x-bigbox.x-panel', {},
+        el('div.x-bigtitle', {}, el('b', 'The Jungle'), el('span.muted', ` · ${this.D.name} — `), el('span.amber', this.objDef.name),
+          el('span.j-paused', 'DAY PAUSED'), el('span.muted.x-bigclose', 'Tab / Esc close')),
+        h.big,
+        el('div.j-bigfoot', {}, h.bigSteps, el('div.j-bighelp.muted', 'Drag / WASD pan · wheel / + − zoom · Space: you')),
+        legend));
+    this._bindBigMap(h.big);
+    h.root = el('div.x-hud', {}, h.tl, h.tr, h.strip, h.prompt, h.arrowObj, h.arrowExt, h.bigmap);
     ui.append(h.root);
     this.hud = h;
     this._hudCache = {};
@@ -1437,6 +1568,7 @@ export class JungleScene {
     if (prop === 'text') node.textContent = val;
     else if (prop === 'html') node.innerHTML = val;
     else if (prop === 'className') node.className = val;
+    else if (prop.startsWith('--')) node.style.setProperty(prop, val);
     else node.style[prop] = val;
   }
 
@@ -1472,19 +1604,66 @@ export class JungleScene {
     node.style.transform = `rotate(${Math.round((a * 180) / Math.PI / 15) * 15}deg)`;
   }
 
-  _edgeArrow(node, target) {
-    if (!target) { node.style.display = 'none'; return; }
+  /** HUD boxes in stage px (for arrows that must not sit on them, and the threat fade). */
+  _hudRects() {
+    const st = this.game.stage.getBoundingClientRect();
+    const out = [];
+    for (const n of [this.hud.tl, this.hud.tr, this.hud.strip, this.hud.prompt]) {
+      if (n.style.display === 'none') continue;
+      const r = n.getBoundingClientRect();
+      if (r.width > 0) out.push({ n, l: r.left - st.left, t: r.top - st.top, r: r.right - st.left, b: r.bottom - st.top });
+    }
+    return out;
+  }
+
+  /** Off-screen arrow on the stage edge toward `target`, slid clear of the HUD boxes in `avoid`. */
+  _edgeArrow(node, target, avoid) {
+    if (!target) { node.style.display = 'none'; return null; }
     const pr = this.game.project(new THREE.Vector3(target.x, 0.5, target.z), this.camera);
     const sw = this.game.stage.clientWidth, sh = this.game.stage.clientHeight;
-    const m = 40 * sw / 960;
-    if (pr.x > m && pr.y > m && pr.x < sw - m && pr.y < sh - m) { node.style.display = 'none'; return; }
+    const u = sw / 960, m = HUD.edgeMargin * u, half = 17 * u;
+    if (pr.x > m && pr.y > m && pr.x < sw - m && pr.y < sh - m) { node.style.display = 'none'; return null; }
     const cx = sw / 2, cy = sh / 2;
     const a = Math.atan2(pr.y - cy, pr.x - cx);
     const k = Math.min((sw / 2 - m) / Math.abs(Math.cos(a) || 1e-6), (sh / 2 - m) / Math.abs(Math.sin(a) || 1e-6));
+    let x = cx + Math.cos(a) * k, y = cy + Math.sin(a) * k;
+    const side = Math.abs(x - m) < 1 || Math.abs(x - (sw - m)) < 1;   // on the left/right edge: slide vertically
+    for (let pass = 0; pass < 3; pass++) {
+      let moved = false;
+      for (const r of avoid) {
+        if (x + half <= r.l || x - half >= r.r || y + half <= r.t || y - half >= r.b) continue;
+        if (side) y = y < cy ? r.b + half : r.t - half;
+        else x = x < cx ? r.r + half : r.l - half;
+        moved = true;
+      }
+      if (!moved) break;
+    }
     node.style.display = '';
-    node.style.left = `${cx + Math.cos(a) * k}px`;
-    node.style.top = `${cy + Math.sin(a) * k}px`;
+    node.style.left = `${x - half}px`;
+    node.style.top = `${y - half}px`;
     node.firstChild.style.transform = `rotate(${(a * 180) / Math.PI + 90}deg)`;
+    return { l: x - half, t: y - half, r: x + half, b: y + half };
+  }
+
+  /** Fade a HUD box while a live enemy is behind it (so the corners never hide a threat). */
+  _fadeHudOverThreats(rects) {
+    const hit = new Set();
+    const p = this.player.pos;
+    const v = new THREE.Vector3();
+    for (const e of this.enemies) {
+      if (e.dead || Math.abs(e.x - p.x) > 16 || Math.abs(e.z - p.z) > 12) continue;
+      const pr = this.game.project(v.set(e.x, 0.6, e.z), this.camera);
+      for (const r of rects) if (pr.x > r.l - 8 && pr.x < r.r + 8 && pr.y > r.t - 8 && pr.y < r.b + 8) hit.add(r.n);
+    }
+    for (const n of [this.hud.tl, this.hud.tr, this.hud.strip]) n.classList.toggle('x-fade', hit.has(n));
+  }
+
+  /** Player heading for the map arrow: movement direction, else where you aim. */
+  _heading() {
+    const pl = this.player;
+    if (Math.hypot(pl.vel.x, pl.vel.z) > 0.5) this._head = Math.atan2(pl.vel.z, pl.vel.x);
+    else if (this._head == null) this._head = Math.atan2(pl.aimPoint.z - pl.pos.z, pl.aimPoint.x - pl.pos.x);
+    return this._head;
   }
 
   _markers() {
@@ -1500,11 +1679,22 @@ export class JungleScene {
     for (const it of this.interactables) {
       if (it.done) continue;
       if (it.kind === 'optional' && this.seen.has(it)) out.push({ x: it.x, z: it.z, type: 'optional' });
-      else if (it.kind === 'container' && this.map.isExplored(it.x, it.z) && Math.hypot(it.x - this.player.pos.x, it.z - this.player.pos.z) < 18) out.push({ x: it.x, z: it.z, type: 'container' });
+      else if (it.kind === 'container' && this.map.isExplored(it.x, it.z) && Math.hypot(it.x - this.player.pos.x, it.z - this.player.pos.z) < MAP_VIEW.containerRange) out.push({ x: it.x, z: it.z, type: 'container' });
     }
     for (const n of this.nests) if (!n.dead && this.seen.has(n)) out.push({ x: n.x, z: n.z, type: 'optional' });
-    out.push({ x: this.player.pos.x, z: this.player.pos.z, type: 'player' });
+    out.push({ x: this.player.pos.x, z: this.player.pos.z, type: 'player', a: this._heading() });
     return out;
+  }
+
+  /** Objective steps as HTML. Done steps are ticked (never struck through: "return to claim it" is still to do). */
+  _stepsHtml(all) {
+    if (this.objectiveDone) return '<span class="x-step claim">✔ Objective complete — return to claim it</span>';
+    const steps = this.objDef.steps.map((s, i) => {
+      const cls = i < this.objStep ? 'done' : i === this.objStep ? 'cur' : '';
+      const cnt = s.count && i === this.objStep ? ` (${this.stepCount}/${s.count})` : '';
+      return { i, html: `<span class="x-step ${cls}">${cls === 'done' ? '✔' : '☐'} ${s.label}${cnt}</span>` };
+    });
+    return (all ? steps : steps.filter((s) => s.i === this.objStep)).map((s) => s.html).join(all ? '<br>' : '');
   }
 
   _updateHud() {
@@ -1515,36 +1705,29 @@ export class JungleScene {
     this._set('hpc', h.hp.node.firstChild, 'background', hpf > 0.5 ? 'var(--good)' : hpf > 0.25 ? 'var(--amber)' : 'var(--danger)');
     h.stam.set(pl.stamina / STAMINA.max, '');
     this._set('stc', h.stam.node.firstChild, 'background', pl.exhausted ? '#8b9bb4' : '#feae34');
-    this._set('meds', h.meds, 'html', `${resIconHtml('pick_med')} <b>${pl.meds}</b>/${CONFIG.player.maxMeds} <span class="muted">Q</span>`);
+    this._set('meds', h.meds, 'html', `${resIconHtml('pick_med')}<b>${pl.meds}</b><span class="muted">/${CONFIG.player.maxMeds}</span>`);
     for (const k of RESOURCE_KEYS) {
       const L = h.loot[k];
       if (L.v !== this.carried[k]) { L.v = this.carried[k]; L.n.textContent = String(L.v); L.chip.classList.toggle('zero', L.v === 0); }
     }
-    // Sun dial: daylight drains left to right; after sunset it reads DUSK / NIGHT.
+    // Clock under the minimap; the ring around the minimap drains with the daylight.
     const dayLeft = Math.max(0, DAY.length - this.dayT);
     this._set('timer', h.timer, 'text', dayLeft > 0 ? fmtTime(dayLeft) : this.duskK < 1 ? 'DUSK' : 'NIGHT');
-    this._set('timerc', h.timer, 'className', `x-time${dayLeft <= 0 ? ' bad' : dayLeft < 60 ? ' amber' : ''}`);
-    this._set('sun', h.sun.firstChild, 'width', `${Math.round((dayLeft / DAY.length) * 100)}%`);
-    // Objective steps.
-    const steps = this.objDef.steps.map((s, i) => {
-      const cls = this.objectiveDone || i < this.objStep ? 'done' : i === this.objStep ? 'cur' : '';
-      const cnt = s.count && i === this.objStep ? ` (${this.stepCount}/${s.count})` : '';
-      return `<div class="x-step ${cls}">${cls === 'done' ? '✔' : '☐'} ${s.label}${cnt}</div>`;
-    }).join('');
-    this._set('steps', h.steps, 'html', this.objectiveDone ? '<div class="x-step done">✔ Objective complete — return to claim it</div>' : steps);
+    this._set('timerc', h.timer, 'className', `x-time j-time${dayLeft <= 0 ? ' bad' : dayLeft < 60 ? ' amber' : ''}`);
+    this._set('sun', h.ring, '--day', String(Math.round((dayLeft / DAY.length) * 200) / 200));
+    this._set('ringc', h.ring, 'className', `j-ring${dayLeft <= 0 ? ' bad' : dayLeft < 60 ? ' amber' : ''}`);
+    // Objective strip.
+    this._set('steps', h.steps, 'html', this._stepsHtml(false));
     const ot = this._objectiveTarget();
     h.objDir.style.display = ot ? '' : 'none';
     if (ot) {
       this._dirArrow(h.objDir.firstChild, ot.x, ot.z);
-      this._set('objd', h.objDir.lastChild, 'text', `${Math.round(ot.d)} m to the objective`);
+      this._set('objd', h.objDir.lastChild, 'text', `${Math.round(ot.d)} m`);
     }
     const ex = this._nearestExit();
     this._dirArrow(h.extract.firstChild, ex.x, ex.z);
-    this._set('ext', h.extract.lastChild, 'text', `${Math.round(ex.d)} m to the ${ex.name} (return)`);
-    this._edgeArrow(h.arrowObj, ot);
-    this._edgeArrow(h.arrowExt, (this.objectiveDone || this.dayT > DAY.length - 45) && ex.d > 6 ? ex : null);
-    const opts = this.optionalsDone.map((o) => `<div class="x-step done">✔ ${o.name}</div>`).join('');
-    this._set('opts', h.optList, 'html', opts);
+    this._set('ext', h.extract.lastChild, 'text', `${ex.name} ${Math.round(ex.d)} m`);
+    this._set('opts', h.optList, 'text', this.optionalsDone.length ? `+${this.optionalsDone.length} optional` : '');
     // Prompt.
     const t = this.promptTarget;
     h.prompt.style.display = t && !this.ending ? '' : 'none';
@@ -1558,13 +1741,19 @@ export class JungleScene {
       const f = hold > 0 ? t.progress / hold : 0;
       h.promptRing.style.background = `conic-gradient(var(--amber) ${Math.round(f * 360)}deg, rgba(58,68,102,0.6) 0deg)`;
     }
-    // Minimap (a few times a second) and big map.
+    // Off-screen arrows: clear of the HUD boxes and of each other.
+    const rects = this._hudRects();
+    const ra = this._edgeArrow(h.arrowObj, ot, rects);
+    this._edgeArrow(h.arrowExt, (this.objectiveDone || this.dayT > DAY.length - 45) && ex.d > 6 ? ex : null, ra ? [...rects, ra] : rects);
+    // Minimap and threat fade (a few times a second).
     this._mapT = (this._mapT || 0) - 1;
     if (this._mapT <= 0) {
-      this._mapT = 6;
-      const m = this._markers();
-      this.map.draw(h.mini, pl.pos.x, pl.pos.z, 56, m, false, this.time);
-      if (this.mapOpen) this.map.draw(h.big, 0, 0, 0, m, true, this.time);
+      this._mapT = MAP_VIEW.miniEvery;
+      const dpr = window.devicePixelRatio || 1;
+      const px = Math.max(32, Math.round(h.mini.clientWidth * dpr));
+      if (h.mini.width !== px) h.mini.width = h.mini.height = px;
+      this.map.drawMini(h.mini, pl.pos.x, pl.pos.z, this._markers(), this.time);
+      this._fadeHudOverThreats(rects.filter((r) => r.n !== h.prompt));
     }
   }
 
@@ -1597,6 +1786,7 @@ export class JungleScene {
     for (const m of Object.values(this._glowMats || {})) m.dispose();
     this._glowGeom?.dispose();
     this.player.dispose();
+    this.spores?.dispose();
     this.shots.dispose();
     this.fx.dispose();
     this.ambience.dispose();
@@ -1607,12 +1797,13 @@ export class JungleScene {
 }
 
 /** Container loot (seeded per container), with district multipliers and skills. */
-function rollLoot(rng, key, district, run) {
+function rollLoot(rng, key, district, run, yieldMult = 1) {
   const Xc = CONFIG.expedition;
   const def = Xc.containers[key];
   const m = district.loot;
   const lush = run.hasSkill('lush_finds');
-  const scrapMult = m.scrap * (run.hasSkill('pack_rat_2') ? Xc.packRatScrap : 1);
+  // yieldMult: the container's distance from the nearest return point (JungleGen, JUNGLE.lootDistance).
+  const scrapMult = m.scrap * yieldMult * (run.hasSkill('pack_rat_2') ? Xc.packRatScrap : 1);
   const loot = { scrap: 0, circuits: 0, biofiber: 0, intel: 0, med: 0 };
   const sround = (v) => Math.floor(v) + (rng.next() < v - Math.floor(v) ? 1 : 0);
   const component = () => rng.weighted({ circuits: m.circuits, biofiber: m.biofiber * (lush ? Xc.lushBiofiber : 1) });

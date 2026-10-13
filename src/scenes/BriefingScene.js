@@ -9,6 +9,7 @@ import { CONFIG, WEAPONS, WEAPON_ALIAS } from '../data/config.js';
 import { DISTRICTS, DISTRICT_KEYS } from '../data/districts.js';
 import { worldForRun, compass } from '../world/JungleGen.js';
 import { PRIMARY } from '../data/objectives.js';
+import { MENU_INPUT } from '../data/hud.js';
 import { DEFENSE_ENEMIES } from '../data/enemies.js';
 import { WAVES } from '../data/waves.js';
 import { MenuBackdrop } from './MenuBackdrop.js';
@@ -76,6 +77,7 @@ export class BriefingScene {
     game.music?.play('day');
 
     this.root = el('div.screen.scr.briefing-screen');
+    this._guardInput(this.root);
     game.ui.append(this.root);
     this.render();
 
@@ -97,6 +99,29 @@ export class BriefingScene {
         'Pick a <b>district</b> for today\'s expedition. Its <b>bonus</b> boosts what you find, but it also adds a <b>threat</b> to tonight\'s wave. Finish the <b>objective</b> for a skill point and a boon for the night.',
         { pos: 'bottom-right', style: this._hintSpot(), time: 14 });
     }, 500);
+  }
+
+  /**
+   * Click-through guard: the click that dismissed the previous screen (the "Night survived" banner)
+   * must not pick a district. Pointer input is ignored for MENU_INPUT.briefingGuard s after entering,
+   * and a card only takes a mouse click whose pointerdown also landed on that card.
+   */
+  _guardInput(root) {
+    this.enteredAt = performance.now();
+    this.downCard = null;
+    const early = () => performance.now() - this.enteredAt < MENU_INPUT.briefingGuard * 1000;
+    const swallow = (e) => { if (e.isTrusted && early()) { e.stopPropagation(); e.preventDefault(); } };
+    for (const type of ['click', 'dblclick', 'mousedown', 'mouseup', 'pointerup']) root.addEventListener(type, swallow, true);
+    root.addEventListener('pointerdown', (e) => {
+      if (e.isTrusted && early()) { e.stopPropagation(); e.preventDefault(); this.downCard = null; return; }
+      this.downCard = e.target.closest?.('.district-card')?.dataset.key || null;
+    }, true);
+  }
+
+  /** A real mouse click on card k (not a keyboard/synthetic one) counts only if it was pressed on k. */
+  _cardClickOk(e, k) {
+    if (!e.isTrusted || e.detail === 0) return true;   // KeyNav's .click() / keyboard activation
+    return this.downCard === k;
   }
 
   /** The empty lower part of district card 1: close to what the hint explains, covering nothing. */
@@ -184,8 +209,9 @@ export class BriefingScene {
     const enemyKeys = Object.keys(d.enemies || {});
     const card = el(`button.btn.district-card${this.selected === k ? '.selected' : ''}`, {
       style: { '--c': d.look.floorAlt, '--c2': d.look.floor },
-      onclick: (e) => { e.stopPropagation(); this.select(k, false); },
-      ondblclick: (e) => { e.stopPropagation(); this.select(k, false); this.begin(); },
+      'data-key': k,
+      onclick: (e) => { e.stopPropagation(); if (this._cardClickOk(e, k)) this.select(k, false); },
+      ondblclick: (e) => { e.stopPropagation(); if (this._cardClickOk(e, k)) { this.select(k, false); this.begin(); } },
     },
     el('div.dc-stripe', {}, el('span.dc-num', String(i + 1)), el('span.dc-name', d.name)),
     firstVisit ? el('div.dc-first', { title: 'Research Data for your first visit' }, `★ First visit: +${CONFIG.research.newDistrict} Research Data`) : null,

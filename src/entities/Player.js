@@ -13,7 +13,7 @@
 
 import * as THREE from 'three';
 import { CONFIG, WEAPONS, WEAPON_ALIAS, STAMINA, ROLL, JUICE } from '../data/config.js';
-import { setAnim, setFacing, updateVisual, flashVisual, setOpacity, hasAnim, animLength, setAnimSpeed } from '../core/Assets.js';
+import { setAnim, setFacing, updateVisual, flashVisual, setOpacity, hasAnim, animLength, animHitFrac, setAnimSpeed } from '../core/Assets.js';
 
 export class Player {
   constructor(scene, x, z) {
@@ -53,6 +53,7 @@ export class Player {
     this.moving = false;
     this.dead = false;
     this.walkT = 0;
+    this.eFreeT = 99;          // seconds since E (interact) was last held: no swing lunge right after
     this._tmp = new THREE.Vector3();
 
     this.vis = this.game.assets.makeVisual('player');
@@ -88,6 +89,7 @@ export class Player {
     const sc = this.scene;
     this.iframes -= dt; this.medCd -= dt; this.hurtT -= dt; this.rollCd -= dt; this.comboT -= dt;
     this.stateT += dt;
+    this.eFreeT = input.isDown('KeyE') ? 0 : this.eFreeT + dt;
 
     // ---- aim
     const hit = this.game.mouseOnPlane(sc.camera, C.shotHeight, this._tmp);
@@ -237,13 +239,10 @@ export class Player {
     this.swingDir = { x: this.aim.x, z: this.aim.z };
     this.hitDone = false;
     this._enter('swing');
-    this.kb.x += this.swingDir.x * spec.lunge;
-    this.kb.z += this.swingDir.z * spec.lunge;
+    this._lunge(spec.lunge);
     const anim = hasAnim(this.vis, 'slash') ? 'slash' : 'attack';
     setFacing(this.vis, this.swingDir.x, this.swingDir.z, true);
-    setAnim(this.vis, anim, true);
-    const len = animLength(this.vis, anim);
-    setAnimSpeed(this.vis, len > 0 ? len / this.swing.time : 1);
+    this._playStrike(anim);
     this.game.sfx.play('slash');
   }
 
@@ -255,18 +254,41 @@ export class Player {
     this.hitDone = false;
     this.combo = 0; this.comboT = 0;
     this._enter('chop');
-    this.kb.x += this.swingDir.x * spec.lunge;
-    this.kb.z += this.swingDir.z * spec.lunge;
+    this._lunge(spec.lunge);
     const anim = hasAnim(this.vis, 'chop') ? 'chop' : hasAnim(this.vis, 'slash') ? 'slash' : 'attack';
     setFacing(this.vis, this.swingDir.x, this.swingDir.z, true);
+    this._playStrike(anim);
+    this.game.sfx.play('chop');
+  }
+
+  /** The forward step of a swing — skipped while E is held (or just released) so swinging never drags you off an interaction. */
+  _lunge(v) {
+    if (this.eFreeT <= JUICE.melee.noLungeAfterE) return;
+    this.kb.x += this.swingDir.x * v;
+    this.kb.z += this.swingDir.z * v;
+  }
+
+  /**
+   * Play a strike anim so its `hit` frame shows exactly when the blade connects (swing.hitAt): the
+   * frames before it are sped up (skipping some anticipation if that would be too fast), the rest is
+   * stretched over the recovery (see _connect).
+   */
+  _playStrike(anim) {
     setAnim(this.vis, anim, true);
     const len = animLength(this.vis, anim);
-    setAnimSpeed(this.vis, len > 0 ? len / spec.time : 1);
-    this.game.sfx.play('chop');
+    if (!(len > 0)) { setAnimSpeed(this.vis, 1); this._postSpeed = 1; return; }
+    const pre = Math.max(0.03, this.swing.hitAt), post = Math.max(0.05, this.swing.time - this.swing.hitAt);
+    const hitT = animHitFrac(this.vis, anim, 0.5) * len;     // seconds into the anim at speed 1
+    const maxSpeed = 2.6;
+    const start = Math.max(0, hitT - pre * maxSpeed);
+    this.vis.userData.vis.animT = start;
+    setAnimSpeed(this.vis, Math.max(0.2, (hitT - start) / pre));
+    this._postSpeed = Math.max(0.4, (len - hitT) / post);
   }
 
   _connect(power) {
     this.hitDone = true;
+    setAnimSpeed(this.vis, this._postSpeed || 1);
     const a = Math.atan2(this.swingDir.z, this.swingDir.x);
     this.scene.meleeHit(this.pos.x, this.pos.z, a, this.swing, power);
   }

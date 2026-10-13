@@ -7,13 +7,16 @@
 
 import * as THREE from 'three';
 import { hash2 } from './noise.js';
+import { BRUSH_LOOK } from '../data/jungle.js';
 
 const ATLAS = 2048;
 
 // family → name patterns (first matching group wins; several sprites per family = variety)
 export const FAMILIES = {
-  fern: [/^fol_(fern|tall_?grass|heliconia|palm_?sapling|grass|fiddlehead|bromeliad|ginger|cycad|agave)/],
-  thicket: [/^fol_(thicket|monstera|elephant|bamboo|shrub|bush|taro|dense)/],
+  // Brush reads by height + colour (critic F #6): ferns (walkable) are the LOW plants, thickets (solid)
+  // the tall ones — tall flowering plants count as thicket. BRUSH_LOOK tints each family in the atlas.
+  fern: [/^fol_(fern|tall_?grass|grass|fiddlehead|bromeliad|agave)/],
+  thicket: [/^fol_(thicket|monstera|elephant|bamboo|shrub|bush|taro|dense|heliconia|palm_?sapling|ginger|cycad)/],
   vine: [/^fol_(vine|tangle|liana|hanging)/],
   bramble: [/^fol_(bramble|thorn)/],
   debris: [/^dec_cut_leaves/],          // flat leaf litter where undergrowth was cut
@@ -45,7 +48,7 @@ export class FloraAtlas {
     this.assets = assets;
     this.canvas = document.createElement('canvas');
     this.canvas.width = this.canvas.height = ATLAS;
-    this.g = this.canvas.getContext('2d');
+    this.g = this.canvas.getContext('2d', { willReadFrequently: true });   // _tint reads it back
     this.g.imageSmoothingEnabled = false;
     this.shelf = { x: 0, y: 0, h: 0 };
     this.families = {};
@@ -65,6 +68,7 @@ export class FloraAtlas {
       const e = def.flat ? this._add(img, 0, 0, fw, fh, fw / 2, 0)
         : this._add(img, 0, 0, fw, fh, def.anchor ? def.anchor[0] : fw / 2, def.anchor ? def.anchor[1] : fh - (def.anchorY || 0));
       if (!e) continue;
+      this._tint(e, fam);
       e.key = key;
       this.families[fam].push(e);
       this.byKey[key] = e;
@@ -77,7 +81,7 @@ export class FloraAtlas {
       for (let v = 0; v < 3; v++) {
         const c = painter(v);
         const e = this._add(c, 0, 0, c.width, c.height, c.ax ?? c.width / 2, c.ay ?? c.height);
-        if (e) this.families[fam].push(e);
+        if (e) { this._tint(e, fam); this.families[fam].push(e); }
       }
     }
     for (const [fam, to] of Object.entries(ALIAS)) if (!this.families[fam].length) this.families[fam] = this.families[to];
@@ -98,6 +102,40 @@ export class FloraAtlas {
     s.x += w + 1;
     s.h = Math.max(s.h, h);
     return e;
+  }
+
+  /**
+   * Per-family colour grade of an atlas entry (BRUSH_LOOK, src/data/jungle.js), so the three brush types
+   * read apart at a glance: pale low ferns, dark dense thickets, red-brown thorny brambles. Opaque
+   * texels only; hard alpha is untouched.
+   */
+  _tint(e, fam) {
+    const L = BRUSH_LOOK[fam];
+    if (!L) return;
+    const img = this.g.getImageData(e.x, e.y, e.w, e.h);
+    const d = img.data;
+    const ramp = L.ramp ? L.ramp.map((h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]) : null;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 128) continue;
+      let r = d[i], g = d[i + 1], b = d[i + 2];
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      if (ramp) {
+        // Remap brightness onto the family ramp (keeps the shading), blended with the original colour.
+        const t = Math.min(ramp.length - 1, Math.floor((lum / 255) * L.rampGain * ramp.length));
+        const c = ramp[t];
+        r += (c[0] - r) * L.rampMix; g += (c[1] - g) * L.rampMix; b += (c[2] - b) * L.rampMix;
+      }
+      if (L.mul) { r *= L.mul[0]; g *= L.mul[1]; b *= L.mul[2]; }
+      if (L.add) { r += L.add[0]; g += L.add[1]; b += L.add[2]; }
+      if (L.sat !== undefined && L.sat !== 1) {
+        const l2 = 0.299 * r + 0.587 * g + 0.114 * b;
+        r = l2 + (r - l2) * L.sat; g = l2 + (g - l2) * L.sat; b = l2 + (b - l2) * L.sat;
+      }
+      d[i] = Math.max(0, Math.min(255, Math.round(r)));
+      d[i + 1] = Math.max(0, Math.min(255, Math.round(g)));
+      d[i + 2] = Math.max(0, Math.min(255, Math.round(b)));
+    }
+    this.g.putImageData(img, e.x, e.y);
   }
 
   /** Deterministic pick from a family. */

@@ -11,6 +11,32 @@ export const TERRAIN_ART = ['floor', 'moss', 'paving'];
 
 export const BRUSH = { none: 0, fern: 1, thicket: 2, bramble: 3 };
 
+// Ruin paving break-up (src/world/TerrainBaker.js): world-space noise fields (scale = per tile) that
+// cross slab borders. hole/moss = fBm thresholds (higher = rarer), edgeNoise jitters their outlines,
+// stain = brightness swing of the stains, cracks/rubble = how many per chunk (on paved texels only).
+export const PAVING = { scale: 0.42, hole: 0.65, moss: 0.58, edgeNoise: 0.18, mossDither: 0.1, stain: 0.16, cracks: 16, rubble: 26 };
+
+// What an opened container looks like (Assets.spentVariant on its own sprite; null = the shared
+// opened-crate sprite). 'open' chest, 'gutted' cache, 'dark' terminal.
+export const OPENED_LOOK = { crate: null, chest: 'open', cache: 'gutted', intel_terminal: 'dark' };
+
+// Ground light pool under an activated pylon (src/core/PixelGlow.js): size in tiles (texel-exact at
+// 32 px/tile), brightness steps, falloff power, colour and additive strength.
+export const PYLON_GLOW = { w: 3.5, h: 2, steps: 4, power: 1.3, color: '#2ce8f5', strength: 0.7 };
+
+// Brush legibility (src/world/FloraAtlas.js _tint): a colour grade per flora family so the three brush
+// types read apart at a glance. mul/add per RGB channel, sat = saturation factor, ramp = brightness
+// remapped onto these colours (rampMix = how much, rampGain stretches brightness onto the ramp).
+export const BRUSH_LOOK = {
+  fern: { mul: [1.08, 1.16, 0.92], add: [16, 18, 4], sat: 0.78 },          // low, pale yellow-green: walk through
+  thicket: { mul: [0.7, 0.8, 0.84], sat: 1.08 },                           // dense, dark blue-green: one slash
+  vine: { mul: [0.7, 0.8, 0.84], sat: 1.08 },
+  bramble: {                                                               // thorny red-brown: heavy chop
+    ramp: ['#160909', '#2e1210', '#4a1d16', '#6b2c1e', '#8c4026', '#b05a32', '#d08850'],
+    rampMix: 0.78, rampGain: 2.1, mul: [1.1, 1, 0.94], sat: 0.95,
+  },
+};
+
 export const JUNGLE = {
   size: 192,                 // tiles per side
   chunk: 16,                 // tiles per render chunk (512 × 512 px ground texture)
@@ -19,6 +45,7 @@ export const JUNGLE = {
   bakeCache: 40,             // baked chunk textures kept in memory
 
   relayClearing: 8.5,        // radius of the open clearing around the Relay (tiles)
+  relayWobble: 6,            // the clearing's edge wanders about -1..+2 tiles around that (JungleGen relayR)
   regionStart: 13,           // districts begin this far from the Relay
   regionNoise: 0.55,         // radians of wobble on the borders between district sectors
 
@@ -30,10 +57,26 @@ export const JUNGLE = {
   trailWidth: [0.9, 1.6],    // half-width of trails (tiles)
   trailWobble: 2.2,          // routing noise (higher = windier trails)
   extraTrailLinks: 0.35,     // extra links beyond the spanning tree (loops)
+  // Trails meander: every `trailBend` tiles of a link the route swings sideways by `trailSwing` × that
+  // spacing, alternating sides (S-bends), so a trail runs ~1.3–1.5× the straight line and cutting
+  // cross-country is a real shortcut.
+  trailBend: 13,
+  trailSwing: [0.45, 0.65],
+  // Dead ends: old trails that just fade out in the brush (per district region).
+  deadEnds: [2, 3],
+  deadEndLength: [10, 22],
+  // Lost sites: no trail leads there; a ring of thick brush (`lostRing` tiles, some of it bramble)
+  // surrounds the clearing, so you cut your way in. Chance per site type. Objectives prefer lost sites.
+  lostSites: { major: 0.8, minor: 0.45, landmark: 0.3, camp: 0, pylon: 0 },
+  lostRing: 4,
+  lostBramble: 0.3,
 
   // Undergrowth coverage. density = fBm + region bias; thresholds pick fern / thicket.
-  brushFern: 0.36,
-  brushThicket: 0.47,
+  brushFern: 0.34,
+  brushThicket: 0.44,
+  deepBrush: 0.1,            // density bonus in the deep jungle, away from trails and clearings...
+  deepBrushFrom: 2,          // ...starting this many tiles from them...
+  deepBrushRamp: 8,          // ...and reaching full strength this much further out
   brambleNoise: 0.73,        // second noise above this turns thicket to bramble
   trailOvergrowth: [0.05, 0.55],   // chance a trail tile is overgrown, near → far from the Relay
   siteClear: 0.85,           // fraction of a site's radius kept clear
@@ -49,10 +92,17 @@ export const JUNGLE = {
     radius: { major: [6, 8], minor: [3.5, 5], camp: [3, 4], landmark: [3, 4], pylon: [2.5, 3] },
   },
   pylonsPerRegion: 1,
-  containersPerSite: { major: [3, 5], minor: [1, 3], camp: [1, 2], landmark: [0, 1], pylon: [0, 1] },
-  hiddenCaches: 70,          // lone containers scattered in the thick of the jungle
-  containerWeights: { crate: 50, chest: 26, cache: 9, intel_terminal: 15 },
-  hiddenWeights: { crate: 40, chest: 35, cache: 25 },
+  // Loot budget (DESIGN §4): a normal day banks ~70–100 Scrap. Containers per site, +lostBonus at lost sites.
+  containersPerSite: { major: [2, 4], minor: [1, 2], camp: [0, 1], landmark: [0, 1], pylon: [0, 0] },
+  lostBonus: 1,
+  hiddenCaches: 34,          // lone containers scattered in the thick of the jungle
+  hiddenTrailGap: 3,         // ...at least this many tiles from any trail (you find them by cutting)
+  containerWeights: { crate: 54, chest: 27, cache: 5, intel_terminal: 14 },
+  hiddenWeights: { crate: 48, chest: 40, cache: 12 },
+  // Yields grow with distance from the nearest return point (the Relay or any pylon): a container's
+  // Scrap × mult[0] within `near` tiles → mult[1] beyond `far`. Rare caches closer than `cacheMin`
+  // become tool chests (no rare-cache clusters by a pylon).
+  lootDistance: { near: 12, far: 50, mult: [0.45, 0.9], cacheMin: 28 },
 
   explore: { cell: 2, revealRadius: 7 },   // map discovery grid (tiles per cell) and reveal radius
   regrowth: 0.18,            // share of cut tiles that grow back each night (never trails or clearings)
@@ -61,17 +111,51 @@ export const JUNGLE = {
 // The day: daylight, then dusk (darkness closes in, hunters roam), then night (hunters every few seconds).
 // Extraction (Relay or an activated pylon) is open all day; the objective is what earns the boon.
 export const DAY = {
-  length: 330,               // seconds of daylight
+  length: 300,               // seconds of daylight
   dusk: 70,                  // seconds from sunset to full dark
   huntEvery: [18, 9],        // seconds between hunter packs: at sunset → at full dark
   huntCount: [2, 3],         // hunters per pack (+1 from night 4)
   huntDist: [12, 17],        // spawn distance from the player (out of sight when possible)
   extractHold: 2.0,
   relayRadius: 3.2,          // stand this close to the Relay Core to return
-  pylonRadius: 2.0,
+  pylonRadius: 2.2,          // interact radius of a pylon (dead or online) — the sprite is 3 tiles tall
+  // When interactables overlap, the prompt goes to the lowest rank (then the nearest):
+  // Relay / pylons, then objectives, then containers. Exception (so a crate right next to a pylon is still
+  // reachable): standing within interactPointBlank of a lower-ranked one that is at least
+  // interactPointBlankLead closer than the winner picks it instead.
+  interactRank: { extract: 0, pylon: 0, primary: 1, optional: 1, container: 2 },
+  interactPointBlank: 0.8,
+  interactPointBlankLead: 0.6,
   pylonHold: 2.5,
   pylonReveal: 22,           // activating a pylon maps this radius around it
   startOffset: [0, 3.2],     // where the day starts relative to the Relay Core
+  // The drone drops you at an online pylon instead of the Relay only if the trek from it to the
+  // objective (start → every step, straight-line metres) is still ≥ minTrek and it saves ≥ pylonSaving.
+  minTrek: 50,
+  pylonSaving: 12,
+  objectiveMinDist: 45,      // primary objectives prefer sites at least this far from the Relay
+};
+
+// Spore pods (jungle hazard; the Canopy Greenhouse is thick with them). Placed by JungleGen beside trails
+// and clearings; they grow back every day. Walk close and a pod swells (telegraph), then bursts into a
+// dithered cloud that hurts and saps stamina while you stand in it. A machete hit pops it at once (the
+// heavy chop's reach is about the cloud's radius). The Safe Hands skill halves the damage and stops the drain.
+export const SPORES = {
+  perRegion: { canopy_greenhouse: 28 },   // pods per district region...
+  perRegionDefault: 5,                    // ...in the others
+  minRelay: 20,              // none this close to the Relay
+  nearOpen: 4,               // only within this many tiles of a trail or clearing (where you walk)
+  spacing: 4,                // min tiles between pods
+  trigger: 1.3,              // walking this close sets a pod off...
+  fuse: 0.7,                 // ...it swells for this long, then bursts (a hit: 0.12 s)
+  hitFuse: 0.12,
+  radius: 1.9,               // cloud radius (tiles)
+  life: 5,                   // seconds the cloud lingers (it thins out over the last 40%)
+  tick: 0.6,                 // damage interval inside a cloud
+  damage: 5,
+  staminaDrain: 30,          // stamina per second inside a cloud
+  safeHands: 0.5,            // Safe Hands: damage × this, no stamina drain
+  color: '#c9d65a', color2: '#7f9a3c',   // cloud dither colours (light / dark speckle)
 };
 
 // Wildlife population per chunk (16 × 16 tiles), rolled per day. danger = 0 near the Relay → 1 far out.
@@ -116,6 +200,7 @@ export const REGION_LOOK = {
 
 // Lighting/atmosphere (src/core/PostFx.js + the ground/foliage shaders).
 export const ATMOS = {
+  ambientLight: 1,           // THREE.AmbientLight for Lambert materials in the jungle (decals, placeholders)
   dayAmbient: 0.92,          // overall brightness at midday under open sky
   canopyShade: 0.42,         // how dark the deepest canopy shadow gets (0 = black, 1 = none)
   dapple: 0.22,              // sun-dapple strength in shaded areas
@@ -123,6 +208,11 @@ export const ATMOS = {
   wind: 0.16,                // dapple drift speed (tiles/s)
   vignette: 0.55,
   lightRadius: [9, 5.5],     // the player's visible radius in tiles: midday → dusk (darkness beyond)
-  xrayRadius: 1.25,          // foliage in front of the player turns see-through within this (tiles)
+  xrayRadius: 1.55,          // foliage in front of the player turns see-through within this (tiles)
+  xrayMax: 1,                // share of foliage texels removed at the centre of the window (fades to 0 at the rim)
+  xrayInner: 0.4,            // fraction of the radius that stays at xrayMax before the dithered fade starts
+  // Occlusion silhouettes (src/core/Assets.js): where brush/trees/ruins cover a creature, its outline
+  // is drawn solid and its body as a dither of `fill` density, in these flat colours.
+  silhouette: { player: '#d8fdff', enemy: '#ff5a2e', enemyDim: '#c0603e', fill: 0.2, inner: 0.75 },
   sway: 1,                   // foliage sway amplitude (texels)
 };

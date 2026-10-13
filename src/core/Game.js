@@ -5,15 +5,19 @@
 // A scene that draws 3D sets `this.three` (THREE.Scene) and `this.camera`; the shell renders them.
 // UI lives in `game.ui` (a DOM overlay); it is cleared on every scene switch.
 //
-// Resolution: the base size comes from settings (480×270 "chunky" or 640×360 "sharp"). A scene may
-// call `game.setResMult(m)` to render at m × that, or `game.setInternalRes(w, h)` for a fixed size
-// (the night map renders at 1280×720 so the whole field fits at exactly 32 px per tile). Both reset
-// on every scene switch. 3D scenes use a PixelCamera (src/core/PixelView.js): 1 tile = 32 internal px.
-//
-// Stage: the canvas is CSS-scaled (nearest-neighbour) to fill the window at the base aspect. With
-// Settings → "Pixel-perfect scaling" (meta.settings.integerScale) it is letterboxed to the largest
-// whole-number multiple of the internal resolution instead (falling back to a multiple of the base
-// resolution when the window is smaller than the internal resolution).
+// Resolution (pixel-exact, STYLE/CLAUDE contract): the canvas is always shown at a WHOLE-NUMBER CSS
+// scale k (in device px), so every texel is k×k screen pixels. The base size from settings (480×270
+// "chunky" or 640×360 "sharp") is a target, not a fixed size: Game picks the k whose internal size
+// (window / k, 16:9, even) is closest to the target — 1280×720 chunky → 426×240 ×3, 1920×1080 chunky →
+// 480×270 ×4, sharp → 640×360 ×2 / ×3 — and letterboxes the few leftover pixels.
+// With Settings → "Pixel-perfect scaling" (meta.settings.integerScale) the internal size is exactly
+// the base size instead (whole-number multiple, larger black borders).
+// A scene may call `game.setResMult(m)` (target × m) or `game.setInternalRes(w, h)` for a fixed size
+// (the night map renders at 1280×720 so the whole field fits at exactly 32 px per tile); a fixed size
+// is integer-scaled when that fills ≥ CONFIG.ui.minIntegerFill of the window, else stretched to fit.
+// Both reset on every scene switch. 3D scenes use a PixelCamera (src/core/PixelView.js): 1 tile = 32
+// internal px. `game.width/height` change with the window: size things from them every frame (PostFx
+// does) or rely on _applyRes, which re-sizes the scene's PixelCamera.
 
 import * as THREE from 'three';
 import { CONFIG } from '../data/config.js';
@@ -133,8 +137,8 @@ export class Game {
   // ---------------------------------------------------------------- display
 
   get baseRes() { return CONFIG.resolutions[this.meta.settings.resolution] || CONFIG.resolutions.chunky; }
-  get width() { return this.resOverride ? this.resOverride[0] : this.baseRes[0] * this.resMult; }
-  get height() { return this.resOverride ? this.resOverride[1] : this.baseRes[1] * this.resMult; }
+  get width() { return this._res()[0]; }
+  get height() { return this._res()[1]; }
 
   setResMult(m) {
     this.resMult = m;
@@ -147,39 +151,69 @@ export class Game {
     this._applyRes();
   }
 
+  /**
+   * Internal size and CSS stage size for the current window: { w, h, sw, sh } (sw/sh in CSS px).
+   * Cached per window size / settings.
+   */
+  _layout() {
+    const dpr = window.devicePixelRatio || 1;
+    const vw = Math.floor(window.innerWidth * dpr), vh = Math.floor(window.innerHeight * dpr);   // device px
+    const [BW, BH] = this.baseRes;
+    const key = `${vw}x${vh}@${dpr}|${BW}x${BH}|${this.resMult}|${this.resOverride}|${!!this.meta.settings.integerScale}`;
+    if (this._layoutKey === key) return this._layoutCache;
+    let w, h, k;
+    const fixed = this.resOverride || (this.meta.settings.integerScale ? [BW * this.resMult, BH * this.resMult] : null);
+    if (fixed) {
+      [w, h] = fixed;
+      k = Math.floor(Math.min(vw / w, vh / h));
+      if (k < 1 || (this.resOverride && !this.meta.settings.integerScale && (k * w * k * h) / (vw * vh) < (CONFIG.ui.minIntegerFill ?? 0.9))) {
+        // Fixed size that can't fill the window with a whole number: keep its aspect, stretch to fit.
+        k = Math.min(vw / w, vh / h);
+      }
+    } else {
+      // Adaptive: try every whole scale, keep the internal size nearest the target width (log ratio).
+      const TW = BW * this.resMult, ar = BW / BH;
+      let best = null;
+      for (let kk = 1; kk <= 12; kk++) {
+        let ww = Math.min(Math.floor(vw / kk), Math.floor((Math.floor(vh / kk)) * ar));
+        ww -= ww % 2;
+        let hh = Math.round(ww / ar);
+        hh -= hh % 2;
+        if (ww < 160 || hh < 90) break;
+        const err = Math.abs(Math.log(ww / TW));
+        if (!best || err < best.err - 1e-6) best = { err, ww, hh, kk };
+      }
+      if (!best) best = { ww: BW, hh: BH, kk: 1 };
+      w = best.ww; h = best.hh; k = best.kk;
+    }
+    this._layoutKey = key;
+    this._layoutCache = { w, h, sw: (w * k) / dpr, sh: (h * k) / dpr, k };
+    return this._layoutCache;
+  }
+
+  _res() { const L = this._layout(); return [L.w, L.h]; }
+
   _applyRes() {
-    this.renderer.setSize(this.width, this.height, false);
+    const [w, h] = this._res();
+    this._appliedRes = `${w}x${h}`;
+    this.renderer.setSize(w, h, false);
     const cam = this.scene?.camera;
-    if (cam?.isPixelCamera) cam.setSize(this.width, this.height);
+    if (cam?.isPixelCamera) cam.setSize(w, h);
     else if (cam?.isPerspectiveCamera) {
-      cam.aspect = this.width / this.height;
+      cam.aspect = w / h;
       cam.updateProjectionMatrix();
     }
     this.fit();
   }
 
   /**
-   * Size the stage: the base aspect exactly (whole CSS px, W:H = base W:H), as large as the window
-   * allows — or, with integerScale, a whole-number multiple of the internal resolution.
+   * Size the stage: the internal canvas at a whole-number scale (device px) — see _layout. A window
+   * resize may change the internal resolution too (then the renderer and camera are re-sized).
    */
   fit() {
-    const [W, H] = this.baseRes;
-    const vw = window.innerWidth, vh = window.innerHeight;
-    let sw, sh;
-    if (this.meta.settings.integerScale) {
-      // The canvas is width × height; scale it by a whole number k so each texel is k×k screen px.
-      const k = Math.floor(Math.min(vw / this.width, vh / this.height));
-      if (k >= 1) { sw = this.width * k; sh = this.height * k; }
-      else {
-        const kb = Math.max(1, Math.floor(Math.min(vw / W, vh / H)));
-        sw = W * kb; sh = H * kb;
-      }
-    } else {
-      // Largest n with n·(W/g) × n·(H/g) fitting (g = gcd), so the stage keeps the exact aspect.
-      const g = gcd(W, H), uw = W / g, uh = H / g;
-      const n = Math.max(1, Math.floor(Math.min(vw / uw, vh / uh)));
-      sw = uw * n; sh = uh * n;
-    }
+    const L = this._layout();
+    if (this._appliedRes !== `${L.w}x${L.h}`) { this._applyRes(); return; }
+    const sw = L.sw, sh = L.sh;
     this.stage.style.width = `${sw}px`;
     this.stage.style.height = `${sh}px`;
     // UI scales with the stage so layouts look the same at every window size.
@@ -250,4 +284,3 @@ export class Game {
   }
 }
 
-function gcd(a, b) { while (b) [a, b] = [b, a % b]; return a; }

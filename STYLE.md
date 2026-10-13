@@ -21,6 +21,14 @@ Two generations of art live side by side:
   exists, pass it as a style reference to later jobs of the same family.
 - **Light from the top-left.** No semi-transparent pixels: every exported PNG is alpha 0 or 255 (threshold at 128).
 - Sprites are drawn **1:1 at ppu 32** (32 texels = 1 tile). Never resample a PixelLab image; pad or crop only.
+- **Pixel-exact on screen**: the canvas is always shown at a whole-number scale (Game picks the internal size per window).
+  Every screen-space effect is hard alpha + ordered (Bayer) dither: x-ray window, occlusion silhouettes, glows, splats.
+- **Readability over density** (critic F): a creature covered by foliage draws as a flat-colour 1-texel outline + dither
+  checker (player `#d8fdff`, enemies `#c0603e` → `#ff5a2e` once alerted). Brush types read by height and colour:
+  ferns (walk through) are the low plants graded pale yellow-green, thickets (one slash) the tall ones graded dark
+  blue-green, brambles (heavy chop) red-brown (`BRUSH_LOOK`, applied in the flora atlas — the PNGs stay untouched).
+- UI font: Tiny5, with "~", "8" and "4" overridden by `src/ui/fonts/vr-glyphs.ttf` (built by `tools/make_glyph_font.py`
+  on Tiny5's 8-unit grid; edit the bitmaps there and re-run).
 
 ## V2 file formats (what the engine reads)
 

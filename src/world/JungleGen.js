@@ -9,8 +9,11 @@
 //     region          Int8Array(W²)       district index per tile (-1 = the Relay's clearing)
 //     trail           Uint8Array(W²)      1 = trail tile (kept clear of regrowth, drawn on the map)
 //     objects         [{ id, kind, type, x, z, r, flip, big }]  trees / ruins / rocks (visual + collider)
-//     sites           [{ id, type, region, x, z, r, ruins }]   points of interest
-//     containers      [{ id, type, x, z, site, hidden }]        world loot (opened ones persist in the run)
+//     sites           [{ id, type, region, x, z, r, ruins, lost }]   points of interest (lost: no trail
+//                     leads there, a ring of thick brush around it)
+//     containers      [{ id, type, x, z, site, hidden, yield }] world loot (opened ones persist in the run);
+//                     yield = Scrap multiplier by distance from the nearest return point
+//     spores          [{ id, x, z, region }]                    spore pods (a hazard; they regrow every day)
 //     pylons          [{ id, x, z, region }]                    extraction relays (activated ones persist)
 //
 // Generation order: regions → water (rivers, ponds) → sites → trails between them → base ground →
@@ -19,7 +22,7 @@
 
 import { makeRng, subSeed } from '../core/rng.js';
 import { makeNoise, hash2 } from './noise.js';
-import { JUNGLE, LEVEL, BRUSH, REGION_LOOK } from '../data/jungle.js';
+import { JUNGLE, LEVEL, BRUSH, REGION_LOOK, SPORES } from '../data/jungle.js';
 
 const TAU = Math.PI * 2;
 
@@ -157,8 +160,13 @@ export function generateWorld(seed, districtKeys) {
     placeSite('landmark', ri, 22, maxD);
   }
 
+  // Lost sites: no trail leads there (cut your way in). A separate stream so the rest of the world's
+  // rolls don't shift when the chances are tuned.
+  const lrng = makeRng(subSeed(seed, 'lost'));
+  for (const s of sites) s.lost = lrng.chance(J.lostSites[s.type] || 0);
+
   // ---------------------------------------------------------------- trails (A* between sites, wiggly cost)
-  const nodes = [{ x: cx, z: cz }, ...sites];
+  const nodes = [{ x: cx, z: cz }, ...sites.filter((s) => !s.lost)];
   const edges = [];
   // Spanning tree by nearest connection (Prim), then a few extra links for loops.
   const inTree = [0];
@@ -184,16 +192,42 @@ export function generateWorld(seed, districtKeys) {
     if (best) edges.push([i, best.j]);
   }
   const cost = new Float32Array(W * W);
+  const nearLost = (x, z, pad) => sites.some((s) => s.lost && Math.hypot(x - s.x, z - s.z) < s.r + pad);
   for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
-    cost[z * W + x] = 1 + nC.fbm(x * 0.09, z * 0.09, 3) * J.trailWobble * 2 + (isWaterTile(x, z) ? 9 : 0);
+    cost[z * W + x] = 1 + nC.fbm(x * 0.09, z * 0.09, 3) * J.trailWobble * 2 + (isWaterTile(x, z) ? 9 : 0)
+      + (nearLost(x + 0.5, z + 0.5, J.lostRing + 3) ? 40 : 0);   // trails steer around lost sites
   }
   const trailVerts = new Float32Array(V * V).fill(99);   // distance to the nearest trail centreline
   const trailHalf = new Float32Array(V * V);
-  for (const [a, b] of edges) {
-    const path = astar(W, cost, Math.floor(nodes[a].x), Math.floor(nodes[a].z), Math.floor(nodes[b].x), Math.floor(nodes[b].z));
-    if (!path) continue;
-    const half = J.trailWidth[0] + rng.next() * (J.trailWidth[1] - J.trailWidth[0]);
-    // Smooth the tile path into a polyline, then rasterise its width onto the vertices.
+  const trng = makeRng(subSeed(seed, 'trails'));
+  const okBend = (x, z) => x > 4 && z > 4 && x < W - 4 && z < W - 4 && !isWaterTile(Math.floor(x), Math.floor(z)) && !nearLost(x, z, J.lostRing + 2);
+  // A meandering route: S-bends every ~trailBend tiles, each leg found with A* on the wiggly cost.
+  const route = (ax, az, bx, bz) => {
+    const L = Math.hypot(bx - ax, bz - az);
+    const ux = (bx - ax) / (L || 1), uz = (bz - az) / (L || 1);
+    const nBends = Math.floor(L / J.trailBend);
+    const way = [[ax, az]];
+    let side = trng.chance(0.5) ? 1 : -1;
+    for (let k = 1; k <= nBends; k++) {
+      const f = (k + (trng.next() - 0.5) * 0.3) / (nBends + 1);
+      let off = side * (L / (nBends + 1)) * (J.trailSwing[0] + trng.next() * (J.trailSwing[1] - J.trailSwing[0]));
+      let wx = ax + ux * L * f, wz = az + uz * L * f;
+      for (let t = 0; t < 3 && !okBend(wx - uz * off, wz + ux * off); t++) off *= 0.5;
+      if (okBend(wx - uz * off, wz + ux * off)) { wx -= uz * off; wz += ux * off; }
+      way.push([wx, wz]);
+      side = -side;
+    }
+    way.push([bx, bz]);
+    const out = [];
+    for (let k = 0; k < way.length - 1; k++) {
+      const seg = astar(W, cost, Math.floor(way[k][0]), Math.floor(way[k][1]), Math.floor(way[k + 1][0]), Math.floor(way[k + 1][1]));
+      if (!seg) return null;
+      out.push(...(k ? seg.slice(1) : seg));
+    }
+    return out;
+  };
+  // Smooth the tile path into a polyline, then rasterise its width onto the vertices.
+  const lay = (path, half) => {
     const pts = smooth(path, 3);
     for (const [px, pz] of pts) {
       const r = half + 1.5;
@@ -205,10 +239,39 @@ export function generateWorld(seed, districtKeys) {
         }
       }
     }
+    return pts;
+  };
+  const trailPts = [];   // [x, z, region] samples along the trails (dead-end spurs branch off them)
+  for (const [a, b] of edges) {
+    const path = route(nodes[a].x, nodes[a].z, nodes[b].x, nodes[b].z);
+    if (!path) continue;
+    const half = J.trailWidth[0] + rng.next() * (J.trailWidth[1] - J.trailWidth[0]);
+    const pts = lay(path, half);
+    for (let k = 0; k < pts.length; k += 8) trailPts.push(pts[k]);
+  }
+  // Dead ends: spurs that leave a trail and fade out in the brush.
+  for (let ri = 0; ri < nReg; ri++) {
+    const from = trailPts.filter(([x, z]) => regionAt(x, z) === ri && Math.hypot(x - cx, z - cz) > J.relayClearing + 10);
+    const n = trng.int(...J.deadEnds);
+    for (let k = 0, tries = 0; k < n && tries < 30 && from.length; tries++) {
+      const [px, pz] = trng.pick(from);
+      const a = trng.next() * TAU, len = J.deadEndLength[0] + trng.next() * (J.deadEndLength[1] - J.deadEndLength[0]);
+      const ex = px + Math.cos(a) * len, ez = pz + Math.sin(a) * len;
+      if (!okBend(ex, ez) || Math.hypot(ex - cx, ez - cz) < J.relayClearing + 8) continue;
+      if (sites.some((s) => Math.hypot(ex - s.x, ez - s.z) < s.r + 8)) continue;
+      // Not just a shortcut back onto another trail: the end must be well away from every trail.
+      if (trailPts.some(([x, z]) => Math.hypot(ex - x, ez - z) < 9)) continue;
+      const path = route(px, pz, ex, ez);
+      if (!path) continue;
+      lay(path, J.trailWidth[0] + trng.next() * 0.3);
+      k++;
+    }
   }
 
   // ---------------------------------------------------------------- base ground levels
   const L = world.level;
+  // The Relay clearing's edge wanders (lobes and bites, not a circle): radius at a point.
+  const relayR = (x, z) => J.relayClearing + (nC.fbm(x * 0.16 + 50, z * 0.16 - 30, 2) - 0.4) * J.relayWobble;
   for (let z = 0; z <= W; z++) {
     for (let x = 0; x <= W; x++) {
       const i = z * V + x;
@@ -216,7 +279,8 @@ export function generateWorld(seed, districtKeys) {
       // Patchy bare soil in the floor.
       if (lv === LEVEL.floor && nC.fbm(x * 0.11 - 20, z * 0.11, 3) > 0.66) lv = LEVEL.dirt;
       const dc = Math.hypot(x - cx, z - cz);
-      if (dc < J.relayClearing) lv = dc < J.relayClearing - 3 ? LEVEL.dirt : Math.min(lv, LEVEL.floor);
+      const rc = relayR(x, z);
+      if (dc < rc) lv = dc < rc - 3 ? LEVEL.dirt : Math.min(lv, LEVEL.floor);
       // Trails: dirt with a wobbly edge.
       const wob = (nB.value(x * 0.4, z * 0.4) - 0.5) * 0.9;
       if (trailVerts[i] < trailHalf[i] + wob) lv = LEVEL.dirt;
@@ -269,6 +333,13 @@ export function generateWorld(seed, districtKeys) {
     if (trailVerts[z * V + x] < trailHalf[z * V + x] + 0.3) world.trail[i] = 1;
     for (const s of sites) if (Math.hypot(tx - s.x, tz - s.z) < s.r * J.siteClear) { world.site[i] = s.idx; break; }
   }
+  // Distance (tiles) to the nearest trail or open clearing: the deep jungle away from them grows denser.
+  const openDist = new Float32Array(W * W).fill(999);
+  for (let i = 0; i < W * W; i++) {
+    const x = i % W, z = (i - x) / W;
+    if (world.trail[i] || world.site[i] >= 0 || Math.hypot(x + 0.5 - cx, z + 0.5 - cz) < J.relayClearing) openDist[i] = 0;
+  }
+  chamfer(openDist, W);
 
   // ---------------------------------------------------------------- undergrowth
   const B = world.brush;
@@ -277,14 +348,15 @@ export function generateWorld(seed, districtKeys) {
       const i = z * W + x;
       const tx = x + 0.5, tz = z + 0.5;
       if (tileLevelMin(x, z) <= LEVEL.mud && tileLevelAvg(x, z) < 1) continue;   // water / deep mud: open
-      if (Math.hypot(tx - cx, tz - cz) < J.relayClearing) continue;
+      if (Math.hypot(tx - cx, tz - cz) < relayR(tx, tz)) continue;
       if (world.site[i] >= 0) {
         // Sites are mostly clear: a few ferns.
         if (hash2(x, z, 11) < 0.12) B[i] = BRUSH.fern;
         continue;
       }
       const look = REGION_LOOK[regionKey(world.region[i])] || {};
-      const dens = nA.fbm(x * 0.13 - 50, z * 0.13 + 22, 4) + (look.brushBias || 0) + (hash2(x, z, 3) - 0.5) * 0.08;
+      const dens = nA.fbm(x * 0.13 - 50, z * 0.13 + 22, 4) + (look.brushBias || 0) + (hash2(x, z, 3) - 0.5) * 0.08
+        + J.deepBrush * Math.max(0, Math.min(1, (openDist[i] - J.deepBrushFrom) / J.deepBrushRamp));
       let b = dens > J.brushThicket ? BRUSH.thicket : dens > J.brushFern ? BRUSH.fern : BRUSH.none;
       if (b === BRUSH.thicket && nC.fbm(x * 0.09 + 90, z * 0.09, 3) > J.brambleNoise) b = BRUSH.bramble;
       if (world.trail[i]) {
@@ -297,7 +369,6 @@ export function generateWorld(seed, districtKeys) {
       B[i] = b;
     }
   }
-
   // ---------------------------------------------------------------- trees (jittered grid)
   let oid = 0;
   const objects = world.objects;
@@ -416,6 +487,20 @@ export function generateWorld(seed, districtKeys) {
     }
   }
 
+  // Lost sites hide behind a ring of thicket and bramble (water and banks stay as they are;
+  // after the trees and ruins so nothing thins it).
+  for (const s of sites) {
+    if (!s.lost) continue;
+    const r0 = s.r * J.siteClear, r1 = r0 + J.lostRing;
+    for (let z = Math.floor(s.z - r1 - 1); z <= Math.ceil(s.z + r1); z++) for (let x = Math.floor(s.x - r1 - 1); x <= Math.ceil(s.x + r1); x++) {
+      if (x < 1 || z < 1 || x >= W - 1 || z >= W - 1) continue;
+      const i = z * W + x;
+      const d = Math.hypot(x + 0.5 - s.x, z + 0.5 - s.z) + (nB.value(x * 0.6, z * 0.6) - 0.5) * 1.5;
+      if (d < r0 || d > r1 || world.site[i] >= 0 || world.trail[i] || tileLevelAvg(x, z) < 1.5) continue;   // reed thickets on the banks too
+      B[i] = Math.max(B[i], hash2(x, z, 41) < J.lostBramble ? BRUSH.bramble : BRUSH.thicket);
+    }
+  }
+
   // ---------------------------------------------------------------- pylons + containers
   for (const s of sites) {
     if (s.type !== 'pylon') continue;
@@ -437,7 +522,7 @@ export function generateWorld(seed, districtKeys) {
   };
   for (const s of sites) {
     const [a, b] = J.containersPerSite[s.type] || [0, 0];
-    const n = rng.int(a, b);
+    const n = rng.int(a, b) + (s.lost ? J.lostBonus : 0);
     for (let k = 0; k < n; k++) {
       const p = openTileNear(s.x, s.z, s.r * 0.75);
       if (!p) continue;
@@ -450,13 +535,39 @@ export function generateWorld(seed, districtKeys) {
       const x = 4 + rng.next() * (W - 8), z = 4 + rng.next() * (W - 8);
       const tx = Math.floor(x), tz = Math.floor(z), i = tz * W + tx;
       if (Math.hypot(x - cx, z - cz) < 22 || occupied[i] || world.trail[i] || world.site[i] >= 0 || tileLevelMin(tx, tz) <= LEVEL.mud) continue;
+      if (trailVerts[tz * V + tx] < trailHalf[tz * V + tx] + J.hiddenTrailGap) continue;   // off the trails
+      if (world.pylons.some((p) => Math.hypot(x - p.x, z - p.z) < 10)) continue;
       B[i] = BRUSH.none;   // a little hollow in the brush
       occupied[i] = 1;
       world.containers.push({ id: `c${cid++}`, type: rng.weighted(J.hiddenWeights), x: tx + 0.5, z: tz + 0.5, site: -1, region: world.region[i], hidden: true });
       break;
     }
   }
+  // Spore pods: beside trails and clearings (where you walk), on open or fern ground.
+  world.spores = [];
+  const srng = makeRng(subSeed(seed, 'spores'));
+  for (let ri = 0; ri < nReg; ri++) {
+    const want = SPORES.perRegion[districtKeys[ri]] ?? SPORES.perRegionDefault;
+    for (let k = 0, t = 0; k < want && t < want * 250; t++) {
+      const x = 3 + srng.next() * (W - 6), z = 3 + srng.next() * (W - 6);
+      const tx = Math.floor(x), tz = Math.floor(z), i = tz * W + tx;
+      if (world.region[i] !== ri || occupied[i] || B[i] > BRUSH.fern || openDist[i] > SPORES.nearOpen || tileLevelMin(tx, tz) <= LEVEL.mud) continue;
+      if (Math.hypot(x - cx, z - cz) < SPORES.minRelay || sites.some((s) => Math.hypot(tx + 0.5 - s.x, tz + 0.5 - s.z) < 2.5)) continue;
+      if (world.spores.some((p) => Math.hypot(p.x - tx - 0.5, p.z - tz - 0.5) < SPORES.spacing)) continue;
+      occupied[i] = 1;
+      world.spores.push({ id: `sp${world.spores.length}`, x: tx + 0.5, z: tz + 0.5, region: ri });
+      k++;
+    }
+  }
   world.occupied = occupied;
+  // Far from a return point (the Relay or any pylon) = richer: `yield` multiplies a container's Scrap.
+  const LD = J.lootDistance;
+  for (const c of world.containers) {
+    const d = Math.min(Math.hypot(c.x - cx, c.z - cz), ...world.pylons.map((p) => Math.hypot(c.x - p.x, c.z - p.z)));
+    const k = Math.max(0, Math.min(1, (d - LD.near) / (LD.far - LD.near)));
+    c.yield = Math.round((LD.mult[0] + (LD.mult[1] - LD.mult[0]) * k) * 100) / 100;
+    if (c.type === 'cache' && d < LD.cacheMin) c.type = 'chest';
+  }
 
   // Make sure the Relay clearing and every site/pylon are clear of brush at their centres.
   for (const s of sites) clearDisc(world, s.x, s.z, s.type === 'pylon' ? 1.6 : 1.2);
@@ -481,6 +592,25 @@ export function clearDisc(world, x, z, r) {
   for (let tz = Math.floor(z - r); tz <= Math.floor(z + r); tz++) for (let tx = Math.floor(x - r); tx <= Math.floor(x + r); tx++) {
     if (tx < 0 || tz < 0 || tx >= W || tz >= W) continue;
     if (Math.hypot(tx + 0.5 - x, tz + 0.5 - z) <= r + 0.3) world.brush[tz * W + tx] = 0;
+  }
+}
+
+/** Two-pass chamfer distance transform (in tiles) over a W×W field: 0 at sources, large elsewhere. */
+function chamfer(d, W) {
+  const D = 1.414;
+  for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
+    const i = z * W + x;
+    let v = d[i];
+    if (x > 0) v = Math.min(v, d[i - 1] + 1);
+    if (z > 0) { v = Math.min(v, d[i - W] + 1); if (x > 0) v = Math.min(v, d[i - W - 1] + D); if (x < W - 1) v = Math.min(v, d[i - W + 1] + D); }
+    d[i] = v;
+  }
+  for (let z = W - 1; z >= 0; z--) for (let x = W - 1; x >= 0; x--) {
+    const i = z * W + x;
+    let v = d[i];
+    if (x < W - 1) v = Math.min(v, d[i + 1] + 1);
+    if (z < W - 1) { v = Math.min(v, d[i + W] + 1); if (x < W - 1) v = Math.min(v, d[i + W + 1] + D); if (x > 0) v = Math.min(v, d[i + W - 1] + D); }
+    d[i] = v;
   }
 }
 

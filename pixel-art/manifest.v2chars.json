@@ -44,7 +44,8 @@
       "walk": 16,
       "windup": 10,
       "attack": 12
-    }
+    },
+    "shadow": 0.3
   },
   "spitter": {
     "file": "v2_spitter.png",
@@ -85,7 +86,8 @@
       "idle": 5,
       "windup": 6,
       "attack": 9
-    }
+    },
+    "shadow": 0.36
   },
   "crawler": {
     "file": "v2_crawler.png",
@@ -127,7 +129,8 @@
         "loop": false,
         "hit": 1
       }
-    }
+    },
+    "shadow": 0.42
   },
   "feral": {
     "file": "v2_feral.png",
@@ -169,7 +172,8 @@
         "loop": false,
         "hit": 1
       }
-    }
+    },
+    "shadow": 0.38
   },
   "player": {
     "file": "v2_player.png",
@@ -224,7 +228,8 @@
         "fps": 10,
         "loop": false
       }
-    }
+    },
+    "shadow": 0.38
   },
   "razorback": {
     "file": "v2_razorback.png",
@@ -265,6 +270,7 @@
         "fps": 12,
         "hit": 2
       }
-    }
+    },
+    "shadow": 0.6
   }
 }
