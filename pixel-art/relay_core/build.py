@@ -23,10 +23,10 @@ CAB = ["#262b44", "#3a4466"]
 # ------------------------------------------------------------------ plinth
 def plinth(c, p):
     # lower step
-    c.box(2, 93, 98, 4, 109, CONC_TOP[1], CONC_FRONT[2], lit=CONC_TOP[2], dark=CONC_FRONT[1], edge=CONC_FRONT[3])
+    c.box(2, 93, 98, 4, 110, CONC_TOP[1], CONC_FRONT[2], lit=CONC_TOP[2], dark=CONC_FRONT[1], edge=CONC_FRONT[3])
     c.hline(3, 92, 98, CONC_TOP[2])
-    c.hline(2, 93, 109, CONC_FRONT[1])
-    c.hline(3, 92, 108, CONC_FRONT[1])
+    c.hline(2, 93, 110, CONC_FRONT[1])
+    c.hline(3, 92, 109, CONC_FRONT[1])
     # upper block
     c.box(7, 88, 74, 12, 99, CONC_TOP[1], CONC_FRONT[2], lit=CONC_TOP[2], dark=CONC_FRONT[1], edge=CONC_FRONT[3])
     c.hline(8, 87, 74, CONC_TOP[2])
@@ -98,6 +98,18 @@ def moss(c):
     c.pts(pts2, MOSS[2])
     c.pts([(3, 106), (2, 105), (8, 96), (21, 99), (41, 100), (61, 107), (91, 106)], MOSS[3])
     c.pts([(4, 108), (6, 107), (9, 97), (22, 102), (62, 109), (43, 101)], MOSS[1])
+    # draping vines over the upper block's front edge
+    for (x, ln) in ((16, 6), (17, 3), (58, 5), (77, 7), (78, 4), (85, 3)):
+        for i in range(ln):
+            c.px(x + (1 if i % 3 == 2 else 0), 87 + i, MOSS[2] if i % 2 else MOSS[1])
+        c.px(x, 87 + ln, MOSS[3])
+        c.px(x - 1, 87 + ln // 2, MOSS[3])
+    # fern clumps on the lower step corners
+    c.pattern(84, 95, ["..g..g.", ".lg.gl.", "gglglgg", ".ddgdd."], {"g": MOSS[2], "l": MOSS[3], "d": MOSS[1]})
+    c.pattern(3, 94, [".g..g..", "lg.gl..", "glglgg.", ".dgdd.."], {"g": MOSS[2], "l": MOSS[3], "d": MOSS[1]})
+    # moss patches on the top face
+    c.pts([(9, 75), (10, 75), (11, 76), (8, 76), (86, 86), (85, 85), (87, 85)], MOSS[2])
+    c.pts([(10, 76), (86, 85)], MOSS[3])
     # vine tendril climbing the plinth front
     vine = [(9, 99), (10, 97), (10, 95), (11, 93), (11, 91), (12, 89), (13, 88)]
     for x, y in vine:
@@ -206,14 +218,20 @@ def mast(c, p, k):
     for x in (71, 88):
         c.vline(x, ya + 2, ya + 4, "#c0cbdc")
         c.px(x, ya + 5, WHITE)
-    # dish pointing up-left
-    dx, dy = 70, 30
-    c.ell(dx, dy, 5, 4, STEEL[1])
-    c.ell(dx - 1, dy - 1, 4, 3, STEEL[3])
-    c.ell(dx, dy, 2, 2, STEEL[2])
-    c.px(dx - 2, dy - 2, STEEL[4])
-    c.line(dx, dy, 76, dy + 3, STEEL[2])
-    c.px(dx - 3, dy - 3, STEEL[4])
+    # parabolic dish facing up-left, with feed arm and horn
+    c.pattern(63, 24, [
+        "....aaa....",
+        "..aabbba...",
+        ".abbbccca..",
+        "abbcccccdd.",
+        "abcccccdd..",
+        "abccccdd...",
+        ".acccdd....",
+        "..dddd.....",
+    ], {"a": STEEL[1], "b": STEEL[4], "c": STEEL[3], "d": STEEL[0]})
+    c.line(70, 30, 76, 33, STEEL[2])       # mount to the mast
+    c.line(67, 28, 64, 25, STEEL[2])       # feed arm
+    c.px(63, 24, STEEL[4])
     # top spike + aviation light
     c.vline(79, 1, top, STEEL[3])
 
@@ -241,51 +259,56 @@ def cradle(c, p, k):
 
 def crystal(c, p, k):
     """Big hexagonal cyan crystal. k = pulse frame (0 dim, 1 mid, 2 bright, 3 mid)."""
-    top, sh, sb, bot = 22, 32, 62, 70
-    xl, xm0, xm1, xr = 38, 44, 52, 58
+    C0, C1, C2, C3 = CYAN
     level = [0, 1, 2, 1][k]
-    L = [  # (left facet, centre, right, edge-light, core)
-        (CYAN[2], CYAN[1], CYAN[0], CYAN[2], CYAN[2]),
-        (CYAN[2], CYAN[1], CYAN[1], CYAN[3], CYAN[3]),
-        (CYAN[3], CYAN[2], CYAN[1], CYAN[3], CYAN[3]),
-    ][level]
-    # body
-    c.poly([(CX, top), (xr, sh), (xr, sb), (CX, bot), (xl, sb), (xl, sh)], L[1])
-    # left facet (lit)
-    c.poly([(xl, sh), (xm0, sh + 1), (xm0, sb + 2), (xl, sb)], L[0])
-    c.poly([(CX, top), (xm0, sh + 1), (xl, sh)], L[3] if level else CYAN[2])
-    # right facet (shade)
-    c.poly([(xm1, sh + 1), (xr, sh), (xr, sb), (xm1, sb + 2)], L[2])
-    c.poly([(CX, top), (xr, sh), (xm1, sh + 1)], L[1])
-    # facet edges
-    c.line(xm0, sh + 1, xm0, sb + 2, L[3] if level else CYAN[2])
-    c.line(xm1, sh + 1, xm1, sb + 2, CYAN[0] if level < 2 else CYAN[1])
+    top = 19
+    sh = 31                       # shoulder row
+    sb = 63                       # bottom of the faces
+    bot = 71
+    xl, xr = 37, 59               # shoulders
+    bl, br = 39, 57               # body tapers slightly to the base
+    m0, m1 = 44, 52               # facet edges at the shoulder
+    n0, n1 = 45, 51               # facet edges at the base
+    left, centre, right = [(C2, C1, C0), (C2, C1, C0), (C2, C2, C1)][level]
+    # silhouette in the centre colour
+    c.poly([(CX, top), (xr, sh), (br, sb), (CX, bot), (bl, sb), (xl, sh)], centre)
+    # left facet + left top facet (lit)
+    c.poly([(xl, sh), (m0, sh + 1), (n0, sb + 2), (bl, sb)], left)
+    c.poly([(CX, top), (m0, sh + 1), (xl, sh)], C3 if level == 2 else C2)
+    # right facet + right top facet (shade)
+    c.poly([(m1, sh + 1), (xr, sh), (br, sb), (n1, sb + 2)], right)
+    c.poly([(CX, top), (xr, sh), (m1, sh + 1)], C1 if level < 2 else C2)
+    # bottom facets (in the cradle's shadow)
+    c.poly([(bl, sb), (n0, sb + 2), (CX, bot)], C1)
+    c.poly([(n1, sb + 2), (br, sb), (CX, bot)], C0)
+    # facet edges: lit ridge lines
+    c.line(m0, sh + 1, n0, sb + 2, C3 if level else C2)
+    c.line(m1, sh + 1, n1, sb + 2, C1 if level < 2 else C2)
     c.line(xl, sh, CX, top, WHITE)
-    c.line(xm0, sh + 1, CX, top, L[3])
-    c.line(xl, sh, xm0, sh + 1, L[3])
-    c.line(xm1, sh + 1, xr, sh, CYAN[2] if level else CYAN[1])
-    # inner core glow (vertical streak in the centre facet), grows with the pulse
-    core_h = [8, 14, 22, 14][k]
-    cy0 = 46 - core_h // 2
-    c.rect(CX - 2, cy0, CX + 1, cy0 + core_h, CYAN[2])
-    c.rect(CX - 1, cy0 + 2, CX, cy0 + core_h - 2, WHITE if level else CYAN[3])
-    if level == 2:
-        c.rect(CX - 3, cy0 + 4, CX + 2, cy0 + core_h - 4, CYAN[2]) if False else None
-        c.vline(CX - 3, cy0 + 4, cy0 + core_h - 4, CYAN[3])
-    # left facet sparkle streaks
-    c.line(xl + 2, sh + 4, xl + 2, sh + 12, WHITE)
-    c.line(xl + 3, sh + 16, xl + 3, sh + 19, WHITE if level else CYAN[3])
-    c.px(xl + 2, sh + 22, WHITE)
-    # inclusion cracks
-    c.pts([(xm1 + 2, 40), (xm1 + 3, 41), (xm1 + 3, 42), (xm1 + 4, 43)], CYAN[0] if level < 2 else CYAN[0])
-    c.pts([(xm0 + 2, 55), (xm0 + 3, 56)], CYAN[1] if level < 2 else CYAN[2])
-    # smaller satellite crystals at the base
-    for (bx, by, h, wdt) in ((34, 70, 10, 3), (61, 70, 8, 3), (40, 72, 5, 2)):
-        c.poly([(bx, by - h), (bx + wdt, by - h + 2), (bx + wdt, by), (bx - wdt, by), (bx - wdt, by - h + 2)], L[1])
-        c.line(bx - wdt, by - h + 2, bx, by - h, L[3])
-        c.vline(bx - wdt, by - h + 2, by, L[0])
-        c.vline(bx + wdt, by - h + 2, by, L[2])
-        c.vline(bx, by - h + 1, by - 1, L[0] if level else CYAN[1])
+    c.line(m0, sh + 1, CX, top, C3)
+    c.line(xl, sh, m0, sh + 1, C3)
+    c.line(m1, sh + 1, xr, sh, C2)
+    # inner core glow in the centre facet: grows with the pulse
+    core_h = [10, 16, 26, 16][k]
+    cy0 = 47 - core_h // 2
+    c.rect(CX - 3, cy0, CX + 1, cy0 + core_h, C2)
+    c.rect(CX - 2, cy0 + 2, CX, cy0 + core_h - 2, C3 if level else C2)
+    if level >= 1:
+        c.rect(CX - 1, cy0 + 4, CX - 1, cy0 + core_h - 4, WHITE)
+    # sparkle streaks on the lit facet
+    c.line(xl + 2, sh + 3, xl + 3, sh + 12, C3)
+    c.line(xl + 3, sh + 16, xl + 3, sh + 20, C3 if level else C2)
+    c.px(xl + 4, sh + 24, C3)
+    # inclusion cracks (darker fractures)
+    c.pts([(m1 + 2, 40), (m1 + 3, 41), (m1 + 3, 42), (m1 + 4, 43), (m1 + 4, 44)], C0)
+    c.pts([(m0 + 2, 55), (m0 + 3, 56), (m0 + 3, 57)], C1 if level < 2 else C0)
+    # satellite crystals at the base
+    for (bx, by, h, wdt) in ((33, 72, 11, 3), (62, 72, 9, 3), (41, 74, 6, 2), (56, 74, 5, 2)):
+        c.poly([(bx, by - h), (bx + wdt, by - h + 3), (bx + wdt, by), (bx - wdt, by), (bx - wdt, by - h + 3)], C1)
+        c.line(bx - wdt, by - h + 3, bx, by - h, C3 if level else C2)
+        c.vline(bx - wdt, by - h + 3, by, C2)
+        c.vline(bx + wdt, by - h + 3, by, C0)
+        c.vline(bx - 1, by - h + 2, by - 1, C2 if level < 2 else C3)
 
 
 def clamps(c, p, k):
@@ -351,6 +374,10 @@ def frame(k):
     clamps(c, p, k)
     cables(c, p, k)
     moss(c)
+    # cyan rim light on surfaces facing the crystal (stronger at the peak)
+    if k in (1, 2, 3):
+        c.vline(29, 60, 66 if k != 2 else 70, CYAN[1] if k != 2 else CYAN[2])
+        c.vline(66, 63, 67 if k != 2 else 72, CYAN[1] if k != 2 else CYAN[2])
     c.outline()
     # emissive fx
     c.fx()

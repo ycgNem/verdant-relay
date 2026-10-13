@@ -58,7 +58,10 @@ def bulb(c, cx, cy, rx, ry, mouth=1, glow=0, veins_lit=False):
     # flesh
     c.ellipse(x0, y0, x1, y1, "p")
     c.ellipse(x0, y0 - 1, x1 - 1, y1 - 2, "P", only="opaque")
-    c.ellipse(x0 + 2, y0, x1 - 6, y1 - 7, "k", only="opaque")
+    c.ellipse(x0 + 2, y0, x1 - 8, y1 - 8, "k", only="opaque")
+    # mottled spots like a pitcher plant
+    for (sx, sy) in [(-4, -1), (-6, 1), (-3, 3), (-5, 4), (-1, 4), (1, -4), (-2, -5)]:
+        c.px(cx + sx, cy + sy, "p", only="opaque")
     c.px(x0 + 4, y0 + 2, "S", only="opaque")
     c.px(x0 + 5, y0 + 2, "S", only="opaque")
     # veins
@@ -85,9 +88,10 @@ def bulb(c, cx, cy, rx, ry, mouth=1, glow=0, veins_lit=False):
     else:
         c.line(hx + 1, hy, ex - 1, hy, "R" if glow == 0 else "e")
     # lips (lit upper lip) + fangs
-    c.line(hx, hy - 1, ex, hy - a - 2, "P")
-    c.line(hx + 1, hy - 2, ex, hy - a - 3, "k", only="opaque")
-    c.line(hx, hy + 1, ex, hy + a + 2, "p")
+    c.line(hx, hy - 1, ex + 1, hy - a - 2, "P")
+    c.line(hx + 1, hy - 2, ex + 1, hy - a - 3, "k")
+    c.line(hx, hy + 1, ex + 1, hy + a + 2, "p")
+    c.line(hx + 1, hy + 2, ex, hy + a + 3, "P")
     for k in range(hx + 2, ex + 1, 2):
         t = (k - hx) / (ex - hx)
         uy = round(hy - (a + 1) * t)
