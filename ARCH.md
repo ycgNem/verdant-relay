@@ -82,3 +82,13 @@ Fields: `seed night phase relayHp relayMax playerHp meds weapon res{scrap,circui
 - All tuning in `src/data/`. 1 unit = 1 tile, Y up, world X = tile x, world Z = tile y.
 - Camera ~38° FOV pitched ~55°. Day renders at base res (480×270) and shows ~15 tiles across; night uses `setResMult(2)`.
 - Lighting: hemisphere + directional, Lambert materials. Day warm; night blue with a cyan point light at the core.
+
+## Tutorial hints (`src/ui/hints.js`)
+
+`showHint(game, id, html, {pos, time})` shows a one-time hint (stored in `meta.hints`, skipped when `meta.settings.hints` is off).
+Use it for first-run guidance in each mode (controls, extraction, building, wave preview…).
+
+## Per-mode CSS
+
+Each mode keeps its own stylesheet next to its scene (`src/ui/explore.css`, `src/ui/defense.css`, `src/ui/screens.css`) imported by that scene,
+so `style.css` stays the shared kit.
