@@ -3,7 +3,7 @@
 
 import '../ui/screens.css';
 import { el, toast, costLine } from '../ui/ui.js';
-import { CONFIG, WEAPONS } from '../data/config.js';
+import { CONFIG, WEAPONS, WEAPON_ALIAS } from '../data/config.js';
 import { UNLOCKS, UNLOCK_KEYS } from '../data/unlocks.js';
 import { DEFENSE_ENEMIES, EXPLORE_ENEMIES } from '../data/enemies.js';
 import { TOWERS, TOWER_ORDER } from '../data/towers.js';
@@ -165,7 +165,7 @@ export class CollectionScene {
     }
     c.append(grid);
     if (!meta.unlocks.includes('scattergun')) {
-      c.append(el('div.loadout.small.muted', {}, 'Starting weapon: ', el('b', WEAPONS.carbine.name), ' (unlock the Scattergun to choose)'));
+      c.append(el('div.loadout.small.muted', {}, 'Starting blade: ', el('b', WEAPONS.machete.name), ' (unlock the Parang to choose)'));
     }
   }
 
@@ -173,8 +173,8 @@ export class CollectionScene {
     const game = this.game;
     const meta = game.meta;
     const opt = (key) => {
-      const w = WEAPONS[key];
-      const b = sbtn(game, el('span', {}, el('b', w.name), el('span.small.muted', ` ${w.pellets > 1 ? `${w.pellets}×${w.damage}` : w.damage} dmg · range ${w.range}`)), () => {
+      const w = WEAPONS[WEAPON_ALIAS[key]];
+      const b = sbtn(game, el('span', {}, el('b', w.name), el('span.small.muted', ` ${w.combo[0].damage} dmg · chop ${w.chop.damage}`)), () => {
         meta.startWeapon = key;
         game.saveMeta();
         toast(game.ui, `Next run starts with the ${w.name}.`, 'good', 1.8);
@@ -182,7 +182,7 @@ export class CollectionScene {
       }, { cls: `seg-btn${(meta.startWeapon || 'carbine') === key ? ' selected' : ''}` });
       return b;
     };
-    return el('div.weapon-toggle', {}, el('div.small.amber', 'Starting weapon'), el('div.seg', {}, opt('carbine'), opt('scattergun')));
+    return el('div.weapon-toggle', {}, el('div.small.amber', 'Starting blade'), el('div.seg', {}, opt('carbine'), opt('scattergun')));
   }
 
   async buy(k) {
@@ -206,15 +206,15 @@ export class CollectionScene {
     // A new start weapon is offered, never silently equipped.
     if (k === 'scattergun') {
       const equip = await ask(game, {
-        title: 'Equip the Scattergun?',
-        body: el('p', 'Start your next runs with the Scattergun instead of the Scrap Carbine? You can switch any time under Starting weapon here in the Collection.'),
-        confirm: 'Equip Scattergun', cancel: 'Keep Carbine',
+        title: 'Equip the Parang?',
+        body: el('p', 'Start your next runs with the Parang instead of the Machete? You can switch any time under Starting blade here in the Collection.'),
+        confirm: 'Equip Parang', cancel: 'Keep Machete',
       });
       if (game.scene !== this) return;
       if (equip) {
         meta.startWeapon = 'scattergun';
         game.saveMeta();
-        toast(game.ui, 'Scattergun equipped. Toggle it in the Collection.', 'good', 2.4);
+        toast(game.ui, 'Parang equipped. Toggle it in the Collection.', 'good', 2.4);
       }
       this.render();
     }

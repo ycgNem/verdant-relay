@@ -1,0 +1,15 @@
+/* Jungle exploration HUD additions (the base layout is explore.css). */
+
+.j-stambar { flex: 1; height: calc(var(--u) * 10); }
+.j-st { color: var(--amber); }
+
+/* Sun dial above the day timer: daylight drains away. */
+.j-sun {
+  position: relative; width: calc(var(--u) * 120); height: calc(var(--u) * 6); margin: 0 auto calc(var(--u) * 4);
+  background: #181425; border: calc(var(--u) * 1) solid #3a4466; border-radius: calc(var(--u) * 2); overflow: hidden;
+}
+.j-sunfill { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #e4743b, #fee761); }
+.x-time.amber { color: var(--amber); }
+.x-time.bad { color: var(--danger); }
+
+.jungle-ui .x-bigcanvas { image-rendering: pixelated; display: block; margin: 0 auto; }

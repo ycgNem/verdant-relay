@@ -5,7 +5,7 @@
 import '../ui/screens.css';
 import { el, bar, resRow, toast, resIcon } from '../ui/ui.js';
 import { showHint } from '../ui/hints.js';
-import { CONFIG, WEAPONS } from '../data/config.js';
+import { CONFIG, WEAPONS, WEAPON_ALIAS } from '../data/config.js';
 import { DISTRICTS } from '../data/districts.js';
 import { PRIMARY } from '../data/objectives.js';
 import { DEFENSE_ENEMIES } from '../data/enemies.js';
@@ -145,7 +145,7 @@ export class BriefingScene {
       : null;
     const side = el('div.side.panel.ui-block', {},
       el('h3', 'Loadout'),
-      el('div.small', {}, el('span.muted', 'Weapon: '), el('b', WEAPONS[run.weapon]?.name || run.weapon), el('span.muted', ' · Pulse Cutter')),
+      el('div.small', {}, el('span.muted', 'Weapon: '), el('b', WEAPONS[WEAPON_ALIAS[run.weapon] || run.weapon]?.name || 'Machete')),
       el('div.small', {}, el('span.muted', 'Towers standing: '), el('b', String(run.towers.length))),
       el('h3', `Skills · ${run.skills.length}`),
       skills,

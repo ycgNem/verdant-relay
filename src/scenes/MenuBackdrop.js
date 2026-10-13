@@ -13,10 +13,10 @@
 //   bd.update(dt);  bd.dispose();
 
 import * as THREE from 'three';
+import { hash2 } from '../world/noise.js';
 import { updateVisual, setAnim, setFacing } from '../core/Assets.js';
 import { makeRng } from '../core/rng.js';
 import { PixelCamera, CARD_SCALE } from '../core/PixelView.js';
-import { wallSide } from '../world/TileWorld.js';
 import { CONFIG } from '../data/config.js';
 
 const MOODS = {
@@ -407,4 +407,30 @@ export class MenuBackdrop {
     this.scene.clear();
     this.game.assets.setTint('#ffffff');
   }
+}
+
+// Side texture of a wall block (moved here from the v1 TileWorld): the top texture darkened, with hard
+// 2 px steps toward the ground, a lit top edge and moss hanging over it.
+function wallSide(topCanvas, look, rows = 32) {
+  const TS = 32;
+  const c = document.createElement('canvas');
+  c.width = TS; c.height = rows;
+  const g = c.getContext('2d');
+  g.drawImage(topCanvas, 0, 0, TS, rows, 0, 0, TS, rows);
+  g.fillStyle = 'rgba(24,20,37,0.38)';
+  g.fillRect(0, 0, TS, rows);
+  const steps = [0.08, 0.18, 0.3];
+  for (let i = 0; i < steps.length; i++) { g.fillStyle = `rgba(16,12,28,${steps[i]})`; g.fillRect(0, rows - 6 + i * 2, TS, 2); }
+  g.fillStyle = 'rgba(234,212,170,0.3)';
+  g.fillRect(0, 0, TS, 1);
+  g.fillStyle = 'rgba(16,12,28,0.45)';
+  g.fillRect(0, 1, TS, 1);
+  g.fillStyle = look.moss || '#3e8948';
+  for (let x = 0; x < TS; x++) {
+    if (hash2(x, 1, 41) < 0.35) {
+      const len = 1 + Math.floor(hash2(x, 2, 43) * Math.min(7, rows / 2));
+      g.fillRect(x, 1, 1, len);
+    }
+  }
+  return c;
 }

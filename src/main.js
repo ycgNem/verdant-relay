@@ -18,7 +18,7 @@ import { TitleScene } from './scenes/TitleScene.js';
 import { SettingsScene } from './scenes/SettingsScene.js';
 import { CollectionScene } from './scenes/CollectionScene.js';
 import { BriefingScene } from './scenes/BriefingScene.js';
-import { ExploreScene } from './scenes/ExploreScene.js';
+import { JungleScene } from './scenes/JungleScene.js';
 import { SummaryScene } from './scenes/SummaryScene.js';
 import { DefenseScene } from './scenes/DefenseScene.js';
 import { ResultsScene } from './scenes/ResultsScene.js';
@@ -36,7 +36,7 @@ async function boot() {
   game.register('settings', SettingsScene);
   game.register('collection', CollectionScene);
   game.register('briefing', BriefingScene);
-  game.register('explore', ExploreScene);
+  game.register('explore', JungleScene);
   game.register('summary', SummaryScene);
   game.register('defense', DefenseScene);
   game.register('results', ResultsScene);

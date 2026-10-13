@@ -1,41 +1,103 @@
 # Verdant Relay — Art style and sprite contract
 
-All art is hand-built pixel art made with the **pixel-art-studio** skill (`pixel-art/<slug>/build.py` → PNG).
-Sprites are camera-facing billboards in a 3D world viewed from a ~55° top-down camera, so everything is drawn in
-**3/4 top-down view** (you see the top and the front of things).
+Two generations of art live side by side:
 
-## Look
+- **V2 jungle art (current direction, exploration + terrain):** made with **PixelLab** (AI pixel generation) and hand-finished
+  with the pixel-art-studio skill. Budget for this project: **300 PixelLab generations total** (tally every job's cost line).
+- **V1 night-mode sprites** (towers, night-only enemies, the Relay Core, UI icons): hand-made with pixel-art-studio,
+  Endesga-32. They stay until replaced; their contract is at the bottom of this file.
 
-- Grounded, weathered, believable: rusted sheet metal, cracked concrete, moss creeping over salvage, frayed cloth,
-  scuffed paint, rivets, cables, leaves. Post-collapse transit city reclaimed by jungle. Not cartoony, not chibi.
-- **Palette: Endesga-32** (`PALETTES["endesga32"]`) only. Build hue-shifted ramps from it (shadows cooler/purpler, lights warmer).
-- **Light from the top-left.** Highlights on top/left faces, shadow on bottom/right.
-- **Outline:** 1 px dark outline `#181425` on the outer silhouette (selout: inner lines use a darker shade of the local colour).
-  The game floor is busy; a dark outer edge keeps sprites readable.
-- **No anti-aliasing to transparent**, no semi-transparent pixels (alpha 0 or 255 only). No pillow shading, no banding.
-- Glow/emissive details (eyes, screens, crystals, lamps) use the brightest palette colours: cyan `#2ce8f5`, amber `#feae34`,
-  yellow `#fee761`, red `#e43b44`/`#ff0044`, green `#63c74d`. Sprites are tinted blue at night, so keep values bright enough.
-- Detail density: aim for readable silhouettes first, then 2–3 levels of material detail (e.g. plate seams, bolts, stitching).
+## V2 look
 
-## Scale and anchoring
+- A **dense, humid, claustrophobic jungle** swallowing a dead transit city. Every square of ground has something on it.
+  Layers, from bottom to top: blended ground → ground decals (leaf litter, roots, puddles, stones, moss) → undergrowth
+  (ferns, shrubs, thickets the machete cuts) → trunks, ruins and props → hanging vines → canopy overhead (dappled shadow).
+- Rich, moody, saturated-but-dark palette: deep teal/green shadows, warm sun-dapple highlights, wet browns. Glow accents
+  (amber, cyan, toxic green, red eyes) are the brightest values on screen.
+- **Ground blends**: terrain is never a visible grid. Transitions come from PixelLab Wang tilesets drawn on a dual grid,
+  then broken up with decals and low-frequency colour variation (`src/world/TerrainBaker.js`).
+- PixelLab settings for consistency: `view: "high top-down"` for terrain and ground decals, `"low top-down"` for characters,
+  `outline: "selective outline"`, `shading: "detailed shading"` (or medium), `detail: "high detail"`. Once a good asset
+  exists, pass it as a style reference to later jobs of the same family.
+- **Light from the top-left.** No semi-transparent pixels: every exported PNG is alpha 0 or 255 (threshold at 128).
+- Sprites are drawn **1:1 at ppu 32** (32 texels = 1 tile). Never resample a PixelLab image; pad or crop only.
 
-- **ppu 32**: 32 texels = 1 tile = 1 world unit. A human is ~1.15 tiles tall (≈ 36–40 px including head).
-- Feet/base touch the **bottom row** of the frame (no padding below), horizontally centred.
-- Characters and creatures **face RIGHT** (3/4 front-right). The game flips them for left.
-- Animation strips are **horizontal**, equal-size frames, no padding between frames.
+## V2 file formats (what the engine reads)
 
-## Manifest
+### Terrain (`public/terrain/`)
 
-Each sprite is listed in `public/sprites/manifest.json`:
+Ground is a stack of **levels**, each vertex of the tile grid holds one level, and neighbouring vertices differ by at most 1,
+so every 32×32 cell needs exactly one tile from the tileset joining two consecutive levels:
+
+| Level | Name | Look |
+|---|---|---|
+| 0 | `water` | murky green jungle river / swamp water |
+| 1 | `mud` | dark wet mud bank, roots |
+| 2 | `dirt` | packed brown dirt trail, pebbles (the paths) — or `paving` in ruins |
+| 3 | `floor` | dark jungle floor: fallen leaves, twigs, soil |
+| 4 | `moss` | lush mossy ground cover, tiny leafy plants |
+
+Sets: `water_mud`, `mud_dirt`, `dirt_floor`, `floor_moss`, `paving_floor` (paving replaces dirt at level 2 in ruin areas).
+Each set is saved as `public/terrain/<set>.png` (the PixelLab sheet, untouched) and `public/terrain/<set>.json`
+(the raw PixelLab metadata: per-tile `bounding_box` and `corners` NW/NE/SW/SE = lower/upper). `public/terrain/manifest.json`:
 ```json
-"crawler": { "file": "crawler.png", "ppu": 32, "frames": 9, "fps": 8,
-             "anims": { "idle": [0,1], "walk": [2,3,4,5], "windup": [6], "attack": [7,8] } }
+{ "tileSize": 32,
+  "levels": ["water", "mud", "dirt", "floor", "moss"],
+  "sets": { "water_mud": { "png": "water_mud.png", "meta": "water_mud.json", "lower": "water", "upper": "mud" }, ... } }
 ```
-Optional: `"flat": true` (ground decal, drawn lying on the floor), `"tile": true` (a 32×32 seamless floor/wall texture,
-not a visual), `"shadow": r` (blob-shadow radius in tiles, 0 for none), `"animFps": {"walk": 10}`.
-Art agents write fragments to `pixel-art/manifest.<group>.json`; `python pixel-art/merge_manifest.py` merges them.
 
-## Sprite list (the contract code relies on)
+### Sprites (`public/sprites/manifest.json`)
+
+Static and strip-animated sprites keep the V1 format (`file ppu frames anims fps animFps flat shadow anchorY`).
+New optional fields:
+- `"anchor": [x, y]` — texel in the frame that sits on the ground point (feet / base centre). Default: bottom centre.
+- `"fw"`, `"fh"` — frame size, when the sheet is a grid rather than one horizontal strip.
+
+**Directional sheets** (8-way characters and creatures): a grid of `fw × fh` frames. Rows are `anim × direction`, columns are frames.
+```json
+"player": { "file": "player.png", "ppu": 32, "fw": 64, "fh": 64, "anchor": [32, 54],
+  "dirs": ["s", "se", "e", "ne", "n"],
+  "anims": { "idle":  { "row": 0,  "frames": 4, "fps": 6 },
+             "walk":  { "row": 5,  "frames": 6, "fps": 10 },
+             "slash": { "row": 10, "frames": 6, "fps": 16, "hit": 3 } } }
+```
+- An anim's direction `i` (index in `dirs`) is on row `row + i`. Rows are padded with transparent frames to the widest anim.
+- West-side directions (`sw w nw`) are **mirrored** from `se e ne` when not listed.
+- `hit` (optional) = the frame on which the attack connects; `loop: false` for one-shots (attacks, roll, hurt, death).
+- Every frame of a key shares one canvas size and one anchor: pad smaller animation canvases **centred on the feet**.
+
+## V2 asset list
+
+### Terrain (agent: env)
+The five Wang sets above, 32 px tiles, chained through base tile IDs so shared terrains match exactly.
+
+### Characters (agent: chars) — directional sheets, dirs `s se e ne n`
+| Key | Canvas | Anims | Notes |
+|---|---|---|---|
+| player | ~64 | idle, walk, slash (3-hit combo can reuse one swing + mirrored variant), chop (heavy overhead), roll, hurt | Jungle scavenger: green hooded poncho, cyan goggles, orange scarf, backpack with cable coils, **machete** in the right hand |
+| feral | ~64 | idle, walk, windup, attack | Feral scavenger: ragged camo, bone mask, crude spear or machete |
+| crawler | ~64 | idle, walk, windup, attack | Bramble Crawler: thorny vine-beast, bark plates, red eyes (quadruped) |
+| razorback | ~80 | idle, walk, windup, attack (charge) | Armoured boar-beast, rusted plates fused to hide, ivory tusks (quadruped) |
+| skitter | ~40 | idle, walk, attack | Fast magenta insectoid with a yellow eye (may be a single-direction strip that flips) |
+| spitter | ~48 | idle, windup, attack | Rooted carnivorous bulb plant with a fanged maw (single direction is fine) |
+
+### Environment (agent: env) — `ppu 32`, anchor at the base
+- `fol_*` undergrowth (≈64 px): ferns, broadleaf shrubs, monstera/elephant-ear, heliconia, tall grass, bamboo, palm sapling,
+  thicket, vine tangle, thorn bramble, mushrooms, mossy boulder, rotten log, stump, cut-stump/debris.
+- `dec_*` ground decals (≈32 px, `"flat": true`, `"shadow": 0`): leaf patches, twigs, pebbles, flowers, roots, puddles, lily pads, reeds, fungus, bones, cut-leaf debris.
+- `tree_*` trees (≈128–160 px): giant kapok with buttress roots, strangler fig, tall palm, vine-wrapped dead tree, banyan, tree fern.
+- `ruin_*` ruins (≈128 px): broken concrete wall, vine pillar, rusted train carriage, greenhouse iron frame, statue head, car wreck, toppled mast, stairs.
+- `prop_*` interactables (≈48 px): crate, tool chest, rare cache, intel terminal, opened crate, fuse, power box, data terminal,
+  pump, power-cell cache, nest, data log, locked cache, workbench, relay pylon, campfire, supply drop, med kit; pickups `pick_*`.
+
+## V1 look (night-mode sprites)
+
+- Grounded, weathered, believable: rusted sheet metal, cracked concrete, moss creeping over salvage. Not cartoony, not chibi.
+- **Palette: Endesga-32** only, hue-shifted ramps. Light from the top-left. 1 px dark outline `#181425`, selout inside.
+- No anti-aliasing to transparent, no semi-transparent pixels. Glow details use cyan `#2ce8f5`, amber `#feae34`, yellow `#fee761`, red, green.
+- ppu 32, feet on the bottom row, characters face RIGHT (the game flips them), horizontal animation strips.
+
+## V1 sprite list (still used by night mode and as fallbacks)
 
 Anim names the code uses: `idle walk attack windup hurt` for creatures; `on off` for objective props; extra names are listed per sprite.
 Missing anims fall back to `idle` (or frame 0).

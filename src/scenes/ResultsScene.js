@@ -4,6 +4,7 @@
 
 import '../ui/screens.css';
 import { el, resRow } from '../ui/ui.js';
+import { frameGeom } from '../core/Assets.js';
 import { CONFIG } from '../data/config.js';
 import { UNLOCKS, UNLOCK_KEYS } from '../data/unlocks.js';
 import { MenuBackdrop } from './MenuBackdrop.js';
@@ -132,13 +133,13 @@ export class ResultsScene {
       const info = A.spriteInfo(key);
       if (!info?.tex?.image) return null;
       const img = info.tex.image;
-      const frames = info.def.frames || 1;
-      const fw = img.width / frames;
+      const { fw, fh, cols } = frameGeom(info.def, img);
+      const fx = frame % cols, fy = Math.floor(frame / cols);
       return el(`span.tab-spr${cls ? '.' + cls : ''}`, {
         style: {
-          width: `${fw * s}px`, height: `${img.height * s}px`,
+          width: `${fw * s}px`, height: `${fh * s}px`,
           backgroundImage: `url(${import.meta.env.BASE_URL}sprites/${info.def.file})`,
-          backgroundSize: `${img.width * s}px ${img.height * s}px`, backgroundPosition: `${-frame * fw * s}px 0`,
+          backgroundSize: `${img.width * s}px ${img.height * s}px`, backgroundPosition: `${-fx * fw * s}px ${-fy * fh * s}px`,
         },
       });
     };

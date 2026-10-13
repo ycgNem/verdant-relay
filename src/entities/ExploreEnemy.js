@@ -18,8 +18,8 @@ import { CONFIG, JUICE } from '../data/config.js';
 import { EXPLORE_ENEMIES } from '../data/enemies.js';
 import { setAnim, setFacing, updateVisual, flashVisual, setBaseColor } from '../core/Assets.js';
 import { shade } from '../core/Fx.js';
-import { moveCircle, lineOfSight, rayLength, castRay } from '../world/collide.js';
-import { nightTune } from '../world/ExploreGen.js';
+import { rayLength, castRay } from '../world/collide.js';
+import { nightTune } from '../data/config.js';
 
 let barTex = null;
 function barMaterial(color) {
@@ -44,7 +44,11 @@ export class ExploreEnemy {
     this.elite = !!opts.elite;
     this.objective = !!opts.objective;
     this.guard = !!opts.guard;
-    this.room = opts.room ?? -1;
+    this.id = opts.id || null;
+    this.site = opts.site ?? -1;
+    // Undergrowth handling: Crawlers/Skitters slip through it, Razorbacks bulldoze it, the rest path around.
+    this.moveOpts = this.def.brush === 'through' ? { throughBrush: true }
+      : this.def.brush === 'crash' ? { onBrush: (tx, tz) => scene.crashBrush?.(tx, tz, this) } : {};
     const night = this.game.run.night;
     const scale = this.elite ? X.elite.scale : 1;
     this.scale = scale;
@@ -104,8 +108,17 @@ export class ExploreEnemy {
 
   // ---------------------------------------------------------------- damage
 
-  hit(dmg, dx, dz, kb = 0, src = '') {
+  hit(dmg, dx, dz, kb = 0, src = '', stagger = 0) {
     if (this.dead || this.state === 'spawn') return;
+    // A heavy blow interrupts a wind-up (elites shrug most of it off).
+    const st = stagger * (this.elite ? 0.35 : 1);
+    if (st > 0.15 && (this.state === 'windup' || this.state === 'chase' || this.state === 'recover')) {
+      this.tele?.cancel();
+      this.tele = null;
+      this.state = 'stunned';
+      this.stateT = st;
+      setAnim(this.vis, 'hurt', true);
+    }
     dmg = Math.round(dmg);
     this.hp -= dmg;
     this.barT = 2.5;
@@ -115,13 +128,13 @@ export class ExploreEnemy {
     const H = JUICE.hitStop;
     const big = this.elite || this.objective;
     fx.text({ x: this.x, z: this.z }, String(dmg), {
-      color: src === 'cutter' ? '#2ce8f5' : big ? '#feae34' : '#ead4aa', cls: big ? 'elite' : '',
+      color: big ? '#feae34' : src === 'chop' ? '#fee761' : '#ead4aa', cls: big ? 'elite' : '',
       y: this.vis.userData.vis.height + 0.55, life: 0.6, key: this, value: dmg,
     });
     fx.burst({ x: this.x, z: this.z }, { color: this.bloodColor, count: 4, speed: 1.8, up: 1.5, life: 0.3, size: 0.06, vx: dx * 1.5, vz: dz * 1.5 });
     // Impact spark on the side the hit came from.
-    fx.flash({ x: this.x - dx * this.radius * 0.6, y: this.vis.userData.vis.height * 0.45, z: this.z - dz * this.radius * 0.6 }, { color: src === 'cutter' ? '#2ce8f5' : '#ffffff', size: big ? 0.42 : 0.3, life: 0.05 });
-    if (src === 'cutter') fx.hitStop(H.cutterHit);
+    fx.flash({ x: this.x - dx * this.radius * 0.6, y: this.vis.userData.vis.height * 0.45, z: this.z - dz * this.radius * 0.6 }, { color: '#ffffff', size: big ? 0.42 : 0.3, life: 0.05 });
+    if (src === 'slash' || src === 'chop') fx.hitStop(src === 'chop' ? H.cutterHit * 1.8 : H.cutterHit);
     else if (dmg >= H.heavyDamage || big) fx.hitStop(H.heavyHit);
     this.game.sfx.play('hit');
     // Knockback (heavier enemies resist; lunges and charges carry through).
@@ -191,7 +204,7 @@ export class ExploreEnemy {
     this.senseT -= dt;
     if (this.senseT <= 0) {
       this.senseT = 0.15;
-      this.los = dist < 22 && lineOfSight(sc.world, this.x, this.z, p.pos.x, p.pos.z);
+      this.los = dist < 22 && sc.world.lineOfSight(this.x, this.z, p.pos.x, p.pos.z);
     }
     const playerTarget = !p.dead && !sc.ending;
 
@@ -206,7 +219,7 @@ export class ExploreEnemy {
         return;
       }
       case 'idle': {
-        if (playerTarget && ((this.los && dist <= d.detect) || (this.guard && dist <= d.detect + 2 && sc.playerRoom === this.room))) this.alert(true);
+        if (playerTarget && ((this.los && dist <= d.detect) || (this.guard && dist <= d.detect + 2))) this.alert(true);
         if (d.speed > 0) {
           this.wanderT -= dt;
           if (this.wanderT <= 0) {
@@ -258,11 +271,11 @@ export class ExploreEnemy {
       case 'attack': {
         if (d.attack === 'melee') {
           const v = d.lunge / d.lungeTime;
-          const hitWall = moveCircle(sc.world, this, this.aimDir.x * v * dt, this.aimDir.z * v * dt, this.radius);
+          const hitWall = sc.world.moveBody(this, this.aimDir.x * v * dt, this.aimDir.z * v * dt, this.radius, this.moveOpts);
           this._contact(dist);
           if (this.stateT <= 0 || hitWall) this._recover(d.cooldown);
         } else if (d.attack === 'charge') {
-          const hitWall = moveCircle(sc.world, this, this.aimDir.x * d.chargeSpeed * dt, this.aimDir.z * d.chargeSpeed * dt, this.radius);
+          const hitWall = sc.world.moveBody(this, this.aimDir.x * d.chargeSpeed * dt, this.aimDir.z * d.chargeSpeed * dt, this.radius, this.moveOpts) && sc.world.blockedCircle(this.x + this.aimDir.x * 0.15, this.z + this.aimDir.z * 0.15, this.radius, true);
           if (Math.random() < 0.7) sc.fx.burst({ x: this.x, y: -0.35, z: this.z }, { color: '#8b9bb4', count: 1, speed: 1, up: 1, life: 0.3, size: 0.09 });
           this._contact(dist);
           if (hitWall) {
@@ -300,7 +313,11 @@ export class ExploreEnemy {
       const kd = Math.exp(-9 * dt);
       this.kb.x *= kd; this.kb.z *= kd;
       const mx = (this.vel.x + this.kb.x) * dt, mz = (this.vel.z + this.kb.z) * dt;
-      if (Math.abs(mx) + Math.abs(mz) > 1e-5) moveCircle(sc.world, this, mx, mz, this.radius);
+      if (Math.abs(mx) + Math.abs(mz) > 1e-5) sc.world.moveBody(this, mx * sc.world.speedAt(this.x, this.z), mz * sc.world.speedAt(this.x, this.z), this.radius, this.moveOpts);
+      // Rustling: something moving through the undergrowth gives itself away.
+      if (this.moveOpts.throughBrush && Math.hypot(this.vel.x, this.vel.z) > 0.6 && sc.world.brushAt(Math.floor(this.x), Math.floor(this.z)) >= 1 && Math.random() < dt * 5) {
+        sc.fx.burst({ x: this.x, y: 0.5, z: this.z }, { color: '#2a5628', color2: '#4b8139', count: 2, speed: 1, up: 1.6, life: 0.4, size: 1.5 / 32, gravity: 5 });
+      }
       if (move && this.state !== 'windup') this.face = Math.hypot(this.vel.x, this.vel.z) > 0.3 && this.state === 'idle' ? { x: this.vel.x, z: this.vel.z } : this.face;
     }
     this.moving = Math.hypot(this.vel.x, this.vel.z) > 0.4 && this.state !== 'attack';
@@ -316,12 +333,13 @@ export class ExploreEnemy {
     // Straight line works when no solid tile is in the way (checked with the body's width).
     const off = this.radius * 0.9;
     const nx = -dz / dist * off, nz = dx / dist * off;
-    const solid = (x, y) => sc.world.solidAt(x, y);
+    const through = !!this.moveOpts.throughBrush || !!this.moveOpts.onBrush;
+    const solid = (x, y) => sc.world.blockedAt(x, y, through);
     if (dist < 12 && castRay(this.x + nx, this.z + nz, tx + nx, tz + nz, solid) >= dist - 0.01
       && castRay(this.x - nx, this.z - nz, tx - nx, tz - nz, solid) >= dist - 0.01) {
       return { x: dx / dist, z: dz / dist };
     }
-    return sc.flowDir(this.x, this.z) || { x: dx / dist, z: dz / dist };
+    return sc.flowDir(this.x, this.z, through) || { x: dx / dist, z: dz / dist };
   }
 
   _startWindup(toP, dist) {

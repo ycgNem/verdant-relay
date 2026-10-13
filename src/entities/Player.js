@@ -1,13 +1,19 @@
-// The scavenger (exploration). WASD move · mouse aim · LMB fire · RMB Pulse Cutter · Space dodge ·
-// Q med kit. Interaction (E) is handled by ExploreScene because it knows what is interactable.
+// The scavenger (jungle exploration): a machete fighter.
 //
-// HP and med kits are read from the Run at the start of an expedition and written back only through
-// the expedition result (Run.applyExpedition), so the Run stays the single source of truth.
+//   WASD move · mouse aim · LMB slash (3-hit combo) · hold RMB charge a heavy chop, release to swing ·
+//   Space dodge roll (i-frames, costs stamina) · Q med kit. Interaction (E) lives in the scene.
+//
+// States: free → swing (combo step 0/1/2) → free … · charge → chop → free · roll → free · dead.
+// A swing connects once, at its `hitAt` moment: the scene resolves what the arc touches
+// (scene.meleeHit → enemies, undergrowth, nests). Inputs pressed during a swing are buffered, so
+// mashing LMB flows through the combo. Stamina gates rolls and slows swings when empty.
+//
+// HP and med kits come from the Run at the start of an expedition and go back only through the
+// expedition result (Run.applyExpedition), so the Run stays the single source of truth.
 
 import * as THREE from 'three';
-import { CONFIG, WEAPONS, TOOL, JUICE } from '../data/config.js';
-import { setAnim, setFacing, updateVisual, flashVisual, setOpacity } from '../core/Assets.js';
-import { moveCircle, lineOfSight } from '../world/collide.js';
+import { CONFIG, WEAPONS, WEAPON_ALIAS, STAMINA, ROLL, JUICE } from '../data/config.js';
+import { setAnim, setFacing, updateVisual, flashVisual, setOpacity, hasAnim, animLength, setAnimSpeed } from '../core/Assets.js';
 
 export class Player {
   constructor(scene, x, z) {
@@ -22,18 +28,27 @@ export class Player {
     this.maxHp = C.hp;
     this.hp = Math.max(1, Math.min(C.hp, run.playerHp));
     this.meds = Math.min(C.maxMeds, run.meds + (run.hasSkill('field_medic') ? 1 : 0));
-    this.weaponKey = WEAPONS[run.weapon] ? run.weapon : 'carbine';
+    const wk = WEAPON_ALIAS[run.weapon] || run.weapon;
+    this.weaponKey = WEAPONS[wk] ? wk : 'machete';
     this.weapon = WEAPONS[this.weaponKey];
     this.aim = { x: 1, z: 0 };
     this.aimPoint = new THREE.Vector3(x + 2, 0, z);
-    this.fireCd = 0;
-    this.cutCd = 0;
-    this.dodgeCd = 0;
-    this.dodgeT = 0;
-    this.dodgeDir = { x: 1, z: 0 };
+    this.state = 'free';
+    this.stateT = 0;
+    this.combo = 0;            // next combo step
+    this.comboT = 0;           // time left to continue the combo
+    this.buffer = null;        // buffered input during a swing: 'slash' | 'roll'
+    this.swing = null;         // current swing spec
+    this.swingDir = { x: 1, z: 0 };
+    this.hitDone = false;
+    this.chargeT = 0;
+    this.stamina = STAMINA.max;
+    this.staminaDelay = 0;
+    this.exhausted = false;
+    this.rollCd = 0;
+    this.rollDir = { x: 1, z: 0 };
     this.iframes = 0;
     this.medCd = 0;
-    this.attackT = 0;
     this.hurtT = 0;
     this.moving = false;
     this.dead = false;
@@ -46,24 +61,22 @@ export class Player {
     this._buildReticle();
   }
 
-  get dodging() { return this.dodgeT > 0; }
+  get dodging() { return this.state === 'roll' && this.stateT < ROLL.iframes; }
+  get attacking() { return this.state === 'swing' || this.state === 'chop'; }
+  get charging() { return this.state === 'charge'; }
 
   _buildReticle() {
     const g = new THREE.Group();
-    const mat = new THREE.MeshBasicMaterial({ color: '#ead4aa', transparent: true, opacity: 0.85, depthWrite: false, depthTest: false });
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.22, 0.28, 16), mat);
-    ring.rotation.x = -Math.PI / 2;
-    g.add(ring);
+    const mat = new THREE.MeshBasicMaterial({ color: '#ead4aa', transparent: true, opacity: 0.8, depthWrite: false, depthTest: false });
     for (let i = 0; i < 4; i++) {
-      const tick = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.16), mat);
+      const tick = new THREE.Mesh(new THREE.PlaneGeometry(2 / 32, 5 / 32), mat);
       tick.rotation.x = -Math.PI / 2;
       const a = (i * Math.PI) / 2;
-      tick.position.set(Math.cos(a) * 0.38, 0, Math.sin(a) * 0.38);
+      tick.position.set(Math.cos(a) * 0.22, 0, Math.sin(a) * 0.22);
       tick.rotation.z = a + Math.PI / 2;
+      tick.renderOrder = 10;
       g.add(tick);
     }
-    g.renderOrder = 10;
-    g.children.forEach((c) => { c.renderOrder = 10; });
     this.reticle = g;
     this.reticleMat = mat;
     this.scene.three.add(g);
@@ -73,10 +86,10 @@ export class Player {
     const C = CONFIG.player;
     const input = this.game.input;
     const sc = this.scene;
-    this.fireCd -= dt; this.cutCd -= dt; this.dodgeCd -= dt; this.iframes -= dt;
-    this.medCd -= dt; this.attackT -= dt; this.hurtT -= dt;
+    this.iframes -= dt; this.medCd -= dt; this.hurtT -= dt; this.rollCd -= dt; this.comboT -= dt;
+    this.stateT += dt;
 
-    // ---- aim: mouse ray onto the bullet plane
+    // ---- aim
     const hit = this.game.mouseOnPlane(sc.camera, C.shotHeight, this._tmp);
     if (hit) {
       this.aimPoint.set(hit.x, 0, hit.z);
@@ -84,111 +97,198 @@ export class Player {
       const len = Math.hypot(dx, dz);
       if (len > 0.05) { this.aim.x = dx / len; this.aim.z = dz / len; }
     }
-
     if (this.dead) { this._updateVisual(dt); return; }
 
-    // ---- movement
+    // ---- stamina
+    if (this.staminaDelay > 0) this.staminaDelay -= dt;
+    else this.stamina = Math.min(STAMINA.max, this.stamina + STAMINA.regen * (this.exhausted ? STAMINA.exhaustedRegen : 1) * dt);
+    if (this.exhausted && this.stamina >= STAMINA.max * 0.35) this.exhausted = false;
+
+    // ---- input
     let mx = (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0);
     let mz = (input.isDown('KeyS') ? 1 : 0) - (input.isDown('KeyW') ? 1 : 0);
     const ml = Math.hypot(mx, mz);
     if (ml > 0) { mx /= ml; mz /= ml; }
     this.moving = ml > 0;
+    const block = sc.blockFire;
+    const wantSlash = !block && input.mouseClicked(0);
+    const wantRoll = input.wasPressed('Space');
+    const holdChop = !block && input.mouseHeld(2);
 
-    if (input.wasPressed('Space') && this.dodgeCd <= 0) this.startDodge(mx, mz);
+    switch (this.state) {
+      case 'free':
+        if (wantRoll) this.startRoll(mx, mz);
+        else if (holdChop) this._enter('charge');
+        else if (wantSlash) this.startSwing();
+        break;
+      case 'swing': {
+        if (wantSlash) this.buffer = 'slash';
+        if (wantRoll) this.buffer = 'roll';
+        if (!this.hitDone && this.stateT >= this.swing.hitAt) this._connect(1);
+        if (this.stateT >= this.swing.time) {
+          this.comboT = this.weapon.comboWindow;
+          this._enter('free');
+          if (this.buffer === 'roll') this.startRoll(mx, mz);
+          else if (this.buffer === 'slash') this.startSwing();
+          this.buffer = null;
+        } else if (this.buffer === 'roll' && this.hitDone && this.stateT > this.swing.hitAt + 0.05) {
+          // Roll-cancel the recovery of a swing.
+          this.buffer = null;
+          this.startRoll(mx, mz);
+        }
+        break;
+      }
+      case 'charge': {
+        this.chargeT += dt;
+        const ch = this.weapon.chop;
+        if (this.chargeT >= ch.charge && !this._chargeReady) {
+          this._chargeReady = true;
+          sc.fx.ring(this.pos, { color: '#fee761', radius: 0.9, life: 0.25 });
+          this.game.sfx.play('zap');
+        }
+        if (Math.random() < (this._chargeReady ? 0.5 : 0.2)) {
+          sc.fx.burst({ x: this.pos.x + this.aim.x * 0.4, y: 0.6, z: this.pos.z + this.aim.z * 0.4 }, { color: this._chargeReady ? '#fee761' : '#c0cbdc', count: 1, speed: 0.6, up: 1.2, life: 0.25, size: 1.5 / 32 });
+        }
+        if (wantRoll) { this.chargeT = 0; this.startRoll(mx, mz); break; }
+        if (!holdChop) {
+          if (this._chargeReady) this.startChop();
+          else { this._enter('free'); this.startSwing(); }
+          this._chargeReady = false;
+          this.chargeT = 0;
+        }
+        break;
+      }
+      case 'chop': {
+        if (!this.hitDone && this.stateT >= this.swing.hitAt) this._connect(2);
+        if (wantRoll && this.hitDone) { this.startRoll(mx, mz); break; }
+        if (this.stateT >= this.swing.time) this._enter('free');
+        break;
+      }
+      case 'roll': {
+        if (wantSlash && this.stateT > ROLL.time * 0.5) this.buffer = 'slash';
+        if (this.stateT >= ROLL.time) {
+          this.vel.x *= 0.4; this.vel.z *= 0.4;
+          this._enter('free');
+          this.rollCd = ROLL.cooldown;
+          if (this.buffer === 'slash') this.startSwing();
+          this.buffer = null;
+        }
+        break;
+      }
+    }
 
-    if (this.dodgeT > 0) {
-      this.dodgeT -= dt;
-      this.vel.x = this.dodgeDir.x * C.dodgeSpeed;
-      this.vel.z = this.dodgeDir.z * C.dodgeSpeed;
-      if (Math.random() < 0.6) sc.fx.burst({ x: this.pos.x, y: -0.35, z: this.pos.z }, { color: '#8b9bb4', count: 1, speed: 0.6, up: 0.6, life: 0.3, size: 0.07 });
-      if (this.dodgeT <= 0) { this.vel.x *= 0.35; this.vel.z *= 0.35; }
+    // ---- movement
+    const terrain = sc.world.speedAt(this.pos.x, this.pos.z);
+    if (this.state === 'roll') {
+      const k = 1 - Math.min(1, this.stateT / ROLL.time) * 0.5;
+      this.vel.x = this.rollDir.x * ROLL.speed * k * Math.max(0.7, terrain);
+      this.vel.z = this.rollDir.z * ROLL.speed * k * Math.max(0.7, terrain);
+      if (Math.random() < 0.5) sc.fx.burst({ x: this.pos.x, y: 0.05, z: this.pos.z }, { color: '#5a4430', count: 1, speed: 0.6, up: 0.6, life: 0.3, size: 0.06 });
     } else {
-      const tx = mx * C.speed, tz = mz * C.speed;
+      const slow = this.state === 'charge' ? 0.42 : this.attacking ? 0.3 : 1;
+      const sp = C.speed * terrain * slow;
+      const tx = mx * sp, tz = mz * sp;
       const ax = tx - this.vel.x, az = tz - this.vel.z;
       const al = Math.hypot(ax, az), maxA = C.accel * dt;
       if (al > maxA) { this.vel.x += (ax / al) * maxA; this.vel.z += (az / al) * maxA; } else { this.vel.x = tx; this.vel.z = tz; }
     }
     const kd = Math.exp(-10 * dt);
     this.kb.x *= kd; this.kb.z *= kd;
-    moveCircle(sc.world, this.pos, (this.vel.x + this.kb.x) * dt, (this.vel.z + this.kb.z) * dt, this.r);
+    sc.world.moveBody(this.pos, (this.vel.x + this.kb.x) * dt, (this.vel.z + this.kb.z) * dt, this.r);
+    // Wading / rustling feedback.
+    if (this.moving && this.state === 'free') {
+      this.walkT += dt;
+      if (this.walkT > 0.18) {
+        this.walkT = 0;
+        const lv = sc.world.levelAt(this.pos.x, this.pos.z);
+        if (lv === 0) sc.fx.ring({ x: this.pos.x, z: this.pos.z }, { color: '#5f9a86', radius: 0.45, life: 0.35 });
+        else if (sc.world.brushAt(Math.floor(this.pos.x), Math.floor(this.pos.z)) === 1) sc.fx.burst({ x: this.pos.x, y: 0.3, z: this.pos.z }, { color: '#376a30', color2: '#4b8139', count: 2, speed: 0.8, up: 1.2, life: 0.35, size: 1.5 / 32, gravity: 4 });
+      }
+    }
 
-    // ---- weapon
-    if (input.mouseHeld(0) && this.fireCd <= 0 && !this.dodging && !sc.blockFire) this.fire();
-    // ---- Pulse Cutter
-    if ((input.mouseClicked(2) || input.mouseHeld(2)) && this.cutCd <= 0 && !this.dodging && !sc.blockFire) this.cut();
-    // ---- med kit
     if (input.wasPressed('KeyQ')) this.useMed();
-
     this._updateVisual(dt);
   }
 
-  startDodge(mx, mz) {
-    const C = CONFIG.player;
+  _enter(state) {
+    this.state = state;
+    this.stateT = 0;
+  }
+
+  _spend(n) {
+    this.stamina -= n;
+    this.staminaDelay = STAMINA.delay;
+    if (this.stamina <= 0) { this.stamina = 0; this.exhausted = true; }
+  }
+
+  startSwing() {
+    const step = this.comboT > 0 ? this.combo : 0;
+    const spec = this.weapon.combo[step];
+    this.combo = (step + 1) % this.weapon.combo.length;
+    if (this.combo === 0) this.comboT = 0;
+    // Exhausted swings are slower and weaker.
+    const tired = this.exhausted;
+    this.swing = tired ? { ...spec, time: spec.time * 1.35, hitAt: spec.hitAt * 1.35, damage: Math.round(spec.damage * 0.7) } : spec;
+    this.swing.step = step;
+    this._spend(spec.stamina);
+    this.swingDir = { x: this.aim.x, z: this.aim.z };
+    this.hitDone = false;
+    this._enter('swing');
+    this.kb.x += this.swingDir.x * spec.lunge;
+    this.kb.z += this.swingDir.z * spec.lunge;
+    const anim = hasAnim(this.vis, 'slash') ? 'slash' : 'attack';
+    setFacing(this.vis, this.swingDir.x, this.swingDir.z, true);
+    setAnim(this.vis, anim, true);
+    const len = animLength(this.vis, anim);
+    setAnimSpeed(this.vis, len > 0 ? len / this.swing.time : 1);
+    this.game.sfx.play('cutter');
+  }
+
+  startChop() {
+    const spec = this.weapon.chop;
+    this.swing = { ...spec, step: 3 };
+    this._spend(spec.stamina);
+    this.swingDir = { x: this.aim.x, z: this.aim.z };
+    this.hitDone = false;
+    this.combo = 0; this.comboT = 0;
+    this._enter('chop');
+    this.kb.x += this.swingDir.x * spec.lunge;
+    this.kb.z += this.swingDir.z * spec.lunge;
+    const anim = hasAnim(this.vis, 'chop') ? 'chop' : hasAnim(this.vis, 'slash') ? 'slash' : 'attack';
+    setFacing(this.vis, this.swingDir.x, this.swingDir.z, true);
+    setAnim(this.vis, anim, true);
+    const len = animLength(this.vis, anim);
+    setAnimSpeed(this.vis, len > 0 ? len / spec.time : 1);
+    this.game.sfx.play('cutter');
+  }
+
+  _connect(power) {
+    this.hitDone = true;
+    const a = Math.atan2(this.swingDir.z, this.swingDir.x);
+    this.scene.meleeHit(this.pos.x, this.pos.z, a, this.swing, power);
+  }
+
+  startRoll(mx, mz) {
+    if (this.rollCd > 0) return;
+    if (this.stamina < STAMINA.roll * 0.5) {
+      this.scene.fx.text(this.pos, 'Out of breath', { color: '#8b9bb4', y: this.vis.userData.vis.height + 0.3, life: 0.6, key: 'breath' });
+      this.game.sfx.play('error');
+      this.rollCd = 0.3;
+      return;
+    }
+    this._spend(STAMINA.roll);
     const dir = (mx || mz) ? { x: mx, z: mz } : { x: this.aim.x, z: this.aim.z };
-    this.dodgeDir = dir;
-    this.dodgeT = C.dodgeDuration;
-    this.dodgeCd = C.dodgeCooldown;
-    this.iframes = Math.max(this.iframes, C.dodgeDuration);
+    this.rollDir = dir;
+    this.buffer = null;
+    this._enter('roll');
+    this.iframes = Math.max(this.iframes, ROLL.iframes);
     this.game.sfx.play('dodge');
-    this.scene.fx.burst({ x: this.pos.x, y: -0.35, z: this.pos.z }, { color: '#c0cbdc', count: 6, speed: 1.5, up: 0.8, life: 0.35, size: 0.08 });
-    setAnim(this.vis, 'dodge', true);
-  }
-
-  /** Aim direction with a light assist toward an enemy close to the aim line. */
-  _assistedAim() {
-    const C = CONFIG.player;
-    const sc = this.scene;
-    let best = null, bestA = C.aimAssist;
-    const base = Math.atan2(this.aim.z, this.aim.x);
-    for (const t of sc.hittables()) {
-      if (t.dead || !t.assist) continue;
-      const dx = t.x - this.pos.x, dz = t.z - this.pos.z;
-      const d = Math.hypot(dx, dz);
-      if (d > this.weapon.range || d < 0.3) continue;
-      let da = Math.atan2(dz, dx) - base;
-      da = Math.atan2(Math.sin(da), Math.cos(da));
-      // Allow a little more slack up close, where a small angle is a big miss.
-      const tol = bestA + Math.min(0.25, (t.radius || 0.3) / d);
-      if (Math.abs(da) < tol && lineOfSight(sc.world, this.pos.x, this.pos.z, t.x, t.z)) {
-        if (!best || Math.abs(da) < best.da) best = { da: Math.abs(da), a: Math.atan2(dz, dx) };
-      }
-    }
-    return best ? best.a : base;
-  }
-
-  fire() {
-    const w = this.weapon;
-    const sc = this.scene;
-    this.fireCd = w.cooldown;
-    this.attackT = 0.16;
-    setAnim(this.vis, 'attack', true);
-    const base = this._assistedAim();
-    const n = w.pellets || 1;
-    const mx = this.pos.x + Math.cos(base) * 0.45, mz = this.pos.z + Math.sin(base) * 0.45;
-    for (let i = 0; i < n; i++) {
-      const a = base + (n > 1 ? w.spread * (i / (n - 1) - 0.5) : 0) + (Math.random() - 0.5) * 2 * (w.jitter || 0);
-      sc.shots.fire({
-        team: 'player', kind: n > 1 ? 'pellet' : 'bullet', x: mx, z: mz, dx: Math.cos(a), dz: Math.sin(a),
-        speed: w.speed, range: w.range, damage: w.damage, knockback: w.knockback,
-      });
-    }
-    // Muzzle flash (flame + star + light pop) and an ejected casing.
-    const dir = { x: Math.cos(base), z: Math.sin(base) };
-    sc.fx.muzzle({ x: mx, y: JUICE.tracer.y, z: mz }, dir, { color: w.color || '#fee761', size: JUICE.muzzle.size * (n > 1 ? 1.25 : 1) });
-    sc.fx.burst({ x: this.pos.x, y: JUICE.tracer.y - 0.4, z: this.pos.z }, { color: '#feae34', count: 1, speed: 1.4, up: 2.2, life: 0.35, size: 2 / 32, gravity: 12, vx: -dir.z * 1.5, vz: dir.x * 1.5 });
-    this.game.sfx.play('shoot');
-    if (n > 1) this.game.shake(1.5, 0.08);
-    // Small recoil.
-    this.kb.x -= Math.cos(base) * (n > 1 ? 1.6 : 0.6);
-    this.kb.z -= Math.sin(base) * (n > 1 ? 1.6 : 0.6);
-  }
-
-  cut() {
-    this.cutCd = TOOL.cooldown;
-    this.attackT = 0.2;
-    setAnim(this.vis, 'attack', true);
-    const a = Math.atan2(this.aim.z, this.aim.x);
-    this.scene.cutterSwing(this.pos.x, this.pos.z, a);
+    this.scene.fx.burst({ x: this.pos.x, y: 0.05, z: this.pos.z }, { color: '#5a4430', color2: '#376a30', count: 6, speed: 1.5, up: 0.8, life: 0.35, size: 0.08 });
+    setFacing(this.vis, dir.x, dir.z, true);
+    const anim = hasAnim(this.vis, 'roll') ? 'roll' : 'dodge';
+    setAnim(this.vis, anim, true);
+    const len = animLength(this.vis, anim);
+    setAnimSpeed(this.vis, len > 0 ? len / ROLL.time : 1);
   }
 
   useMed() {
@@ -206,13 +306,12 @@ export class Player {
     this.game.sfx.play('pickup');
   }
 
-  /**
-   * Take damage from a direction. Returns true if it landed (false while dodging / invulnerable).
-   */
+  /** Take damage from a direction. Returns true if it landed (false while rolling / invulnerable). */
   hurt(dmg, dx = 0, dz = 0, source = '') {
     if (this.dead) return false;
     if (this.dodging) {
-      if (source && Math.random() < 0.5) this.scene.fx.text(this.pos, 'DODGED', { color: '#2ce8f5', y: this.vis.userData.vis.height + 0.3, life: 0.5 });
+      if (source) this.scene.fx.text(this.pos, 'DODGED', { color: '#2ce8f5', y: this.vis.userData.vis.height + 0.3, life: 0.5, key: 'dodged' });
+      this.scene.onPerfectDodge?.();
       return false;
     }
     if (this.iframes > 0 || this.scene.ending || this.god) return false;
@@ -220,17 +319,19 @@ export class Player {
     dmg = Math.max(1, Math.round(dmg));
     this.hp = Math.max(0, this.hp - dmg);
     this.iframes = C.hurtIframes;
-    this.hurtT = 0.2;
+    this.hurtT = 0.22;
+    // Getting hit interrupts a charge (not a committed swing).
+    if (this.state === 'charge') { this._enter('free'); this._chargeReady = false; this.chargeT = 0; }
     const l = Math.hypot(dx, dz);
     if (l > 0) { this.kb.x += (dx / l) * C.hurtKnockback; this.kb.z += (dz / l) * C.hurtKnockback; }
     flashVisual(this.vis, '#ff4040', 0.12);
-    setAnim(this.vis, 'hurt', true);
-    this.game.flash('#e43b44', 0.3);
+    if (this.state === 'free') setAnim(this.vis, 'hurt', true);
+    this.game.flash('#e43b44', 0.25);
     this.game.shake(5, 0.2);
     this.scene.fx.hitStop(JUICE.hitStop.playerHurt);
     this.game.sfx.play('hurt');
     this.scene.fx.text(this.pos, `-${dmg}`, { color: '#e43b44', cls: 'big', y: this.vis.userData.vis.height + 0.25 });
-    this.scene.fx.burst(this.pos, { color: '#e43b44', count: 8, speed: 2, up: 2, life: 0.4, size: 0.07 });
+    this.scene.fx.burst(this.pos, { color: '#e43b44', count: 8, speed: 2, up: 2, life: 0.4, size: 0.07, y: 0.6 });
     this.scene.onPlayerHurt?.(dmg);
     if (this.hp <= 0) {
       this.dead = true;
@@ -242,28 +343,27 @@ export class Player {
   _updateVisual(dt) {
     const v = this.vis;
     v.position.set(this.pos.x, 0, this.pos.z);
-    setFacing(v, this.aim.x, this.aim.z);
+    const st = this.state;
+    // Walking faces where you walk; standing (or charging) faces the mouse.
+    if (st === 'free' && this.moving && Math.hypot(this.vel.x, this.vel.z) > 0.5) setFacing(v, this.vel.x, this.vel.z);
+    else if (st === 'free' || st === 'charge') setFacing(v, this.aim.x, this.aim.z);
     if (this.dead) setAnim(v, 'hurt');
-    else if (this.dodging) setAnim(v, 'dodge');
-    else if (this.hurtT > 0) setAnim(v, 'hurt');
-    else if (this.attackT > 0) setAnim(v, 'attack');
-    else if (this.moving) setAnim(v, 'walk');
-    else setAnim(v, 'idle');
-    // Dodge squash and a walk bob for the placeholder model.
+    else if (st === 'free' || st === 'charge') {
+      setAnimSpeed(v, 1);
+      if (this.hurtT > 0 && hasAnim(v, 'hurt')) setAnim(v, 'hurt');
+      else if (this.moving) setAnim(v, 'walk');
+      else setAnim(v, 'idle');
+    }
     const vis = v.userData.vis;
-    if (this.dodging) v.scale.set(1.12, 0.82, 1.12);
-    else v.scale.set(1, 1, 1);
     if (vis.kind === 'model') {
       this.walkT += this.moving ? dt * 12 : 0;
-      vis.body.position.y = this.moving ? Math.abs(Math.sin(this.walkT)) * 0.06 : 0;
+      vis.body.position.y = this.moving ? Math.abs(Math.sin(this.walkT * 12)) * 0.06 : 0;
     }
-    // Invulnerability flicker after a hit (not during a dodge, which has its own squash).
-    const flicker = this.iframes > 0 && !this.dodging && !this.dead && Math.floor(this.iframes * 20) % 2 === 0;
+    // Invulnerability flicker after a hit (not during a roll).
+    const flicker = this.iframes > 0 && st !== 'roll' && !this.dead && Math.floor(this.iframes * 20) % 2 === 0;
     if (flicker !== this._flicker) { this._flicker = flicker; setOpacity(v, flicker ? 0.35 : 1); }
     updateVisual(v, dt);
-
     this.reticle.position.set(this.aimPoint.x, 0.04, this.aimPoint.z);
-    this.reticle.rotation.y += dt * 1.5;
     this.reticle.visible = !this.dead && !this.scene.paused;
   }
 

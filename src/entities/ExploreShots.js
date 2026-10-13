@@ -3,7 +3,6 @@
 // small enemy at high speed.
 
 import * as THREE from 'three';
-import { FLAG } from '../world/ExploreGen.js';
 import { CONFIG, JUICE } from '../data/config.js';
 import { canvasTex } from '../core/Fx.js';
 
@@ -123,9 +122,9 @@ export class Shots {
         s.z += s.dz * step;
         s.travelled += step;
         const tx = Math.floor(s.x), ty = Math.floor(s.z);
-        const f = world.flagAt(tx, ty);
-        if (f & FLAG.OPAQUE) {
-          this._impact(s, (f & FLAG.BRAMBLE) ? '#63c74d' : null);
+        // Lobbed sap globs sail over the undergrowth; anything else stops in a thicket or wall.
+        if (s.kind !== 'glob' && world.opaqueAt(tx, ty)) {
+          this._impact(s, world.brushAt?.(tx, ty) ? '#63c74d' : null);
           break;
         }
         if (s.team === 'player') {

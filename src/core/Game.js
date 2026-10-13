@@ -115,7 +115,8 @@ export class Game {
           if (cam.isPixelCamera) {
             // Align every sprite / decal to the pixel grid for this draw (restored right after).
             cam.snapForRender(sc.three);
-            this.renderer.render(sc.three, cam);
+            if (sc.post) sc.post.render(this.renderer, sc.three, cam);   // screen-space lighting (PostFx)
+            else this.renderer.render(sc.three, cam);
             cam.restoreSnap();
           } else {
             this.renderer.render(sc.three, cam);

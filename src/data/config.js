@@ -140,14 +140,41 @@ export const CONFIG = {
   },
 };
 
-// Player weapons (exploration). spread = total cone in radians for multi-pellet weapons;
-// knockback = tiles/sec impulse on hit; jitter = random aim error in radians.
+// Blades (exploration is melee now). A swing is a short arc in front of the aim direction that hits
+// every enemy and every undergrowth tile inside it once. combo = the 3-hit chain (LMB); chop = the
+// charged heavy swing (hold RMB). Times in seconds, ranges in tiles, arcs in radians (total width).
+//   hitAt: when in the swing the blade connects · lunge: forward step (tiles/s impulse)
+//   cut: undergrowth power (1 clears ferns/thickets, 2 also clears brambles) · stagger: seconds enemies reel
 export const WEAPONS = {
-  carbine: { name: 'Scrap Carbine', damage: 14, cooldown: 0.42, range: 9, speed: 16, pellets: 1, spread: 0, jitter: 0.025, knockback: 3, color: '#fee761' },
-  scattergun: { name: 'Scattergun', damage: 8, cooldown: 0.75, range: 6, speed: 14, pellets: 4, spread: 0.32, jitter: 0.04, knockback: 2.2, color: '#feae34' },
+  machete: {
+    name: 'Machete',
+    combo: [
+      { damage: 13, arc: 2.1, range: 1.5, time: 0.30, hitAt: 0.08, lunge: 2.4, knockback: 4.5, stamina: 9, cut: 1 },
+      { damage: 13, arc: 2.1, range: 1.5, time: 0.30, hitAt: 0.08, lunge: 2.4, knockback: 4.5, stamina: 9, cut: 1 },
+      { damage: 24, arc: 2.5, range: 1.65, time: 0.44, hitAt: 0.13, lunge: 4.5, knockback: 9, stamina: 14, cut: 1, stagger: 0.35 },
+    ],
+    comboWindow: 0.38,
+    chop: { charge: 0.42, damage: 40, arc: 2.9, range: 1.9, time: 0.5, hitAt: 0.15, lunge: 5, knockback: 13, stamina: 22, cut: 2, stagger: 0.9 },
+  },
+  parang: {
+    name: 'Parang',
+    combo: [
+      { damage: 17, arc: 2.0, range: 1.6, time: 0.36, hitAt: 0.1, lunge: 2.2, knockback: 6, stamina: 11, cut: 2 },
+      { damage: 17, arc: 2.0, range: 1.6, time: 0.36, hitAt: 0.1, lunge: 2.2, knockback: 6, stamina: 11, cut: 2 },
+      { damage: 30, arc: 2.6, range: 1.75, time: 0.5, hitAt: 0.15, lunge: 4, knockback: 11, stamina: 16, cut: 2, stagger: 0.5 },
+    ],
+    comboWindow: 0.38,
+    chop: { charge: 0.5, damage: 50, arc: 3.0, range: 2.0, time: 0.56, hitAt: 0.17, lunge: 5, knockback: 15, stamina: 24, cut: 2, stagger: 1.1 },
+  },
 };
+// Old saves name the start weapon 'carbine' / 'scattergun'.
+export const WEAPON_ALIAS = { carbine: 'machete', scattergun: 'parang' };
 
-// Pulse Cutter: arc melee in front of the aim direction; also cuts brambles and security lasers.
+// Stamina and the dodge roll.
+export const STAMINA = { max: 100, regen: 40, delay: 0.5, roll: 22, exhaustedRegen: 0.6 };
+export const ROLL = { time: 0.34, speed: 12, iframes: 0.28, cooldown: 0.12 };
+
+// Pulse Cutter (v1, unused by the machete player; kept for the defense codex text).
 export const TOOL = { name: 'Pulse Cutter', damage: 22, radius: 1.8, arc: 1.7, cooldown: 0.6, knockback: 7 };
 
 // Game feel ("juice"): hit-stop, death beats, shot VFX, floating numbers, readability helpers.
@@ -217,6 +244,12 @@ export const JUICE = {
     bossDeathFlash: 0.45,
   },
 };
+
+/** Per-night tuning value from CONFIG.expedition.byNight (the last entry repeats). */
+export function nightTune(key, night) {
+  const t = CONFIG.expedition.byNight[key];
+  return t[Math.max(0, Math.min(t.length - 1, (night || 1) - 1))];
+}
 
 export const RESOURCES = {
   scrap: { label: 'Scrap', short: 'SCR', color: '#c0cbdc', glyph: '⚙', icon: 'pick_scrap', desc: 'Builds towers, pays for repairs and most upgrades.' },

@@ -47,12 +47,17 @@ export class Run {
     this.relayHp = CONFIG.relay.hp;
     this.playerHp = CONFIG.player.hp;
     this.meds = 0;
-    this.weapon = 'carbine';
+    this.weapon = 'machete';
     this.res = { ...CONFIG.startResources };
     this.towers = [];            // [{ pad, type, level, target, spent: {scrap,...} }]
     this.skills = [];
     this.skillPoints = 0;
     this.district = null;        // district chosen for today
+    // The persistent jungle (src/world/JungleGen.js is regenerated from `seed`; only what the player
+    // changed is stored): cut = undergrowth cleared (bitset, base64), opened = container ids,
+    // pylons = activated relay pylons, explored = map discovery (bitset), used = sites whose objective
+    // props are spent, day = the night the regrowth was last applied for.
+    this.world = { cut: '', opened: [], pylons: [], explored: '', used: [], day: 0 };
     this.tonight = emptyTonight();
     this.lastExpedition = null;  // result object for the summary screen
     this.stats = {
@@ -69,7 +74,7 @@ export class Run {
     const r = new Run();
     if (meta.unlocks.includes('stockpile')) r.res.scrap += 20;
     if (meta.unlocks.includes('field_kit')) r.meds = 1;
-    if (meta.unlocks.includes('scattergun') && meta.startWeapon === 'scattergun') r.weapon = 'scattergun';
+    if (meta.unlocks.includes('scattergun') && meta.startWeapon === 'scattergun') r.weapon = 'parang';
     r.stats.peak = { ...r.res };   // after unlock bonuses (Hidden Stockpile)
     // Lifetime run count is bumped by startNewRun (TitleScene), so debug runs don't inflate it.
     return r;
@@ -81,6 +86,28 @@ export class Run {
     r.tonight = { ...emptyTonight(), ...obj.tonight };
     r.stats = { ...new Run().stats, ...obj.stats };
     return r;
+  }
+
+  /** Decode the persistent jungle state into working arrays for a world of `size` tiles. */
+  worldState(size, exploreCell) {
+    const w = this.world || (this.world = { cut: '', opened: [], pylons: [], explored: '', used: [], day: 0 });
+    const ec = Math.ceil(size / exploreCell);
+    return {
+      cut: unpackBits(w.cut, size * size),
+      opened: new Set(w.opened || []),
+      pylons: new Set(w.pylons || []),
+      explored: unpackBits(w.explored, ec * ec),
+      used: new Set(w.used || []),
+      day: w.day || 0,
+    };
+  }
+
+  /** Store the working jungle state back (called when an expedition ends). */
+  storeWorld(st) {
+    this.world = {
+      cut: packBits(st.cut), opened: [...st.opened], pylons: [...st.pylons],
+      explored: packBits(st.explored), used: [...st.used], day: st.day,
+    };
   }
 
   toSave() {
@@ -399,7 +426,7 @@ export class Run {
       this.stats.deaths += result.died ? 1 : 0;
       this.meds = 0;
       this.playerHp = CONFIG.expedition.deathReturnHp;
-      // Early nights: the drone recovers a share of what you carried (ExploreScene computes it).
+      // Early nights: the drone recovers a share of what you carried (JungleScene computes it).
       if (result.salvaged) {
         this.add(result.salvaged);
         summary.banked = { ...emptyRes(), ...result.salvaged };
@@ -518,4 +545,24 @@ export class Run {
       debug: !!this.debug,   // debug-URL runs show research but don't bank it
     };
   }
+}
+
+/** Uint8Array of 0/1 → base64 bitset. */
+export function packBits(arr) {
+  const bytes = new Uint8Array(Math.ceil(arr.length / 8));
+  for (let i = 0; i < arr.length; i++) if (arr[i]) bytes[i >> 3] |= 1 << (i & 7);
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 4096) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 4096));
+  return btoa(s);
+}
+
+/** base64 bitset → Uint8Array(n) of 0/1 (empty or invalid input → all zero). */
+export function unpackBits(b64, n) {
+  const out = new Uint8Array(n);
+  if (!b64) return out;
+  try {
+    const s = atob(b64);
+    for (let i = 0; i < n && (i >> 3) < s.length; i++) out[i] = (s.charCodeAt(i >> 3) >> (i & 7)) & 1;
+  } catch { /* corrupt → fresh */ }
+  return out;
 }

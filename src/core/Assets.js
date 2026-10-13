@@ -10,8 +10,14 @@
 //     "fps": 8,                // optional, default 8 (per-anim override: "animFps": { "walk": 10 })
 //     "flat": true,            // optional: a ground decal (horizontal quad) instead of a billboard
 //     "shadow": 0.5,           // optional: blob-shadow radius in tiles (0 = none). Default from width.
-//     "anchorY": 0             // optional: texels of transparent padding under the feet
+//     "anchorY": 0,            // optional: texels of transparent padding under the feet
+//     "anchor": [32, 54],      // optional: ground-point texel [x, y-from-top] inside one frame
+//     "fw": 64, "fh": 64       // optional: frame size when the sheet is a grid
 //   }
+//
+// Directional sheets (8-way, STYLE.md): "dirs": ["s","se","e","ne","n"] and anims as objects
+// { row, frames, fps, hit?, loop? }; direction i of an anim is on row `row + i`. West-side directions
+// that aren't listed are mirrored from their east twins. setFacing() picks the direction.
 //
 // Sprites face RIGHT in the art; setFacing() flips them horizontally when moving/aiming left.
 // Keys with a level suffix ("scrap_turret_3") fall back to the base key when not listed.
@@ -114,6 +120,29 @@ function makeRing(r, color) {
   return m;
 }
 
+const DIR_VEC = { s: [0, 1], se: [1, 1], e: [1, 0], ne: [1, -1], n: [0, -1], nw: [-1, -1], w: [-1, 0], sw: [-1, 1] };
+const DIR_ORDER = ['e', 'se', 's', 'sw', 'w', 'nw', 'n', 'ne'];   // by screen angle atan2(dz, dx), 45° steps
+const MIRROR = { sw: 'se', w: 'e', nw: 'ne', se: 'sw', e: 'w', ne: 'nw' };
+
+/** Frame size and grid of a manifest sprite: { fw, fh, cols, rows }. */
+export function frameGeom(def, img) {
+  const frames = def.frames || 1;
+  const fw = def.fw || img.width / frames;
+  const fh = def.fh || img.height;
+  return { fw, fh, cols: Math.max(1, Math.round(img.width / fw)), rows: Math.max(1, Math.round(img.height / fh)) };
+}
+
+/** Normalised anims: name → { frames: [frame indices], row (directional base row or -1), fps, loop, hit }. */
+function normAnims(def) {
+  if (!def.anims) return null;
+  const out = {};
+  for (const [name, a] of Object.entries(def.anims)) {
+    if (Array.isArray(a)) out[name] = { frames: a, row: -1, fps: def.animFps?.[name] || def.fps || 8, loop: true, hit: -1 };
+    else out[name] = { frames: Array.from({ length: a.frames || 1 }, (_, i) => i), row: a.row ?? 0, fps: a.fps || def.fps || 8, loop: a.loop !== false, hit: a.hit ?? -1 };
+  }
+  return out;
+}
+
 export class Assets {
   constructor() {
     this.manifest = {};
@@ -170,9 +199,9 @@ export class Assets {
     if (!k) return null;
     const def = this.manifest[k];
     const img = this.textures[k].image;
-    const fw = img.width / (def.frames || 1);
+    const { fw, fh } = frameGeom(def, img);
     const dpr = window.devicePixelRatio || 1;
-    const r = (boxPx * dpr) / Math.max(fw, img.height);
+    const r = (boxPx * dpr) / Math.max(fw, fh);
     // Up to ~15% over the box is allowed (a 48 px tower in a 45 px slot stays 1× instead of halving).
     const ds = r >= 0.85 ? Math.max(1, Math.floor(r + 0.15)) : 1 / Math.ceil(1 / r - 0.15);
     return ds / dpr;
@@ -185,10 +214,9 @@ export class Assets {
     if (!k) return null;
     const def = this.manifest[k];
     const img = this.textures[k].image;
-    const frames = def.frames || 1;
-    const fw = img.width / frames;
+    const { fw, fh } = frameGeom(def, img);
     const scale = this.iconScale(key, sizePx);
-    return `background-image:url(${import.meta.env.BASE_URL}sprites/${def.file});background-size:${img.width * scale}px ${img.height * scale}px;background-position:0 0;width:${fw * scale}px;height:${img.height * scale}px;image-rendering:pixelated;background-repeat:no-repeat;`;
+    return `background-image:url(${import.meta.env.BASE_URL}sprites/${def.file});background-size:${img.width * scale}px ${img.height * scale}px;background-position:0 0;width:${fw * scale}px;height:${fh * scale}px;image-rendering:pixelated;background-repeat:no-repeat;`;
   }
 
   setTint(color) {
@@ -221,23 +249,29 @@ export class Assets {
       const base = this.textures[sk];
       const tex = base.clone();
       tex.needsUpdate = true;
-      const frames = def.frames || 1;
-      tex.repeat.set(1 / frames, 1);
       const img = base.image;
-      const fw = img.width / frames;
+      const G = frameGeom(def, img);
+      tex.repeat.set(G.fw / img.width, G.fh / img.height);
       const ppu = def.ppu || 32;
-      const w = (fw / ppu) * scale;
-      const h = (img.height / ppu) * scale;
+      const w = (G.fw / ppu) * scale;
+      const h = (G.fh / ppu) * scale;
       vis.kind = def.flat ? 'flat' : 'sprite';
-      vis.frames = frames;
-      vis.anims = def.anims || null;
+      vis.geom = { ...G, iw: img.width, ih: img.height };
+      vis.frames = G.cols;
+      vis.anims = normAnims(def);
       vis.fps = def.fps || 8;
       vis.animFps = def.animFps || {};
+      vis.dirs = def.dirs || null;
+      vis.dir = vis.dirs ? (vis.dirs.includes('s') ? 's' : vis.dirs[0]) : null;
       vis.tex = tex;
       vis.width = w;
+      // Ground point inside the frame: "anchor" [x, y-from-top], else bottom centre (+ anchorY padding).
+      const ax = def.anchor ? def.anchor[0] : G.fw / 2;
+      const ay = def.anchor ? def.anchor[1] : G.fh - (def.anchorY || 0);
+      vis.anchor = [ax, ay];
       // Sprites are drawn as upright cards (src/core/PixelView.js): h sprite units tall on screen is
       // h × CARD_SCALE world units, so labels/bars at vis.height sit on top of the sprite.
-      vis.height = def.flat ? 0.05 : h * CARD_SCALE;
+      vis.height = def.flat ? 0.05 : (ay / ppu) * scale * CARD_SCALE;
       if (def.flat) {
         const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.5, depthWrite: false });
         const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
@@ -251,7 +285,7 @@ export class Assets {
       } else {
         const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, alphaTest: 0.5 });
         const spr = new THREE.Sprite(mat);
-        spr.center.set(0.5, (def.anchorY || 0) / img.height);
+        spr.center.set(ax / G.fw, (G.fh - ay) / G.fh);
         spr.scale.set(w, h, 1);
         vis.body = spr;
         vis.mats.push(mat);
@@ -327,11 +361,28 @@ function makeShadow(r) {
 function setFrame(vis, f) {
   vis.frame = f;
   if (!vis.tex) return;
+  const G = vis.geom;
+  let col, row, flip = vis.kind === 'sprite' && vis.facingLeft;
+  const a = vis.anim && vis.anims?.[vis.anim];
+  if (a && a.row >= 0 && vis.dirs) {
+    // Directional sheet: column = frame, row = anim row + direction (west side mirrored from east).
+    let i = vis.dirs.indexOf(vis.dir);
+    flip = false;
+    if (i < 0 && MIRROR[vis.dir]) { i = vis.dirs.indexOf(MIRROR[vis.dir]); flip = true; }
+    col = Math.min(f, G.cols - 1);
+    row = a.row + Math.max(0, i);
+  } else if (a && a.row >= 0) {
+    col = f; row = a.row;
+  } else {
+    col = f % G.cols; row = Math.floor(f / G.cols);
+  }
   // Facing left mirrors the frame through its UVs: THREE.Sprite ignores a negative scale (its shader
   // uses the matrix column length), so flipping body.scale.x would not mirror anything.
-  const flip = vis.kind === 'sprite' && vis.facingLeft;
-  vis.tex.repeat.x = (flip ? -1 : 1) / vis.frames;
-  vis.tex.offset.x = (f + (flip ? 1 : 0)) / vis.frames;
+  const u = G.fw / G.iw, v = G.fh / G.ih;
+  vis.tex.repeat.x = (flip ? -1 : 1) * u;
+  vis.tex.offset.x = (col + (flip ? 1 : 0)) * u;
+  vis.tex.repeat.y = v;
+  vis.tex.offset.y = 1 - (row + 1) * v;
 }
 
 function applyColor(vis, tint) {
@@ -359,23 +410,55 @@ export function setAnim(root, name, restart = false) {
   if (vis.anim === name && !restart) return;
   vis.anim = name;
   vis.animT = 0;
-  setFrame(vis, vis.anims[name][0]);
+  setFrame(vis, vis.anims[name].frames[0]);
 }
+
+/** Does this visual have a real animation called `name` (not the idle fallback)? */
+export function hasAnim(root, name) { return !!root?.userData.vis?.anims?.[name]; }
+
+/** Seconds one pass of an animation takes at speed 1 (0 if missing). */
+export function animLength(root, name) {
+  const a = root?.userData.vis?.anims?.[name];
+  return a ? a.frames.length / a.fps : 0;
+}
+
+/** The anim's `hit` frame as a fraction of its length (where the blow lands), or `fallback`. */
+export function animHitFrac(root, name, fallback = 0.5) {
+  const a = root?.userData.vis?.anims?.[name];
+  return a && a.hit >= 0 ? (a.hit + 0.5) / a.frames.length : fallback;
+}
+
+/** Playback speed multiplier (e.g. an attack anim stretched to a wind-up time). */
+export function setAnimSpeed(root, k) { const vis = root?.userData.vis; if (vis) vis.animSpeed = k; }
 
 /** True once a non-looping use of the current animation has played through at least once. */
 export function animDone(root) {
   const vis = root?.userData.vis;
   if (!vis || !vis.anims || !vis.anim) return true;
-  const list = vis.anims[vis.anim];
-  const fps = vis.animFps[vis.anim] || vis.fps;
-  return vis.animT * fps >= list.length;
+  const a = vis.anims[vis.anim];
+  return vis.animT * a.fps >= a.frames.length;
 }
 
-/** Face a world direction. Sprites flip horizontally; models rotate (faceParts only, if any are marked). */
-export function setFacing(root, dx, dz) {
+/**
+ * Face a world direction. Directional sheets pick one of 8 directions (with a little hysteresis so
+ * diagonal movement doesn't flicker); strip sprites flip horizontally; models rotate.
+ */
+export function setFacing(root, dx, dz, snap = false) {
   const vis = root?.userData.vis;
   if (!vis || (dx === 0 && dz === 0)) return;
-  if (vis.kind === 'sprite') {
+  if (vis.kind === 'sprite' && vis.dirs) {
+    const ang = Math.atan2(dz, dx);
+    const cur = vis.dir && DIR_VEC[vis.dir];
+    if (cur && !snap) {
+      // Keep the current direction while within 22.5° + 8° of it.
+      let da = ang - Math.atan2(cur[1], cur[0]);
+      da = Math.atan2(Math.sin(da), Math.cos(da));
+      if (Math.abs(da) < Math.PI / 8 + 0.14) return;
+    }
+    const idx = ((Math.round(ang / (Math.PI / 4)) % 8) + 8) % 8;
+    const d = DIR_ORDER[idx];
+    if (d !== vis.dir) { vis.dir = d; setFrame(vis, vis.frame); }
+  } else if (vis.kind === 'sprite') {
     const was = vis.facingLeft;
     if (Math.abs(dx) > 0.05) vis.facingLeft = dx < 0;
     if (vis.facingLeft !== was) setFrame(vis, vis.frame);
@@ -429,10 +512,10 @@ export function updateVisual(root, dt) {
   const vis = root?.userData.vis;
   if (!vis) return;
   if (vis.anims && vis.anim) {
-    const list = vis.anims[vis.anim];
-    const fps = vis.animFps[vis.anim] || vis.fps;
-    vis.animT += dt;
-    const f = list[Math.floor(vis.animT * fps) % list.length];
+    const a = vis.anims[vis.anim];
+    vis.animT += dt * (vis.animSpeed || 1);
+    const i = Math.floor(vis.animT * a.fps);
+    const f = a.frames[a.loop ? i % a.frames.length : Math.min(i, a.frames.length - 1)];
     if (f !== vis.frame) setFrame(vis, f);
   }
   if (vis.flashT > 0) {
