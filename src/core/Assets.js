@@ -121,6 +121,9 @@ function makeRing(r, color) {
   return m;
 }
 
+// Stand-ins while a key has no art of its own (the Feral Scavenger borrows the v1 Rival Scavenger).
+const SPRITE_ALIAS = { feral: 'scav' };
+
 const DIR_VEC = { s: [0, 1], se: [1, 1], e: [1, 0], ne: [1, -1], n: [0, -1], nw: [-1, -1], w: [-1, 0], sw: [-1, 1] };
 const DIR_ORDER = ['e', 'se', 's', 'sw', 'w', 'nw', 'n', 'ne'];   // by screen angle atan2(dz, dx), 45° steps
 const MIRROR = { sw: 'se', w: 'e', nw: 'ne', se: 'sw', e: 'w', ne: 'nw' };
@@ -218,6 +221,8 @@ export class Assets {
     if (this.textures[key]) return key;
     const base = key.replace(/_\d+$/, '');
     if (base !== key && this.textures[base]) return base;
+    const alias = SPRITE_ALIAS[key];
+    if (alias && this.textures[alias]) return alias;
     return null;
   }
 

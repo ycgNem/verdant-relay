@@ -28,8 +28,9 @@ import { Fx, glowTexture } from '../core/Fx.js';
 import { PixelCamera } from '../core/PixelView.js';
 import { PostFx } from '../core/PostFx.js';
 import { setAnim, updateVisual, setOpacity, flashVisual } from '../core/Assets.js';
-import { generateWorld, clearDisc } from '../world/JungleGen.js';
+import { worldForRun, clearDisc } from '../world/JungleGen.js';
 import { JungleWorld } from '../world/JungleWorld.js';
+import { Ambience } from '../world/Ambience.js';
 import { Player } from '../entities/Player.js';
 import { ExploreEnemy } from '../entities/ExploreEnemy.js';
 import { Shots } from '../entities/ExploreShots.js';
@@ -51,11 +52,7 @@ const PROP_KEYS = {
 };
 const V1_FALLBACK = { pylon: 'beacon', campfire: 'lamp_post', data_log: 'data_log' };
 
-/** The cached world for a run (generation takes ~150 ms; it never changes within a run). */
-function worldFor(game, run) {
-  if (game._jungle?.seed !== run.seed) game._jungle = { seed: run.seed, data: generateWorld(run.seed, DISTRICT_KEYS) };
-  return game._jungle.data;
-}
+const worldFor = (game, run) => worldForRun(game, run, DISTRICT_KEYS);
 
 export class JungleScene {
   constructor(game) {
@@ -94,6 +91,8 @@ export class JungleScene {
     this.world = new JungleWorld(game, this.three, this.data, this.state.cut);
     this.post.uniforms.tShade.value = this.world.shadeTex;
     this.post.uniforms.uWorld.value = this.data.size;
+    this.post.uniforms.uLeaves.value = 1;
+    this.ambience = new Ambience(this.three, this.world);
     this.fx = new Fx(game, this.three, this.camera);
     this.shots = new Shots(this);
     const c = this.data.center;
@@ -142,6 +141,7 @@ export class JungleScene {
     this.map = new JungleMap(this.data, this.state.explored);
     this.map.reveal(c.x, c.z, JUNGLE.relayClearing + 6);
     for (const p of this.data.pylons) if (this.state.pylons.has(p.id)) this.map.reveal(p.x, p.z, 6);
+    this._chooseStart();
     this._buildHud();
 
     this.world.warm(this.player.pos.x, this.player.pos.z);
@@ -159,6 +159,22 @@ export class JungleScene {
 
     this.debug = this._makeDebug();
     toast(game.ui, `${this.D.name} — ${this.objDef.name}`, 'amber', 3);
+  }
+
+  /** The Relay drone drops you at the activated pylon closest to today's objective (or at the Relay). */
+  _chooseStart() {
+    const goal = this.objTargets[0];
+    if (!goal) return;
+    let best = null, bd = Math.hypot(goal.x - this.relayPos.x, goal.z - this.relayPos.z);
+    for (const p of this.data.pylons) {
+      if (!this.state.pylons.has(p.id)) continue;
+      const d = Math.hypot(goal.x - p.x, goal.z - p.z);
+      if (d < bd - 8) { bd = d; best = p; }
+    }
+    if (!best) return;
+    this.player.pos.set(best.x, 0, best.z + 1.6);
+    this.startPylon = best;
+    this.later(1.2, () => this.toast('The drone dropped you at your pylon — closest to today\'s objective', 'good', 3.2));
   }
 
   later(t, fn) { this.timers.push({ t, fn }); }
@@ -1207,6 +1223,7 @@ export class JungleScene {
     this._placeCamera(dt);
     this.world.update(dt, this.camFocus.x, this.camFocus.z + 2);
     this.fx.update(dt);
+    this.ambience.update(dt, this.camFocus.x, this.camFocus.z, this.duskK);
     this._updateLight(dt);
     this._updateHud(dt);
   }
@@ -1581,6 +1598,7 @@ export class JungleScene {
     this.player.dispose();
     this.shots.dispose();
     this.fx.dispose();
+    this.ambience.dispose();
     this.world.dispose();
     this.post.dispose();
     this.game.stage.style.cursor = '';

@@ -29,6 +29,7 @@ export class SummaryScene {
     this.backdrop = new MenuBackdrop(game, { mood: good ? 'dusk' : 'night', angle: 3.4, speed: 0.025, radius: 13, height: 7.5 });
     this.three = this.backdrop.scene;
     this.camera = this.backdrop.camera;
+    this.post = this.backdrop.post;
     game.music?.play('day');
     game.sfx.play(good ? 'done' : 'hurt');
 

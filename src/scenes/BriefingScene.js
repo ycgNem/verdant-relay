@@ -6,7 +6,8 @@ import '../ui/screens.css';
 import { el, bar, resRow, toast, resIcon } from '../ui/ui.js';
 import { showHint } from '../ui/hints.js';
 import { CONFIG, WEAPONS, WEAPON_ALIAS } from '../data/config.js';
-import { DISTRICTS } from '../data/districts.js';
+import { DISTRICTS, DISTRICT_KEYS } from '../data/districts.js';
+import { worldForRun, compass } from '../world/JungleGen.js';
 import { PRIMARY } from '../data/objectives.js';
 import { DEFENSE_ENEMIES } from '../data/enemies.js';
 import { WAVES } from '../data/waves.js';
@@ -71,6 +72,7 @@ export class BriefingScene {
     this.backdrop = new MenuBackdrop(game, { mood: 'day', angle: 1.6, speed: 0.025, radius: 19, height: 12 });
     this.three = this.backdrop.scene;
     this.camera = this.backdrop.camera;
+    this.post = this.backdrop.post;
     game.music?.play('day');
 
     this.root = el('div.screen.scr.briefing-screen');
@@ -189,11 +191,27 @@ export class BriefingScene {
     firstVisit ? el('div.dc-first', { title: 'Research Data for your first visit' }, `★ First visit: +${CONFIG.research.newDistrict} Research Data`) : null,
     el('div.dc-body', {},
       el('div.dc-env', d.env),
+      this.whereLine(k),
       el('div.dc-line', {}, el('span.dc-k.good', 'Bonus'), el('span', d.bonusText)),
       el('div.dc-line', {}, el('span.dc-k', 'Enemies'), el('span', {}, el('span.dc-icons', enemyKeys.map((ek) => iconEl(game, ek, 18))), ' ', d.enemyNote)),
       el('div.dc-line.dc-obj', {}, el('span.dc-k.accent', 'Objective'), el('span', {}, el('b', obj.name), el('div.small.muted', {}, 'Boon: ', obj.boon.text))),
       el('div.dc-line.dc-threat', {}, el('span.dc-k.bad', 'Tonight'), el('span', threat.text))));
     return card;
+  }
+
+  /** Where the district lies in the jungle: direction and rough distance from the Relay. */
+  whereLine(k) {
+    const run = this.game.run;
+    const data = worldForRun(this.game, run, DISTRICT_KEYS);
+    const ri = DISTRICT_KEYS.indexOf(k);
+    const sites = data.sites.filter((s) => s.region === ri && s.type !== 'pylon');
+    if (!sites.length) return null;
+    const c = data.center;
+    const mx = sites.reduce((a, s) => a + s.x, 0) / sites.length, mz = sites.reduce((a, s) => a + s.z, 0) / sites.length;
+    const d = Math.round(Math.hypot(mx - c.x, mz - c.z) / 10) * 10;
+    const pylon = data.pylons.find((p) => p.region === ri);
+    const on = pylon && (run.world?.pylons || []).includes(pylon.id);
+    return el('div.dc-line', {}, el('span.dc-k', 'Where'), el('span', {}, `${compass(mx - c.x, mz - c.z)} of the Relay, ~${d} m`, on ? el('span.accent', ' · pylon online') : null));
   }
 
   select(k, fromKey) {

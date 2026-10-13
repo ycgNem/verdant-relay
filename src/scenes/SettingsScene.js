@@ -209,6 +209,7 @@ export class SettingsScene {
     this.backdrop = new MenuBackdrop(game, { mood: 'dusk', angle: 0.6, speed: 0.03, radius: 13, height: 6.5 });
     this.three = this.backdrop.scene;
     this.camera = this.backdrop.camera;
+    this.post = this.backdrop.post;
     game.music?.play('title');
 
     const api = buildSettingsPanel(game, { onBack: () => game.go(this.from, { from: 'settings' }) });

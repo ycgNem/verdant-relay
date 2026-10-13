@@ -411,6 +411,18 @@ export function generateWorld(seed, districtKeys) {
   return world;
 }
 
+/** The run's world (generation takes ~150 ms and never changes within a run, so it is cached on the game). */
+export function worldForRun(game, run, districtKeys) {
+  if (game._jungle?.seed !== run.seed) game._jungle = { seed: run.seed, data: generateWorld(run.seed, districtKeys) };
+  return game._jungle.data;
+}
+
+/** Compass word for a direction on the map (screen up = north). */
+export function compass(dx, dz) {
+  const names = ['east', 'south-east', 'south', 'south-west', 'west', 'north-west', 'north', 'north-east'];
+  return names[((Math.round(Math.atan2(dz, dx) / (Math.PI / 4)) % 8) + 8) % 8];
+}
+
 /** Remove brush in a disc (used for site centres and objective props). */
 export function clearDisc(world, x, z, r) {
   const W = world.size;

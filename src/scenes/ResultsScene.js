@@ -31,6 +31,7 @@ export class ResultsScene {
     this.backdrop = new MenuBackdrop(game, { mood: win ? 'dawn' : 'fallen', angle: win ? -0.4 : 0.9, speed: 0.03, radius: 13, height: 7.5, shiftX: 0.0 });
     this.three = this.backdrop.scene;
     this.camera = this.backdrop.camera;
+    this.post = this.backdrop.post;
     game.music?.play(win ? 'results' : 'defeat');
     game.sfx.play(win ? 'done' : 'core');
 

@@ -48,6 +48,7 @@ export class TitleScene {
     this.backdrop = new MenuBackdrop(game, { mood: 'dusk', shiftX: 0.16 });
     this.three = this.backdrop.scene;
     this.camera = this.backdrop.camera;
+    this.post = this.backdrop.post;
     game.music?.play('title');
 
     const save = loadRun();

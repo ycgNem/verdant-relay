@@ -4,9 +4,9 @@
 
 Single-player roguelite for desktop browsers, built with **Three.js + JavaScript (Vite)**. The world is 3D
 but rendered at low internal resolution and scaled up with nearest-neighbour, so it reads as pixel art.
-Characters, enemies, towers and props are **detailed pixel sprites** (camera-facing billboards in the 3D
-world) that should feel as real and grounded as possible: weathered materials, believable gear, real
-lighting. Until art exists, primitive placeholder models stand in (see `src/data/visuals.js`).
+Characters, enemies, towers and props are **detailed pixel sprites** (upright cards in the 3D world): PixelLab
+art hand-finished (STYLE.md), weathered and grounded. The day is an open, dense, claustrophobic jungle explored
+with a machete; the night is a tower defense around the Relay. Anything without art falls back to a placeholder.
 
 You are a scavenger supplying **Verdant Relay**, a power-and-comms hub built into an overgrown transit
 station. A run lasts up to 6 nights. Survive the Night 6 boss siege to win. If the Relay Core hits 0, the run ends.
@@ -24,7 +24,7 @@ station. A run lasts up to 6 nights. Survive the Night 6 boss siege to win. If t
 ## 2. Run loop
 
 1. **Briefing:** see the night number, Relay health, resources and run upgrades. Pick one of two districts.
-2. **Explore (day):** search a generated district, complete the objective, extract.
+2. **Explore (day):** cross the persistent jungle to the chosen district, do the objective, loot, return to the Relay or a pylon.
 3. **Summary:** see what you banked. Spend any skill point (pick 1 of 3, or save it).
 4. **Prepare (night):** repair the Relay, build, upgrade and sell towers, spend Intel, read the wave preview.
 5. **Defend:** survive the wave. You don't control a character in this mode.
@@ -39,49 +39,61 @@ district consequences, player HP. All of it resets when the run ends. Permanent 
 |---|---|
 | Title | New Run, Continue (only if a valid save exists), Collection, Settings |
 | Briefing | Night, two districts (name, environment, enemy type, reward bonus, tonight's threat), resources, Relay HP, skills, Begin Expedition |
-| Exploration HUD | HP, timer, carried loot, objective, extraction status and direction, minimap (Tab for a big map), interact prompt |
+| Exploration HUD | HP, stamina, med kits, daylight dial, carried loot, objective steps with distance/direction, nearest return point, minimap (Tab/M big map), interact prompt |
 | Summary | Loot recovered, intel, objective result, optional/event outcomes, skill pick, Continue |
 | Preparation | Defense map, Relay HP, resources, tower list (cost and description), selected-tower upgrade/sell/target rule, Intel actions (Decrypt / Sabotage), Repair, wave preview, Start Wave |
 | Defense HUD | Relay HP, wave progress, enemies left, resources, pause, 1×/2× speed, boss bar |
 | Results | Victory or defeat, nights survived, kills, districts, peak resources, research earned, New Run / Title |
 
-## 4. Exploration (day)
+## 4. Exploration (day) — the open jungle
 
-**Camera:** fixed-angle 3D top-down (about 55° pitch) that follows the player.
+**One persistent jungle per run.** The world (`src/world/JungleGen.js`) is a 192 × 192-tile jungle generated from the run
+seed, the same every day: the Relay sits in a clearing at its centre, the five districts are noisy sectors around it
+(`src/data/jungle.js` REGION_LOOK). Rivers and swamp pools cut through it, old trails link the Relay to ruin sites,
+feral camps, landmarks and one dead **relay pylon** per district. Everything else is thick, layered undergrowth.
+What you change persists across the run (`run.world`): undergrowth you cut, supplies you open, pylons you activate,
+the map you have explored. Each night ~18% of cut undergrowth grows back (never trails).
 
-**Controls:** WASD move · mouse aim · LMB fire weapon · RMB Pulse Cutter · Space dodge · E interact (hold where needed) · Q use med kit · Tab map · Esc pause.
+**Feel:** dense and claustrophobic. You see ~15 tiles across; foliage cards stand higher than you, canopy shade
+drifts over everything, foreground leaves close in at the screen edges, creatures rustle through the brush before
+they break out. Terrain blends organically (no tile grid). Foliage in front of you turns see-through around you.
 
-**Player:** 100 HP, about 5.6 tiles/s. Dodge lasts 0.25 s with i-frames and a 2 s cooldown. Short i-frames after being hit.
-- **Scrap Carbine:** medium range, moderate damage, slow-ish fire rate, infinite ammo.
-- **Pulse Cutter:** short arc melee that also cuts bramble barriers. Brief cooldown.
+**Camera:** fixed-angle 3D top-down (55° pitch) that follows the player with a little look-ahead toward the mouse.
 
-**Map:** connected rooms on a 6×3 grid, stamped from hand-authored 12×9 templates (`src/data/rooms.js`).
-There is a start room, exploration rooms (4–6 on night 1, 5–7 on night 2, 6–9 from night 3), an objective room,
-an extraction room (far from the start) and optional rooms (1–2 on night 1, then 2–3), with at least one loop so
-there are two routes. A district is sized so a full clear does not comfortably fit the timer: a thorough player
-loots ~75–85% and extracts around 130–170 s, so "one more room or extract now" is a real choice. Every template gets a guaranteed plus-shaped corridor, so
-doors always connect and nothing important can be walled off.
-Room types: street, shop, residential, greenhouse, transit platform, utility, courtyard, flooded, security.
+**Controls:** WASD move · mouse aim · **LMB** machete slash (3-hit combo) · hold **RMB** charge a heavy chop, release
+to swing · **Space** dodge roll (i-frames, stamina) · E interact (hold where needed) · Q med kit · Tab/M map · Esc pause.
 
-**Timer and extraction:**
-- 180 s timer. It adds pressure but doesn't fail you outright.
-- Extraction unlocks when the objective is done. It's marked on the map, and you hold E for 2 s in the zone. You may keep exploring after that.
-- When time runs out, a warning plays, then an emergency beacon appears at the start room and reinforcements keep spawning.
-- **Death:** you lose everything carried this expedition (including carried med kits; the "You went down" dialog lists them) and return to the Relay at low HP. Towers, banked resources and research are kept. The run continues.
-  On nights 1–2 a Relay drone salvages a share of what you carried (30% / 20%), so one early mistake doesn't end the run.
+**Player:** 100 HP, ~5.6 tiles/s (water ×0.55, mud ×0.82, ferns ×0.8). **Stamina** 100: slashes 9–14, chop 22,
+roll 22, regen 40/s after 0.5 s; empty = exhausted (slower, weaker swings, slower regen until 35%).
+- **Machete** (`WEAPONS.machete`): 13 / 13 / 24 damage combo, 120° arcs, range ~1.5; each swing lunges a step.
+  The heavy **chop** (0.42 s charge) hits 40 in a 165° arc, staggers (interrupts wind-ups) and clears brambles.
+- **Parang** (unlock): slower, harder, cuts brambles with any swing.
+- Every swing hits all enemies, nests and undergrowth tiles in its arc. **Cutting is loud**: wildlife nearby comes to look.
 
-**Loot (carried until extraction):**
+**Undergrowth** (`BRUSH`): ferns (walk-through, slow), thickets (solid, one slash), brambles (solid, thorny: a chop or
+three slashes). Skitters and Crawlers slip through undergrowth, Razorbacks bulldoze it, Feral Scavengers need paths.
 
-| Resource | Used for |
-|---|---|
-| Scrap | Building, repairs, common upgrades |
-| Circuits | Electronic towers and upgrades |
-| Biofiber | Organic towers, traps, healing |
-| Intel | Spent in night prep: Decrypt (1 Intel → +4 Research Data) or Sabotage (3 Intel → tonight's wave 10% smaller, once per night) |
+**A day:**
+1. The Relay drone drops you at the Relay, or at the activated pylon closest to today's objective.
+2. Today's objective is in the district you picked at the briefing, at real sites on the map (marked ◆ from the start).
+3. Loot supplies (crates, chests, rare caches, intel terminals; ~70 hidden caches deep in the brush), do optionals
+   (nest, stranded engineer, data drive, locked cache — announced when you get near).
+4. Activate pylons (hold E 2.5 s): they become return points for the rest of the run and map their surroundings.
+5. **Return** to the Relay or any activated pylon (hold E 2 s) to bank what you carry. Allowed any time; the
+   objective's skill point and boon only count if it was done.
+- **Daylight** lasts 330 s. At **sunset** the light shrinks around you over 70 s of dusk and **hunters** come in
+  packs (every 18 s → 9 s at full dark, +1 per pack from night 4). There is no hard fail: the jungle just gets worse.
+- **Death:** carried loot (and carried med kits) is lost — nights 1–2 a drone salvages 30% / 20% — and you return
+  with 35 HP. Cut trails, pylons, towers, banked resources and research are kept.
 
-Each resource has its own colour **and** icon. A thorough, successful expedition in a neutral district banks
-about 90–130 Scrap (rooms hold 1–2 containers; optional rooms 0–1; bigger districts with leaner containers).
-Container Scrap is ×1.2 on night 1 and ×1.1 on night 2 (smaller maps). Container yields:
+**Wildlife** (`POP`): rolled per 16 × 16 chunk per day, denser further from the Relay and in today's district,
+scaled by night. It appears ≥ 11 tiles away, despawns far behind you, and stays dead for the day once killed.
+Feral camps hold 2–4 Feral Scavengers. **Enemies:** Bramble Crawler (lunge), Skitter (fast), Feral Scavenger (spear
+thrust), Spitter (rooted, lobs sap over the brush), Razorback (wind-up, charge, crashes through brush). Every big
+attack is telegraphed.
+
+**Loot** (carried until you return) and container yields are as in v1 (table below), rolled per container with
+that district's multipliers. Med kits heal 25; carry at most 2.
 
 | Container | Yield | Hold E |
 |---|---|---|
@@ -90,47 +102,13 @@ Container Scrap is ×1.2 on night 1 and ×1.1 on night 2 (smaller maps). Contain
 | Rare cache | 13–19 Scrap + 1–2 components | 1.5 s |
 | Intel terminal | 1–2 Intel | 1.0 s |
 
-Every hold shows its duration in the prompt ("Hold · Open Tool Chest 0.8s") with a progress ring around the E key.
-Progress is kept if you let go (except extraction), and a hit that knocks you slightly out of reach doesn't cancel it.
-Objective and event holds are set in `objectives.js` (e.g. the Route Data terminal 7 s, a locked cache 2 s).
+**Primary objectives** (`src/data/objectives.js`) keep their boons; steps are placed at sites of today's district
+(a site used for an objective is never reused): Restore the Relay Box (fuse at a side site, power box at a ruin),
+Recover Route Data (hold 7 s, enemies come), Activate Pumps (two sites), Salvage a Power Cell (guards burst out),
+Clear the Blockage (an elite Razorback appears when you get near).
 
-Med kits heal 25. You can carry at most 2. Enemies drop occasional small loot. On nights 1–2 a med kit lies in the start room.
-
-**Difficulty by night** (`CONFIG.expedition.byNight`): nights 1–2 have fewer and weaker enemies (HP ×0.85 / ×0.92,
-damage ×0.75 / ×0.85), at most one ranged enemy per room, 2 guards on a guarded cache and 2–3 enemies summoned by a hold.
-From night 3 rooms fill up, and nights 5–6 bring tougher (×1.2–1.3 HP), more numerous and more ranged enemies.
-The objective room is capped (3–5 enemies including guards) and its doors are never choked with brambles.
-Guards stand at least 2 tiles apart (from each other and the room's other enemies), and at most 1 (nights 1–2) or 2 of them are ranged.
-
-**Enemies (day):** Crawler (melee lunge), Skitter (fast melee), Rival Scavenger (ranged, keeps distance),
-Spitter (stationary ranged), Razorback (wind-up, then charge). Every big attack shows a wind-up and telegraph.
-Enemies never spawn on top of the player.
-
-**Primary objectives** (`src/data/objectives.js`). Each one, when done, grants +1 skill point and a boon for that night:
-
-| Objective | Steps | Night boon |
-|---|---|---|
-| Restore the Relay Box | Find the fuse, then install it | 1 free tower upgrade |
-| Recover Route Data | Hold E at a terminal while enemies arrive | Wave 10% smaller |
-| Activate Pumps | Activate 2 pumps in separate rooms | North lane 15% slower |
-| Salvage a Power Cell | Crack a guarded cache | Towers fire 10% faster |
-| Clear the Blockage | Kill an elite Razorback (a duel: it stands in the open with 1–2 Crawlers/Skitters, longer charge telegraph, HP ×1.8–2.6 by night) | +25 Scrap |
-
-**Optional objectives:** destroy a nest (wave 15% smaller), rescue an engineer (free +25 repair; +15 Scrap instead if the Relay is full),
-a data log (Intel and research), a locked cache. Some grant a bonus skill point, capped at 2 points per expedition.
-
-**Events** (optional; risk and reward shown before you commit): Abandoned Workshop, Power Surge
-(towers +15% damage tonight, enemies respond), Infested Cache.
-
-**Districts** (`src/data/districts.js`). Each has its own look, loot bias and enemy mix, plus one night threat:
-
-| District | Bonus | Tonight's threat |
-|---|---|---|
-| Overgrown Market | Scrap ×1.3, ambushes | Extra Crawler group |
-| Flooded Transit Station | Circuits ×2, ranged enemies | Burrowers join |
-| Canopy Greenhouse | Biofiber ×2, spore hazards | Enemies 15% faster |
-| Collapsed Residential | Med kits, many caches | Extra Skitter pack |
-| Municipal Data Center (night 2+) | Intel ×2, Circuits ×1.5, alarms | A Razorback joins |
+**Districts** (`src/data/districts.js`) keep their bonus, enemy mix and night threat; the briefing shows where each
+lies (compass direction and distance from the Relay, pylon status).
 
 ## 5. Defense (night)
 

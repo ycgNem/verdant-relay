@@ -64,6 +64,7 @@ export class CollectionScene {
     this.backdrop = new MenuBackdrop(game, { mood: 'dusk', angle: 2.2, speed: 0.03, radius: 12, height: 7 });
     this.three = this.backdrop.scene;
     this.camera = this.backdrop.camera;
+    this.post = this.backdrop.post;
     game.music?.play('title');
 
     this.root = el('div.screen.scr.collection-screen');
