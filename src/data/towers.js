@@ -27,39 +27,39 @@ export const TOWERS = {
     kind: 'bullet', damageType: 'kinetic', target: 'first', proj: 'bullet',
     range: 4.5, damage: 10, cooldown: 0.7, projSpeed: 14,
     upgrades: [
-      { cost: { scrap: 40 }, desc: 'Fire rate +40%.', set: { cooldown: 0.5 } },
-      { cost: { scrap: 60, circuits: 1 }, desc: 'Every 5th shot deals triple damage.', set: { fifthShotMult: 3, damage: 12 } },
+      { cost: { scrap: 30 }, desc: 'Fire rate +45%, damage +10%.', set: { cooldown: 0.48, damage: 11 } },
+      { cost: { scrap: 40, circuits: 1 }, desc: 'Every 5th shot deals triple damage; damage +10%.', set: { fifthShotMult: 3, damage: 12 } },
     ],
   },
   thorn_nest: {
     name: 'Thorn Nest',
-    role: 'Short, rapid',
+    role: 'Rapid',
     desc: 'Cheap, short range, rapid low damage. Shreds fast enemies.',
     icon: { glyph: '✶', color: '#63c74d' },
     cost: { scrap: 35, biofiber: 1 },
     kind: 'bullet', damageType: 'kinetic', target: 'closest', proj: 'thorn',
-    range: 3.0, damage: 4, cooldown: 0.24, projSpeed: 16,
+    range: 3.5, damage: 4, cooldown: 0.24, projSpeed: 16,
     upgrades: [
-      { cost: { scrap: 30, biofiber: 1 }, desc: 'Thorns slow the target briefly.', set: { slowOnHit: 0.75, slowTime: 0.8 } },
-      { cost: { scrap: 45, biofiber: 2 }, desc: 'Slow splashes to nearby enemies; thorns hit harder.', set: { slowRadius: 1.2, damage: 5 } },
+      { cost: { scrap: 30, biofiber: 1 }, desc: 'Thorns hit harder and slow the target 30%.', set: { damage: 5.5, slowOnHit: 0.7, slowTime: 1.0 } },
+      { cost: { scrap: 45, biofiber: 2 }, desc: 'Slow splashes to nearby enemies; thorns hit harder and faster.', set: { slowRadius: 1.6, damage: 7, cooldown: 0.22 } },
     ],
   },
   arc_spire: {
     name: 'Arc Spire',
-    role: 'Chain lightning',
+    role: 'Chain',
     desc: 'Lightning that chains between groups. Hits burrowed enemies.',
     icon: { glyph: 'ϟ', color: '#2ce8f5' },
     cost: { scrap: 35, circuits: 2 },
     kind: 'chain', damageType: 'energy', target: 'first',
     range: 4.0, damage: 14, cooldown: 1.2, chains: 2, chainRange: 2.4, chainFalloff: 0.7,
     upgrades: [
-      { cost: { scrap: 35, circuits: 1 }, desc: 'Chains to one more enemy.', set: { chains: 3, damage: 16 } },
-      { cost: { scrap: 50, circuits: 2 }, desc: 'Chained enemies are briefly slowed.', set: { chainSlow: 0.5, slowTime: 0.6, damage: 18 } },
+      { cost: { scrap: 35, circuits: 1 }, desc: 'Chains to one more enemy; more damage.', set: { chains: 3, damage: 16, cooldown: 1.15 } },
+      { cost: { scrap: 50, circuits: 2 }, desc: 'Chained enemies are briefly slowed; more damage.', set: { chainSlow: 0.5, slowTime: 0.8, damage: 19, cooldown: 1.1 } },
     ],
   },
   mortar_pod: {
     name: 'Mortar Pod',
-    role: 'Long-range splash',
+    role: 'Splash',
     desc: 'Lobbed seed shells. Strong vs clusters and Seed Carriers, weak vs fast enemies.',
     icon: { glyph: '◉', color: '#feae34' },
     cost: { scrap: 60, biofiber: 1 },
@@ -73,14 +73,14 @@ export const TOWERS = {
   },
   snare_vine: {
     name: 'Snare Vine',
-    role: 'Area slow',
-    desc: 'Slows everything in range, even burrowed enemies. Almost no damage.',
+    role: 'Slow',
+    desc: 'Slows everything in range, even burrowed enemies, and the slow lingers after they leave. Almost no damage.',
     icon: { glyph: '§', color: '#b55088' },
     cost: { scrap: 30, biofiber: 1 },
     kind: 'snare', damageType: 'nature', target: 'first',
-    range: 2.8, damage: 1, cooldown: 1.5, slowMult: 0.6, slowTime: 1.6,
+    range: 3.3, damage: 2, cooldown: 1.2, slowMult: 0.55, slowTime: 2.6,
     upgrades: [
-      { cost: { scrap: 30, biofiber: 1 }, desc: 'Stronger slow (40% → 55%).', set: { slowMult: 0.45 } },
+      { cost: { scrap: 30, biofiber: 1 }, desc: 'Stronger slow (45% → 60%), more range.', set: { slowMult: 0.4, range: 3.7 } },
       { cost: { scrap: 45, biofiber: 2 }, desc: 'Roots non-boss enemies for 0.8s (once per 4s per enemy).', set: { rootTime: 0.8, rootCooldown: 4 } },
     ],
   },
@@ -91,7 +91,7 @@ export const TOWERS = {
     icon: { glyph: '◈', color: '#fee761' },
     cost: { scrap: 50, circuits: 2 },
     kind: 'support', damageType: 'none', target: 'none',
-    range: 2.6, damage: 0, cooldown: 0, buffRate: 0.2,
+    range: 4.5, damage: 0, cooldown: 0, buffRate: 0.2,
     locked: 'pulse_beacon',
     upgrades: [
       { cost: { scrap: 40, circuits: 1 }, desc: 'Attack speed bonus 20% → 35%.', set: { buffRate: 0.35 } },
@@ -101,9 +101,15 @@ export const TOWERS = {
 };
 
 export const TOWER_ORDER = ['scrap_turret', 'thorn_nest', 'arc_spire', 'snare_vine', 'mortar_pod', 'pulse_beacon'];
+// Rule keys are saved with each tower, so they stay stable; the labels are what players see.
 export const TARGET_RULES = ['first', 'closest', 'strongest'];
+export const TARGET_RULE_LABEL = {
+  first: 'Lead',
+  closest: 'Nearest',
+  strongest: 'Toughest',
+};
 export const TARGET_RULE_TEXT = {
-  first: 'Closest to the Relay',
-  closest: 'Nearest to this tower',
-  strongest: 'Most health',
+  first: 'Lead: the enemy furthest along its lane (closest to the Relay).',
+  closest: 'Nearest: the enemy closest to this tower.',
+  strongest: 'Toughest: the enemy with the most health left (bosses, tanks).',
 };

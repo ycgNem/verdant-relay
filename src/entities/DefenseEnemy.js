@@ -3,7 +3,8 @@
 // Each enemy tracks `dist`, its distance travelled along its lane; position = lane.pointAt(dist)
 // plus a small fixed sideways jitter so groups don't walk in single file. Status effects:
 //   slows   keyed by source (snare, thorn, arc, rapid…); the strongest active one applies.
-//           Shown as a blue tint (setBaseColor). Bosses resist part of every slow.
+//           Shown as a blue tint (setBaseColor) plus an icy ground ring (the tint alone is hard to
+//           read under the blue night light). Bosses resist part of every slow.
 //   root    stops movement; shown with vines around the feet and green particles.
 // Type behaviours (all data-driven from DEFENSE_ENEMIES):
 //   burrow  underground for a fraction of the route: semi-transparent, bullets can't target it
@@ -286,6 +287,9 @@ export class DefenseEnemy {
     }
     if (rooted && !this.vines) this.vines = this.scene.makeVines(this);
     if (this.vines) this.vines.visible = rooted;
+    const slowed = !rooted && this.slowMult < 0.999;
+    if (slowed && !this.slowRing && this.scene.makeSlowRing) this.slowRing = this.scene.makeSlowRing(this);
+    if (this.slowRing) this.slowRing.visible = slowed;
     if (rooted) {
       this._leafT = (this._leafT || 0) - dt;
       if (this._leafT <= 0) {
@@ -396,8 +400,9 @@ export class DefenseEnemy {
           this.stateT = P.chargeWindup;
           this.phaseLabel = 'Winding up a charge!';
           setAnim(this.visual, 'windup', true);
-          // Telegraph the exact stretch of lane the charge will cover (it follows the path).
-          const len = this.def.speed * P.chargeMult * P.charge * scene.enemySpeedMult(this.laneIndex);
+          // Telegraph the exact stretch of lane the charge will cover (it follows the path), with
+          // the slow it's under right now (the charge speed is multiplied by slowMult too).
+          const len = this.def.speed * this.speedJitter * P.chargeMult * P.charge * scene.enemySpeedMult(this.laneIndex) * this.slowMult;
           this.tele = scene.lanePieces(this.lane, this.dist, this.dist + len).map(({ a, b }) => {
             const d = new THREE.Vector3().subVectors(b, a);
             const l = d.length();

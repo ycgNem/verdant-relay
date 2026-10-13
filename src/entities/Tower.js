@@ -39,6 +39,15 @@ export class Tower {
     this.level = 0;
     this.visual = null;
     this.pips = [];
+    // Amber ring shown while a Pulse Beacon boosts this tower (visibility/pulse set by the scene).
+    if (this.def.kind !== 'support' && scene.buffRingGeom) {
+      this.buffRing = new THREE.Mesh(scene.buffRingGeom, scene.buffRingMat);
+      this.buffRing.rotation.x = -Math.PI / 2;
+      this.buffRing.position.y = (scene.padBaseY || 0) + 0.06;
+      this.buffRing.renderOrder = -1;   // drawn before sprites (the tower stands on its halo)
+      this.buffRing.visible = false;
+      this.obj.add(this.buffRing);
+    }
     this.refreshVisual();
   }
 
@@ -69,6 +78,18 @@ export class Tower {
     }
     this.height = Math.max(0.6, vis.height * (vis.kind === 'model' ? 1 + 0.1 * (this.level - 1) : 1));
     this.muzzleY = scene.padBaseY + this.height * 0.72;
+    // Rank badge (chevrons) above level 2/3 towers so levels read at night zoom.
+    this.badge?.removeFromParent();
+    this.badge = null;
+    const b = scene.levelBadge?.[this.level];
+    if (b) {
+      this.badge = new THREE.Sprite(b.mat);
+      this.badge.scale.set(0.6, 0.6 * b.aspect, 1);
+      this.badge.center.set(0.5, 0);
+      this.badge.position.y = scene.padBaseY + this.height + 0.08;
+      this.badge.renderOrder = 40;
+      this.obj.add(this.badge);
+    }
   }
 
   muzzle(out = new THREE.Vector3()) { return out.set(this.pos.x, this.muzzleY, this.pos.z); }
@@ -230,7 +251,8 @@ export class Tower {
         scene.fx.ring(p, { color: '#feae34', radius: r, life: 0.35 });
         scene.fx.burst(p, { color: '#f77622', color2: '#3e8948', count: 16, speed: 3, up: 3, life: 0.5, size: 0.09, y: 0.05 });
         scene.game.sfx.play('boom');
-        if (s.burnDps) scene.projectiles.zone(p, { radius: r * 0.8, dps: s.burnDps, time: s.burnTime, type: 'burn' });
+        // Burning sap is still a blast (so it destroys Seed Carriers' seeds, as the note promises).
+        if (s.burnDps) scene.projectiles.zone(p, { radius: r * 0.8, dps: s.burnDps, time: s.burnTime, type: s.damageType });
       },
     });
   }

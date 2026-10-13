@@ -135,3 +135,23 @@
 .df-banner.bad .df-bannertitle { color: var(--danger); }
 .df-bannersub { font-size: calc(var(--u) * 14); margin: calc(var(--u) * 6) 0; }
 @keyframes df-banner-in { from { opacity: 0; transform: translateY(-50%) scaleY(0.2); } to { opacity: 1; transform: translateY(-50%) scaleY(1); } }
+
+/* Intel actions (prep footer): two half-width buttons */
+.df-intel { display: flex; gap: calc(var(--u) * 4); }
+.btn.df-half { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 1); padding: calc(var(--u) * 3) calc(var(--u) * 2); font-size: calc(var(--u) * 10.5); line-height: 1.15; }
+.btn.df-half > span { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: calc(var(--u) * 3); }
+.btn.df-half .cost { font-size: calc(var(--u) * 10); }
+.df-arrow { color: var(--amber); white-space: nowrap; }
+
+/* Toasts sit bottom-right of the map (scenery rows below both lanes): never over the boss bar, the side
+   panel or a pad, and clear of the night hints (bottom-left). Newest at the bottom; at most 3 (ui.js toast). */
+.defense-ui .toasts { left: auto; right: calc(var(--u) * 248); width: calc(var(--u) * 400); top: auto; bottom: calc(var(--u) * 10); align-items: flex-end; }
+.defense-ui .toast { font-size: calc(var(--u) * 12); padding: calc(var(--u) * 4) calc(var(--u) * 10); max-width: 100%; text-align: right; }
+
+/* Sell confirm: shrinking bar shows how long the confirm stays armed */
+.btn.df-sellarmed { position: relative; overflow: hidden; }
+.df-sellbar {
+  position: absolute; left: 0; bottom: 0; width: 100%; height: calc(var(--u) * 3); background: #ffd0d0;
+  transform-origin: left center; animation-name: df-shrink; animation-timing-function: linear; animation-fill-mode: forwards;
+}
+@keyframes df-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }

@@ -26,7 +26,7 @@ station. A run lasts up to 6 nights. Survive the Night 6 boss siege to win. If t
 1. **Briefing:** see the night number, Relay health, resources and run upgrades. Pick one of two districts.
 2. **Explore (day):** search a generated district, complete the objective, extract.
 3. **Summary:** see what you banked. Spend any skill point (pick 1 of 3, or save it).
-4. **Prepare (night):** repair the Relay, build, upgrade and sell towers, read the wave preview.
+4. **Prepare (night):** repair the Relay, build, upgrade and sell towers, spend Intel, read the wave preview.
 5. **Defend:** survive the wave. You don't control a character in this mode.
 6. Repeat until you win Night 6 or the Relay falls.
 
@@ -41,7 +41,7 @@ district consequences, player HP. All of it resets when the run ends. Permanent 
 | Briefing | Night, two districts (name, environment, enemy type, reward bonus, tonight's threat), resources, Relay HP, skills, Begin Expedition |
 | Exploration HUD | HP, timer, carried loot, objective, extraction status and direction, minimap (Tab for a big map), interact prompt |
 | Summary | Loot recovered, intel, objective result, optional/event outcomes, skill pick, Continue |
-| Preparation | Defense map, Relay HP, resources, tower list (cost and description), selected-tower upgrade/sell/target rule, Repair, wave preview, Start Wave |
+| Preparation | Defense map, Relay HP, resources, tower list (cost and description), selected-tower upgrade/sell/target rule, Intel actions (Decrypt / Sabotage), Repair, wave preview, Start Wave |
 | Defense HUD | Relay HP, wave progress, enemies left, resources, pause, 1×/2× speed, boss bar |
 | Results | Victory or defeat, nights survived, kills, districts, peak resources, research earned, New Run / Title |
 
@@ -74,7 +74,7 @@ Room types: street, shop, residential, greenhouse, transit platform, utility, co
 | Scrap | Building, repairs, common upgrades |
 | Circuits | Electronic towers and upgrades |
 | Biofiber | Organic towers, traps, healing |
-| Intel | Research, wave previews, permanent progress |
+| Intel | Spent in night prep: Decrypt (1 Intel → +4 Research Data) or Sabotage (2 Intel → tonight's wave 10% smaller, once per night) |
 
 Each resource has its own colour **and** icon. Container yields:
 
@@ -123,22 +123,28 @@ a data log (Intel and research), a locked cache. Some grant a bonus skill point,
 There are 16 fixed build pads beside the lanes. Towers can never block a route.
 
 **Prep phase:** build, select, upgrade, sell (70% of total Scrap spent, rounded down), set targeting
-(first / closest / strongest), repair (20 Scrap → +20 HP, never above max), read the wave preview, then Start Wave.
+(**Lead** = furthest along its lane / **Nearest** to the tower / **Toughest** = most health left), repair
+(25 Scrap → +15 HP; near max you pay only for the HP restored, rounded up), spend Intel (Decrypt: 1 Intel → +4 Research Data;
+Sabotage: 2 Intel → tonight's wave 10% smaller, once per night), read the wave preview, then Start Wave.
+Each tower you already own of a type adds +5 Scrap to the next one of that type (shown on the build card), so
+upgrading and mixing tower types beats spamming one tower. Every prep action re-saves the run.
 
-**Wave phase:** no building, upgrades or repairs. You can pause or play at 1×/2×. Leftover resources carry over.
+**Wave phase:** no building, upgrades or repairs. You can pause or play at 1×/2× and change targeting. Leftover resources carry over.
+The run is saved as the wave starts: quitting mid-wave and pressing Continue restarts that wave with the same towers
+and the Relay HP it began with (the build can't be changed). Surviving saves the next briefing at once; a defeat ends the run at once.
 
 **Towers** (`src/data/towers.js`; every tower has 3 levels):
 
 | Tower | Cost | Role | Level 2 | Level 3 |
 |---|---|---|---|---|
-| Scrap Turret | 45 S | Single target | +40% fire rate | Every 5th shot ×3 |
-| Thorn Nest | 35 S, 1 B | Short, rapid | Slow on hit | Slow splashes |
-| Arc Spire | 35 S, 2 C | Chain lightning | +1 chain | Chains slow |
-| Snare Vine | 30 S, 1 B | Area slow | Stronger slow | Root non-bosses (per-target cooldown) |
-| Mortar Pod 🔒 | 60 S, 1 B | Long-range splash | Bigger blast | Burning sap |
-| Pulse Beacon 🔒 | 50 S, 2 C | Buffs nearby towers | Stronger buff | Bonus-attack chance |
+| Scrap Turret | 45 S | Single target, range 4.5 | +30 S: +45% fire rate, +10% damage | +40 S 1 C: every 5th shot ×3, +10% damage |
+| Thorn Nest | 35 S, 1 B | Short (3.5), rapid | +30 S 1 B: more damage, 30% slow on hit | +45 S 2 B: slow splashes, more damage |
+| Arc Spire | 35 S, 2 C | Chain lightning, hits burrowed | +35 S 1 C: +1 chain, more damage | +50 S 2 C: chains slow, more damage |
+| Snare Vine | 30 S, 1 B | Area slow 45% (lingers 2.6 s), range 3.3 | +30 S 1 B: 60% slow, range 3.7 | +45 S 2 B: root non-bosses (per-target cooldown) |
+| Mortar Pod 🔒 | 60 S, 1 B | Long-range splash | Bigger blast | Burning sap (counts as a blast) |
+| Pulse Beacon 🔒 | 50 S, 2 C | +20% attack speed to towers within 4.5 (2–5 pads) | Stronger buff | Bonus-attack chance |
 
-🔒 = unlocked with research. Range shows while placing or when selected.
+🔒 = unlocked with research. Range shows while placing or when selected. Towers boosted by a beacon show an amber ring; level 2 and 3 towers show 2 or 3 rank chevrons above them.
 
 **Relay Core:** 100 HP. It takes damage when enemies reach it. Show a hit cue, with screen shake that can be turned off in settings.
 
@@ -153,13 +159,17 @@ There are 16 fixed build pads beside the lanes. Towers can never block a route.
 | Burrower | Ambusher | Underground for part of its route; bullet towers can't target it there |
 | Seed Carrier | Swarm | Bursts into seedlings unless killed by a blast |
 | Ruin Guard | Elite | Shield halves kinetic damage |
-| Canopy Colossus | Boss | Loops approach → rooted (telegraph, spawns Crawlers) → charge (wind-up, then fast); has a big HP bar |
+| Canopy Colossus | Boss | 1000 HP (×1.9 on N6). Loops approach → rooted (telegraph, spawns Crawlers) → charge (wind-up, then fast); has a big HP bar. Reaching the Relay deals 15–40 damage, less the more it is hurt. Night 6 prep hints to set its lane's towers to Toughest |
 
 **Waves** (`src/data/waves.js`):
 - N1: Crawlers + Skitters. N2: first Razorback. N3: Spitters. N4: Burrowers + Seed Carriers.
 - N5: Ruin Guards. N6: Colossus + support.
-- Enemy HP grows 10% per night, and the authored counts grow about 20–25% per night.
-- The wave preview lists types, counts, the district threat and active boons.
+- Enemy HP ×1 / 1.1 / 1.3 / 1.7 / 1.9 / 1.9 for N1–N6 (steeper from night 4). Total wave HP is about 360 / 1010 / 2300 / 3870 / 4980 / 6550.
+- Tuned by full-run simulation at realistic income (~90 Scrap, 2 Circuits, 3 Biofiber, 4 Intel per expedition plus bounties):
+  a placed, upgraded mixed build loses Relay HP on nights 4–6 and wins with roughly 35–60 left; spamming level-1 Scrap Turrets
+  falls on night 5–6; one turret on night 1 costs about 40 HP and no towers about 50–80.
+- Wave-size boons (and Intel Sabotage) scale the whole wave and remove enemies from the largest groups, so −10% always removes some.
+- The wave preview lists the district threat and active boons first, then types and counts per lane.
 
 ## 6. Progression
 
@@ -178,6 +188,7 @@ There are 16 fixed build pads beside the lanes. Towers can never block a route.
 | Night survived | +10 |
 | First visit to a district | +10 |
 | Boss damage | up to +30 |
+| Decrypted Intel (night prep) | +4 per Intel |
 | Victory | +50 |
 
 **Unlocks** (`src/data/unlocks.js`): Mortar Pod, Pulse Beacon, Scattergun start weapon, +20 starting Scrap,
@@ -187,9 +198,13 @@ starting med kit, a 4th skill option, and a cosmetic for the first win. They add
 
 localStorage with a versioned schema (`src/core/Save.js`):
 - **meta:** research, unlocks, discovered districts, best run, lifetime stats, settings
-- **run:** a snapshot saved at briefing and prep, which powers Continue
+- **run:** a snapshot saved at briefing, after every prep action and at wave start, which powers Continue
+  (Continue from a wave-start snapshot restarts that wave with the locked build). Research earned mid-wave
+  (boss damage) is written into that snapshot at once, so quitting can't earn it twice.
 
-Invalid or outdated saves are discarded, never half-loaded.
+Invalid or outdated saves are discarded, never half-loaded: unknown tower types, bad levels or pads, duplicate pads,
+unknown skills, bad resources or Relay HP all discard the whole run save. Debug-URL runs don't count toward lifetime stats
+and don't overwrite the real run save (add `&save=1` to test Continue).
 
 ## 8. Accessibility and UX
 

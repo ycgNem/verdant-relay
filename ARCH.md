@@ -66,15 +66,17 @@ Fields: `seed night phase relayHp relayMax playerHp meds weapon res{scrap,circui
 - Districts: `districtChoices()`, `objectiveFor(district)`, `chooseDistrict(key)` (sets `tonight.threat`, extra groups, speed).
 - Resources: `canAfford(cost)`, `missing(cost)` → "Need 12 more Scrap", `spend(cost)`, `add(gain)`.
 - Skills: `hasSkill(id)`, `skillOptions(meta, salt)`, `takeSkill(id)`.
-- Towers: `availableTowers(meta)`, `buildCost(type)`, `build(type, padIndex)`, `upgradeCost(t)` (null = max, `{}` = free), `upgrade(t)`,
+- Towers: `availableTowers(meta)`, `buildCost(type)` (includes the +5 Scrap per same-type tower, `buildSurcharge(type)`), `towerCount(type)`, `build(type, padIndex)`, `upgradeCost(t)` (null = max, `{}` = free), `upgrade(t)`,
   `sellValue(t)`, `sell(t)`, `towerStats(t, relayFrac)` → merged stats with upgrades/skills/boons applied.
-- Relay: `repairCost()`, `repair()`, `beginPrep()` (one-time per-night bonuses; returns notes), `emergencyPatch()`.
+- Relay: `repairAmount()`, `repairCost()` (prorated), `repair()`, `beginPrep()` (one-time per-night bonuses; returns notes), `emergencyPatch()`.
+- Intel (night prep): `decryptCost()`, `decrypt(game)` → Research; `sabotageCost()`, `sabotageBlocked()`, `sabotage()` → wave −10% once per night.
 - Expedition: `applyExpedition(result, game)` with
   `{ district, extracted, died, carried:{…}, objectiveDone, boon, optionals:[{key,name,flag?,research?}], events:[{key,flag?}], skillPointsEarned, medsLeft, playerHp, kills }`.
   Banks loot only if extracted, awards research, applies boons into `tonight`, stores `lastExpedition`.
 - Night end: `nightSurvived(game)` → `'next' | 'victory'`; `finish(game, victory)` → results record (clears the run save).
 - Research: `award(game, amount, reason)`, `awardBossDamage(game, fraction)`.
-- `rng(...parts)` — seeded stream for this night. `save('briefing'|'prep')` snapshots for Continue.
+- `rng(...parts)` — seeded stream for this night. `save('briefing'|'prep'|'wave')` snapshots for Continue ('wave' = restart that wave with the locked build).
+  `Save.patchRun(fn)` edits the saved snapshot in place (boss research given mid-wave). `Save.validRun(r)` is the full shape check.
 - `tonight`: `{ threat, boons[], freeUpgrades, freeRepair, towerRate, towerDamage, enemyCount, enemySpeed, laneSlow, extraGroups[] }`.
 
 ## Conventions

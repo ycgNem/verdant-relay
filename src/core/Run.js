@@ -2,18 +2,20 @@
 // write it; they never keep their own resource totals.
 //
 // Night flow:  briefing → explore → summary → prep → defense → (next night's briefing | results)
-// `run.phase` records where the run is; Continue resumes from 'briefing' or 'prep' snapshots.
+// `run.phase` records where the run is; Continue resumes from 'briefing', 'prep' or 'wave' snapshots.
+// A 'wave' snapshot is written when a wave starts (towers locked, Relay HP as it began); Continue
+// from it restarts that wave with the same build, so quitting mid-wave can't undo a loss or re-shop.
 //
 // "Tonight" (`run.tonight`) collects every modifier for the coming defense: the chosen district's
 // threat, objective boons and optional/event flags. It is rebuilt each night.
 
-import { CONFIG, RESOURCE_KEYS } from '../data/config.js';
+import { CONFIG, RESOURCE_KEYS, RESOURCES } from '../data/config.js';
 import { DISTRICTS, DISTRICT_KEYS } from '../data/districts.js';
 import { PRIMARY_KEYS } from '../data/objectives.js';
 import { SKILLS, SKILL_KEYS } from '../data/skills.js';
 import { TOWERS, TOWER_ORDER } from '../data/towers.js';
 import { makeRng, newSeed, subSeed } from './rng.js';
-import { saveRun, clearRun } from './Save.js';
+import { saveRun, clearRun, patchRun } from './Save.js';
 
 const emptyRes = () => ({ scrap: 0, circuits: 0, biofiber: 0, intel: 0 });
 
@@ -31,6 +33,7 @@ export function emptyTonight() {
     extraGroups: [],       // extra wave groups [{ type, count }]
     fieldTuningUsed: false,
     emergencyPatchUsed: false,
+    sabotaged: false,      // Intel sabotage used tonight
     prepBonusGiven: false,
   };
 }
@@ -57,6 +60,8 @@ export class Run {
       bossDamage: 0, nightsSurvived: 0, deaths: 0, extractions: 0,
     };
     this.bossResearchGiven = 0;
+    this.debug = false;          // started from a ?debug= URL (kept out of lifetime stats)
+    this.noSave = false;         // debug runs don't write the run save (see Run.save)
   }
 
   /** Start a new run, applying permanent unlocks from meta. */
@@ -65,7 +70,8 @@ export class Run {
     if (meta.unlocks.includes('stockpile')) r.res.scrap += 20;
     if (meta.unlocks.includes('field_kit')) r.meds = 1;
     if (meta.unlocks.includes('scattergun') && meta.startWeapon === 'scattergun') r.weapon = 'scattergun';
-    meta.lifetime.runs += 1;
+    r.stats.peak = { ...r.res };   // after unlock bonuses (Hidden Stockpile)
+    // Lifetime run count is bumped by startNewRun (TitleScene), so debug runs don't inflate it.
     return r;
   }
 
@@ -81,13 +87,14 @@ export class Run {
     return JSON.parse(JSON.stringify(this));
   }
 
-  /** Snapshot at a safe point ('briefing' or 'prep'). */
+  /** Snapshot at a safe point ('briefing', 'prep' or 'wave'). */
   save(phase) {
     this.phase = phase;
+    if (this.noSave) return;   // debug-URL runs never touch the real run save (unless &save=1)
     saveRun(this.toSave());
   }
 
-  end() { clearRun(); }
+  end() { if (!this.noSave) clearRun(); }
 
   rng(...parts) { return makeRng(subSeed(this.seed, this.night, ...parts)); }
 
@@ -133,7 +140,10 @@ export class Run {
     const out = [];
     for (const k of RESOURCE_KEYS) {
       const short = (cost[k] || 0) - (this.res[k] || 0);
-      if (short > 0) out.push(`${short} more ${k[0].toUpperCase() + k.slice(1)}`);
+      if (short > 0) {
+        const label = RESOURCES[k].label;
+        out.push(`${short} more ${short === 1 ? label.replace(/s$/, '') : label}`);
+      }
     }
     return out.length ? `Need ${out.join(', ')}` : null;
   }
@@ -179,9 +189,16 @@ export class Run {
 
   availableTowers(meta) { return TOWER_ORDER.filter((k) => this.isTowerUnlocked(k, meta)); }
 
-  /** Build cost for a tower type with skills applied. */
+  /** Towers of this type already built (each one adds CONFIG.towerSurcharge Scrap to the next). */
+  towerCount(type) { return this.towers.filter((t) => t.type === type).length; }
+
+  /** Extra Scrap the next tower of this type costs because of the ones already built. */
+  buildSurcharge(type) { return (CONFIG.towerSurcharge || 0) * this.towerCount(type); }
+
+  /** Build cost for a tower type with skills and the same-type surcharge applied. */
   buildCost(type) {
     const c = { ...TOWERS[type].cost };
+    c.scrap = (c.scrap || 0) + this.buildSurcharge(type);
     if (this.hasSkill('efficient_assembly')) c.scrap = Math.round(c.scrap * 0.9);
     return c;
   }
@@ -256,12 +273,51 @@ export class Run {
 
   // ---------------------------------------------------------------- relay
 
-  repairCost() { return { scrap: CONFIG.relay.repairScrap }; }
+  /** HP the next repair restores (a full step, or less near max; 0 at full health). */
+  repairAmount() {
+    return Math.max(0, Math.min(CONFIG.relay.repairAmount, Math.ceil(this.relayMax - this.relayHp)));
+  }
+
+  /** Scrap for the next repair, prorated to the HP actually restored (rounded up). */
+  repairCost() {
+    const R = CONFIG.relay;
+    const hp = this.repairAmount() || R.repairAmount;
+    return { scrap: Math.ceil((R.repairScrap * hp) / R.repairAmount) };
+  }
 
   repair() {
-    if (this.relayHp >= this.relayMax) return false;
+    const hp = this.repairAmount();
+    if (hp <= 0) return false;
     if (!this.spend(this.repairCost())) return false;
-    this.relayHp = Math.min(this.relayMax, this.relayHp + CONFIG.relay.repairAmount);
+    this.relayHp = Math.min(this.relayMax, this.relayHp + hp);
+    return true;
+  }
+
+  // ---------------------------------------------------------------- intel (night prep)
+
+  decryptCost() { return { intel: CONFIG.intel.decryptCost }; }
+
+  /** Spend Intel for Research Data (banked to meta at once). */
+  decrypt(game) {
+    if (!this.spend(this.decryptCost())) return false;
+    this.award(game, CONFIG.intel.decryptResearch, 'Decrypted Intel');
+    return true;
+  }
+
+  sabotageCost() { return { intel: CONFIG.intel.sabotageCost }; }
+
+  /** Why Sabotage can't be used right now, or null. */
+  sabotageBlocked() {
+    if (this.tonight.sabotaged) return 'Already used tonight';
+    return this.missing(this.sabotageCost());
+  }
+
+  /** Spend Intel to shrink tonight's wave (once per night). */
+  sabotage() {
+    if (this.sabotageBlocked() || !this.spend(this.sabotageCost())) return false;
+    const mult = CONFIG.intel.sabotageWave;
+    this.tonight.sabotaged = true;
+    this.addBoon({ text: `Sabotage: wave ${Math.round((1 - mult) * 100)}% smaller.`, enemyCount: mult });
     return true;
   }
 
@@ -300,7 +356,7 @@ export class Run {
     const R = CONFIG.research;
     const summary = { ...result, banked: emptyRes(), research: [], boons: [] };
     const district = result.district;
-    if (!meta.discovered.includes(district)) {
+    if (!meta.discovered.includes(district) && !this.debug) {
       meta.discovered.push(district);
       this.award(game, R.newDistrict, 'First visit to ' + DISTRICTS[district].name, summary);
     }
@@ -316,6 +372,11 @@ export class Run {
       this.stats.deaths += result.died ? 1 : 0;
       this.meds = 0;
       this.playerHp = CONFIG.expedition.deathReturnHp;
+      // Early nights: the drone recovers a share of what you carried (ExploreScene computes it).
+      if (result.salvaged) {
+        this.add(result.salvaged);
+        summary.banked = { ...emptyRes(), ...result.salvaged };
+      }
     }
     // Objectives and flags count even on death (the work was done), but the scrap bonus needs extraction.
     if (result.objectiveDone) {
@@ -356,19 +417,30 @@ export class Run {
   /** Research is banked to meta immediately so it survives a quit or a loss. */
   award(game, amount, reason, summary) {
     if (!amount) return;
-    game.meta.research += amount;
+    if (!this.debug) game.meta.research += amount;   // debug runs show research but don't bank it
     this.stats.research += amount;
     summary?.research.push({ amount, reason });
     game.saveMeta();
   }
 
-  /** Boss damage research: up to CONFIG.research.bossMax for the fraction of the boss's HP removed. */
+  /**
+   * Boss damage research: up to CONFIG.research.bossMax for the fraction of the boss's HP removed.
+   * The amount already given is written into the saved 'wave' snapshot at once, so quitting and
+   * restarting the wave can't award it again.
+   */
   awardBossDamage(game, fraction) {
     const target = Math.floor(Math.min(1, fraction) * CONFIG.research.bossMax);
     const add = target - this.bossResearchGiven;
     if (add > 0) {
       this.bossResearchGiven = target;
       this.award(game, add, 'Boss damage');
+      const research = this.stats.research;
+      if (!this.noSave) patchRun((r) => {
+        if (r.seed !== this.seed || r.night !== this.night) return false;
+        r.bossResearchGiven = target;
+        if (r.stats) r.stats.research = research;
+        return true;
+      });
     }
   }
 
@@ -377,8 +449,9 @@ export class Run {
   /** After a defended night. Returns 'victory' after the last night, otherwise 'next'. */
   nightSurvived(game) {
     this.stats.nightsSurvived = this.night;
+    // Update the record before award(), which is what saves meta (else the record lags a night).
+    if (!this.debug) game.meta.best.nights = Math.max(game.meta.best.nights, this.night);
     this.award(game, CONFIG.research.night, `Night ${this.night} survived`);
-    game.meta.best.nights = Math.max(game.meta.best.nights, this.night);
     if (this.night >= CONFIG.nights) return 'victory';
     this.night += 1;
     this.playerHp = Math.min(CONFIG.player.hp, this.playerHp + CONFIG.expedition.nightlyHeal);
@@ -392,14 +465,17 @@ export class Run {
   /** Close out the run (victory or defeat), update meta. Returns the results record. */
   finish(game, victory) {
     const meta = game.meta;
-    if (victory) {
+    // Debug-URL runs (`?debug=…`) don't count toward lifetime stats, records or the win cosmetic.
+    if (victory && !this.debug) {
       this.award(game, CONFIG.research.victory, 'Victory');
       meta.lifetime.victories += 1;
       meta.best.victory = true;
       if (!meta.unlocks.includes('verdant_scarf')) meta.unlocks.push('verdant_scarf');
     }
-    meta.lifetime.kills += this.stats.kills;
-    meta.best.nights = Math.max(meta.best.nights, victory ? this.night : this.night - 1);
+    if (!this.debug) {
+      meta.lifetime.kills += this.stats.kills;
+      meta.best.nights = Math.max(meta.best.nights, victory ? this.night : this.night - 1);
+    }
     game.saveMeta();
     this.end();
     return {

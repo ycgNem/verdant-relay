@@ -4,7 +4,7 @@
 import { el } from './ui.js';
 
 /**
- * showHint(game, 'explore_move', '<b>WASD</b> to move…', { pos: 'top-left'|'top-right'|'bottom-left'|'bottom-right'|'center', time: 9 })
+ * showHint(game, 'explore_move', '<b>WASD</b> to move…', { pos: 'top-left'|'top-right'|'bottom-left'|'bottom-right'|'map-bottom-left'|'center', time: 9 })
  * Returns the node, or null if the hint was already seen.
  */
 export function showHint(game, id, html, opts = {}) {
@@ -17,6 +17,8 @@ export function showHint(game, id, html, opts = {}) {
     'top-right': { right: 'calc(var(--u) * 12)', top: 'calc(var(--u) * 70)' },
     'bottom-left': { left: 'calc(var(--u) * 12)', bottom: 'calc(var(--u) * 80)' },
     'bottom-right': { right: 'calc(var(--u) * 12)', bottom: 'calc(var(--u) * 80)' },
+    // Night map: the scenery rows under both lanes (toasts sit bottom-right there).
+    'map-bottom-left': { left: 'calc(var(--u) * 12)', bottom: 'calc(var(--u) * 10)' },
     center: { left: '50%', top: '38%', transform: 'translateX(-50%)' },
   }[opts.pos || 'top-right'];
   const n = el('div.hint.ui-block', { html: `${html}<div class="small muted" style="margin-top:4px">click to dismiss</div>`, style: pos });

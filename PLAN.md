@@ -79,7 +79,7 @@ verdant-relay/
 ### Stage 2: Core loop
 - [ ] All 4 resources, 4 starting towers, 3 enemy types
 - [x] Prep screen (build/upgrade/sell/repair/preview), night progression, resources persist within the run
-- [ ] Meta save (research, best run)
+- [x] Meta save (research, best run)
 
 ### Stage 3: Roguelite content
 - [ ] District choice, all 5 districts, room-template generation with loops
@@ -101,6 +101,6 @@ verdant-relay/
 - [x] Towers can be built only in prep; enemies follow readable lanes; towers hit reliably
 - [x] Slow, root, burrow, shield and wind-up states are all visible
 - [x] All 6 nights progress; the boss is telegraphed and beatable
-- [ ] Win and loss end the run cleanly; a new run resets run data and keeps unlocks
-- [ ] Unlocks survive a browser refresh
+- [x] Win and loss end the run cleanly; a new run resets run data and keeps unlocks
+- [x] Unlocks survive a browser refresh
 - [ ] No unexplained controls or hidden objectives

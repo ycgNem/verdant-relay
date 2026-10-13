@@ -61,7 +61,7 @@ export function panel(cls = '', ...children) {
 /** One resource as icon + amount + label (colour is never the only cue). */
 export function resChip(key, amount, opts = {}) {
   const r = RESOURCES[key];
-  return el(`span.res.res-${key}${opts.short ? '.short' : ''}`, { title: r.label, style: { '--c': r.color } },
+  return el(`span.res.res-${key}${opts.short ? '.short' : ''}`, { title: r.desc ? `${r.label}: ${r.desc}` : r.label, style: { '--c': r.color } },
     el('span.glyph', r.glyph), el('b', String(amount)), opts.noLabel ? null : el('span.lbl', opts.short ? r.short : r.label));
 }
 
@@ -101,6 +101,13 @@ export function toast(ui, text, cls = '', time = 2.4) {
   if (!host) { host = el('div.toasts'); ui.append(host); }
   const t = el(`div.toast${cls ? '.' + cls : ''}`, text);
   host.append(t);
+  // Keep the stack short: the oldest of more than 3 live toasts fades out early.
+  const live = [...host.children].filter((c) => !c.classList.contains('out'));
+  if (live.length > 3) {
+    const old = live[0];
+    old.classList.add('out');
+    setTimeout(() => old.remove(), 400);
+  }
   setTimeout(() => t.classList.add('out'), time * 1000);
   setTimeout(() => t.remove(), time * 1000 + 400);
   return t;
