@@ -1,32 +1,32 @@
 {
-  "player": {
-    "file": "player.png", "ppu": 32, "frames": 11, "fps": 8,
-    "anims": { "idle": [0, 1], "walk": [2, 3, 4, 5], "attack": [6, 7], "dodge": [8, 9], "hurt": [10] },
-    "animFps": { "idle": 3, "walk": 10, "attack": 12, "dodge": 10 }
-  },
   "scav": {
-    "file": "scav.png", "ppu": 32, "frames": 9, "fps": 8,
-    "anims": { "idle": [0, 1], "walk": [2, 3, 4, 5], "windup": [6], "attack": [7, 8] },
-    "animFps": { "idle": 3, "walk": 9, "attack": 10 }
-  },
-  "crawler": {
-    "file": "crawler.png", "ppu": 32, "frames": 9, "fps": 8,
-    "anims": { "idle": [0, 1], "walk": [2, 3, 4, 5], "windup": [6], "attack": [7, 8] },
-    "animFps": { "idle": 3, "walk": 10, "attack": 10 }
-  },
-  "skitter": {
-    "file": "skitter.png", "ppu": 32, "frames": 9, "fps": 8,
-    "anims": { "idle": [0, 1], "walk": [2, 3, 4, 5], "windup": [6], "attack": [7, 8] },
-    "animFps": { "idle": 4, "walk": 14, "attack": 12 }
-  },
-  "spitter": {
-    "file": "spitter.png", "ppu": 32, "frames": 6, "fps": 8,
-    "anims": { "idle": [0, 1], "windup": [2, 3], "attack": [4, 5] },
-    "animFps": { "idle": 3, "windup": 5, "attack": 8 }
-  },
-  "razorback": {
-    "file": "razorback.png", "ppu": 32, "frames": 10, "fps": 8,
-    "anims": { "idle": [0, 1], "walk": [2, 3, 4, 5], "windup": [6, 7], "attack": [8, 9] },
-    "animFps": { "idle": 3, "walk": 8, "windup": 6, "attack": 12 }
+    "file": "scav.png",
+    "ppu": 32,
+    "frames": 9,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "walk": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "windup": [
+        6
+      ],
+      "attack": [
+        7,
+        8
+      ]
+    },
+    "animFps": {
+      "idle": 3,
+      "walk": 9,
+      "attack": 10
+    }
   }
 }

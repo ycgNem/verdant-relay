@@ -3,3 +3,5 @@ dist/
 *.log
 .DS_Store
 .playwright-mcp/
+pixel-art/pixellab_chars/raw/
+pixel-art/pixellab_chars/previews/

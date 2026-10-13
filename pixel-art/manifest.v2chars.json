@@ -1,0 +1,270 @@
+{
+  "skitter": {
+    "file": "v2_skitter.png",
+    "ppu": 32,
+    "frames": 19,
+    "fw": 45,
+    "fh": 45,
+    "anchor": [
+      29,
+      44
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "walk": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "windup": [
+        13,
+        14,
+        15
+      ],
+      "attack": [
+        16,
+        17,
+        18
+      ]
+    },
+    "animFps": {
+      "idle": 8,
+      "walk": 16,
+      "windup": 10,
+      "attack": 12
+    }
+  },
+  "spitter": {
+    "file": "v2_spitter.png",
+    "ppu": 32,
+    "frames": 13,
+    "fw": 48,
+    "fh": 51,
+    "anchor": [
+      21,
+      50
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        3,
+        2,
+        1
+      ],
+      "windup": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "attack": [
+        10,
+        11,
+        12
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "windup": 6,
+      "attack": 9
+    }
+  },
+  "crawler": {
+    "file": "v2_crawler.png",
+    "ppu": 32,
+    "fw": 65,
+    "fh": 48,
+    "anchor": [
+      30,
+      43
+    ],
+    "dirs": [
+      "s",
+      "se",
+      "e",
+      "ne",
+      "n"
+    ],
+    "anims": {
+      "idle": {
+        "row": 0,
+        "frames": 8,
+        "fps": 6
+      },
+      "walk": {
+        "row": 5,
+        "frames": 6,
+        "fps": 10
+      },
+      "windup": {
+        "row": 10,
+        "frames": 3,
+        "fps": 6,
+        "loop": false
+      },
+      "attack": {
+        "row": 15,
+        "frames": 4,
+        "fps": 12,
+        "loop": false,
+        "hit": 1
+      }
+    }
+  },
+  "feral": {
+    "file": "v2_feral.png",
+    "ppu": 32,
+    "fw": 78,
+    "fh": 75,
+    "anchor": [
+      36,
+      69
+    ],
+    "dirs": [
+      "s",
+      "se",
+      "e",
+      "ne",
+      "n"
+    ],
+    "anims": {
+      "idle": {
+        "row": 0,
+        "frames": 4,
+        "fps": 5
+      },
+      "walk": {
+        "row": 5,
+        "frames": 6,
+        "fps": 9
+      },
+      "windup": {
+        "row": 10,
+        "frames": 3,
+        "fps": 7,
+        "loop": false
+      },
+      "attack": {
+        "row": 15,
+        "frames": 4,
+        "fps": 12,
+        "loop": false,
+        "hit": 1
+      }
+    }
+  },
+  "player": {
+    "file": "v2_player.png",
+    "ppu": 32,
+    "fw": 70,
+    "fh": 69,
+    "anchor": [
+      34,
+      66
+    ],
+    "dirs": [
+      "s",
+      "se",
+      "e",
+      "ne",
+      "n"
+    ],
+    "anims": {
+      "idle": {
+        "row": 0,
+        "frames": 4,
+        "fps": 6
+      },
+      "walk": {
+        "row": 5,
+        "frames": 6,
+        "fps": 10
+      },
+      "slash": {
+        "row": 10,
+        "frames": 7,
+        "fps": 16,
+        "loop": false,
+        "hit": 4
+      },
+      "chop": {
+        "row": 15,
+        "frames": 7,
+        "fps": 13,
+        "loop": false,
+        "hit": 5
+      },
+      "roll": {
+        "row": 20,
+        "frames": 7,
+        "fps": 14,
+        "loop": false
+      },
+      "hurt": {
+        "row": 25,
+        "frames": 6,
+        "fps": 10,
+        "loop": false
+      }
+    }
+  },
+  "razorback": {
+    "file": "v2_razorback.png",
+    "ppu": 32,
+    "fw": 77,
+    "fh": 66,
+    "anchor": [
+      40,
+      56
+    ],
+    "dirs": [
+      "s",
+      "se",
+      "e",
+      "ne",
+      "n"
+    ],
+    "anims": {
+      "idle": {
+        "row": 0,
+        "frames": 9,
+        "fps": 6
+      },
+      "walk": {
+        "row": 5,
+        "frames": 6,
+        "fps": 9
+      },
+      "windup": {
+        "row": 10,
+        "frames": 7,
+        "fps": 9,
+        "loop": false
+      },
+      "attack": {
+        "row": 15,
+        "frames": 6,
+        "fps": 12,
+        "hit": 2
+      }
+    }
+  }
+}
