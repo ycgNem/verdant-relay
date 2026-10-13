@@ -70,21 +70,21 @@ verdant-relay/
 ### Stage 1: Playable prototype
 - [ ] Game.js loop, pixel renderer, letterbox, scene switching
 - [ ] Title → New Run
-- [ ] One generated exploration map: player move/aim/shoot/dodge, Crawlers, crates → Scrap, one objective, extraction
-- [ ] Defense map with 2 lanes and pads; build Scrap Turrets; spawn a wave; Core takes damage
+- [x] One generated exploration map: player move/aim/shoot/dodge, Crawlers, crates → Scrap, one objective, extraction
+- [x] Defense map with 2 lanes and pads; build Scrap Turrets; spawn a wave; Core takes damage
 - [ ] Win/lose results screen
 
 **Done when** you can start a run, collect, extract, build a turret, start a wave and reach a result with no console errors.
 
 ### Stage 2: Core loop
 - [ ] All 4 resources, 4 starting towers, 3 enemy types
-- [ ] Prep screen (build/upgrade/sell/repair/preview), night progression, resources persist within the run
+- [x] Prep screen (build/upgrade/sell/repair/preview), night progression, resources persist within the run
 - [ ] Meta save (research, best run)
 
 ### Stage 3: Roguelite content
 - [ ] District choice, all 5 districts, room-template generation with loops
 - [ ] Optional objectives and events, skill picks
-- [ ] All 6 towers, full enemy roster, Canopy Colossus
+- [x] All 6 towers, full enemy roster, Canopy Colossus
 - [x] Research unlocks (Collection screen), run summaries, Continue
 
 ### Stage 4: Art and polish
@@ -98,9 +98,9 @@ verdant-relay/
 - [ ] The day/night loop is understandable without outside explanation
 - [ ] Exploration and defense feel mechanically separate
 - [ ] Loot is banked only on extraction; dying costs the carried loot but not the run
-- [ ] Towers can be built only in prep; enemies follow readable lanes; towers hit reliably
-- [ ] Slow, root, burrow, shield and wind-up states are all visible
-- [ ] All 6 nights progress; the boss is telegraphed and beatable
+- [x] Towers can be built only in prep; enemies follow readable lanes; towers hit reliably
+- [x] Slow, root, burrow, shield and wind-up states are all visible
+- [x] All 6 nights progress; the boss is telegraphed and beatable
 - [ ] Win and loss end the run cleanly; a new run resets run data and keeps unlocks
 - [ ] Unlocks survive a browser refresh
 - [ ] No unexplained controls or hidden objectives
