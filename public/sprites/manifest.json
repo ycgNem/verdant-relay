@@ -1,1 +1,254 @@
-{}
+{
+  "cache": {
+    "file": "cache.png",
+    "ppu": 32,
+    "frames": 1,
+    "fps": 6
+  },
+  "cell_cache": {
+    "file": "cell_cache.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 6,
+    "anims": {
+      "off": [
+        0
+      ],
+      "on": [
+        1
+      ]
+    }
+  },
+  "chest": {
+    "file": "chest.png",
+    "ppu": 32,
+    "frames": 1,
+    "fps": 6
+  },
+  "crate": {
+    "file": "crate.png",
+    "ppu": 32,
+    "frames": 1,
+    "fps": 6
+  },
+  "data_log": {
+    "file": "data_log.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 3,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ]
+    },
+    "shadow": 0.18
+  },
+  "fuse": {
+    "file": "fuse.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 4,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ]
+    },
+    "shadow": 0.18
+  },
+  "intel_terminal": {
+    "file": "intel_terminal.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 2,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ]
+    }
+  },
+  "locked_cache": {
+    "file": "locked_cache.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 6,
+    "anims": {
+      "off": [
+        0
+      ],
+      "on": [
+        1
+      ]
+    }
+  },
+  "nest": {
+    "file": "nest.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 2,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ]
+    }
+  },
+  "opened": {
+    "file": "opened.png",
+    "ppu": 32,
+    "frames": 1,
+    "fps": 6
+  },
+  "pick_biofiber": {
+    "file": "pick_biofiber.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 6,
+    "anims": {
+      "idle": [
+        0,
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    "shadow": 0.18
+  },
+  "pick_circuits": {
+    "file": "pick_circuits.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 6,
+    "anims": {
+      "idle": [
+        0,
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    "shadow": 0.18
+  },
+  "pick_intel": {
+    "file": "pick_intel.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 6,
+    "anims": {
+      "idle": [
+        0,
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    "shadow": 0.18
+  },
+  "pick_med": {
+    "file": "pick_med.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 6,
+    "anims": {
+      "idle": [
+        0,
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    "shadow": 0.18
+  },
+  "pick_scrap": {
+    "file": "pick_scrap.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 6,
+    "anims": {
+      "idle": [
+        0,
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    "shadow": 0.18
+  },
+  "power_box": {
+    "file": "power_box.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 6,
+    "anims": {
+      "off": [
+        0
+      ],
+      "on": [
+        1
+      ]
+    }
+  },
+  "pump": {
+    "file": "pump.png",
+    "ppu": 32,
+    "frames": 3,
+    "fps": 6,
+    "anims": {
+      "off": [
+        0
+      ],
+      "on": [
+        1,
+        2
+      ]
+    }
+  },
+  "surge_box": {
+    "file": "surge_box.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "off": [
+        0,
+        1
+      ],
+      "on": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "off": 3
+    }
+  },
+  "terminal": {
+    "file": "terminal.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 3,
+    "anims": {
+      "off": [
+        0,
+        1
+      ],
+      "on": [
+        2,
+        3
+      ]
+    }
+  },
+  "workbench": {
+    "file": "workbench.png",
+    "ppu": 32,
+    "frames": 1,
+    "fps": 6
+  }
+}

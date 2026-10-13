@@ -1,0 +1,62 @@
+{
+  "scrap_turret": {
+    "file": "scrap_turret.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 2,
+      "attack": 10
+    }
+  },
+  "scrap_turret_2": {
+    "file": "scrap_turret_2.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 2,
+      "attack": 10
+    }
+  },
+  "scrap_turret_3": {
+    "file": "scrap_turret_3.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 2,
+      "attack": 10
+    }
+  }
+}

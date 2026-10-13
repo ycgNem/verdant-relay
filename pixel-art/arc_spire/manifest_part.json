@@ -1,0 +1,62 @@
+{
+  "arc_spire": {
+    "file": "arc_spire.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 6,
+      "attack": 10
+    }
+  },
+  "arc_spire_2": {
+    "file": "arc_spire_2.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 6,
+      "attack": 10
+    }
+  },
+  "arc_spire_3": {
+    "file": "arc_spire_3.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "attack": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 6,
+      "attack": 10
+    }
+  }
+}
