@@ -3,7 +3,7 @@
 // Begin Expedition → run.chooseDistrict(k) → explore.
 
 import '../ui/screens.css';
-import { el, bar, resRow, toast } from '../ui/ui.js';
+import { el, bar, resRow, toast, resIcon } from '../ui/ui.js';
 import { showHint } from '../ui/hints.js';
 import { CONFIG, WEAPONS } from '../data/config.js';
 import { DISTRICTS } from '../data/districts.js';
@@ -24,7 +24,7 @@ export function runStatus(game, run) {
     el('div.stat-bar', {}, el('span.small.muted', 'Relay Core'), relay.node),
     el('div.stat-bar', {}, el('span.small.muted', 'Your health'), you.node),
     el('div.stat-meds', { title: `Med kits heal ${CONFIG.player.medHeal}. Carry up to ${CONFIG.player.maxMeds}.` },
-      el('span.small.muted', 'Med kits'), el('b.med', {}, el('span.bad', '✚ '), `${run.meds}/${CONFIG.player.maxMeds}`)),
+      el('span.small.muted', 'Med kits'), el('b.med', {}, resIcon('pick_med'), ` ${run.meds}/${CONFIG.player.maxMeds}`)),
     el('div.stat-res', {}, el('span.small.muted', 'Banked resources'), resRow(run.res)));
 }
 
@@ -86,8 +86,17 @@ export class BriefingScene {
       if (game.scene !== this) return;
       showHint(game, 'briefing_districts',
         'Pick a <b>district</b> for today\'s expedition. Its <b>bonus</b> boosts what you find, but it also adds a <b>threat</b> to tonight\'s wave. Finish the <b>objective</b> for a skill point and a boon for the night.',
-        { pos: 'bottom-right', time: 14 });
+        { pos: 'bottom-right', style: this._hintSpot(), time: 14 });
     }, 500);
+  }
+
+  /** The empty lower part of district card 1: close to what the hint explains, covering nothing. */
+  _hintSpot() {
+    const card = this.game.ui.querySelector('.district-card');
+    if (!card) return null;
+    const ui = this.game.ui.getBoundingClientRect();
+    const r = card.getBoundingClientRect();
+    return { left: `${r.left - ui.left + 12}px`, bottom: `${ui.bottom - r.bottom + 12}px`, maxWidth: `${r.width - 24}px` };
   }
 
   render() {

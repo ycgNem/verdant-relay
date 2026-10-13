@@ -75,14 +75,15 @@ Room types: street, shop, residential, greenhouse, transit platform, utility, co
 | Scrap | Building, repairs, common upgrades |
 | Circuits | Electronic towers and upgrades |
 | Biofiber | Organic towers, traps, healing |
-| Intel | Spent in night prep: Decrypt (1 Intel → +4 Research Data) or Sabotage (2 Intel → tonight's wave 10% smaller, once per night) |
+| Intel | Spent in night prep: Decrypt (1 Intel → +4 Research Data) or Sabotage (3 Intel → tonight's wave 10% smaller, once per night) |
 
-Each resource has its own colour **and** icon. Container yields:
+Each resource has its own colour **and** icon. A thorough, successful expedition in a neutral district banks
+about 90–130 Scrap (rooms hold 1–2 containers; optional rooms 0–1). Container yields:
 
 | Container | Yield | Hold E |
 |---|---|---|
-| Crate | 8–15 Scrap | 0.4 s |
-| Tool chest | 15–25 Scrap, chance of a Circuit or Biofiber | 0.8 s |
+| Crate | 7–14 Scrap | 0.4 s |
+| Tool chest | 14–22 Scrap, chance of a Circuit or Biofiber | 0.8 s |
 | Rare cache | 20–30 Scrap + 1–3 components | 1.2 s |
 | Intel terminal | 1–3 Intel | 1.0 s |
 
@@ -96,6 +97,7 @@ Med kits heal 25. You can carry at most 2. Enemies drop occasional small loot. O
 damage ×0.75 / ×0.85), at most one ranged enemy per room, 2 guards on a guarded cache and 2–3 enemies summoned by a hold.
 From night 3 rooms fill up, and nights 5–6 bring tougher (×1.2–1.3 HP), more numerous and more ranged enemies.
 The objective room is capped (3–5 enemies including guards) and its doors are never choked with brambles.
+Guards stand at least 2 tiles apart (from each other and the room's other enemies), and at most 1 (nights 1–2) or 2 of them are ranged.
 
 **Enemies (day):** Crawler (melee lunge), Skitter (fast melee), Rival Scavenger (ranged, keeps distance),
 Spitter (stationary ranged), Razorback (wind-up, then charge). Every big attack shows a wind-up and telegraph.
@@ -111,7 +113,7 @@ Enemies never spawn on top of the player.
 | Salvage a Power Cell | Crack a guarded cache | Towers fire 10% faster |
 | Clear the Blockage | Kill an elite Razorback (a duel: it stands in the open with 1–2 Crawlers/Skitters, longer charge telegraph, HP ×1.8–2.6 by night) | +25 Scrap |
 
-**Optional objectives:** destroy a nest (wave 15% smaller), rescue an engineer (free +25 repair),
+**Optional objectives:** destroy a nest (wave 15% smaller), rescue an engineer (free +25 repair; +15 Scrap instead if the Relay is full),
 a data log (Intel and research), a locked cache. Some grant a bonus skill point, capped at 2 points per expedition.
 
 **Events** (optional; risk and reward shown before you commit): Abandoned Workshop, Power Surge
@@ -121,7 +123,7 @@ a data log (Intel and research), a locked cache. Some grant a bonus skill point,
 
 | District | Bonus | Tonight's threat |
 |---|---|---|
-| Overgrown Market | Scrap ×1.5, ambushes | Extra Crawler group |
+| Overgrown Market | Scrap ×1.3, ambushes | Extra Crawler group |
 | Flooded Transit Station | Circuits ×2, ranged enemies | Burrowers join |
 | Canopy Greenhouse | Biofiber ×2, spore hazards | Enemies 15% faster |
 | Collapsed Residential | Med kits, many caches | Extra Skitter pack |
@@ -135,7 +137,10 @@ There are 16 fixed build pads beside the lanes. Towers can never block a route.
 **Prep phase:** build, select, upgrade, sell (70% of total Scrap spent, rounded down), set targeting
 (**Lead** = furthest along its lane / **Nearest** to the tower / **Toughest** = most health left), repair
 (25 Scrap → +15 HP; near max you pay only for the HP restored, rounded up), spend Intel (Decrypt: 1 Intel → +4 Research Data;
-Sabotage: 2 Intel → tonight's wave 10% smaller, once per night), read the wave preview, then Start Wave.
+Sabotage: 3 Intel → tonight's wave 10% smaller, once per night), read the wave preview, then Start Wave.
+All wave-size cuts (objective boons, nest, Sabotage) multiply together but never go below 80% of the wave (−20% at most);
+the preview says "(capped at −20%)" when the cap applies, and Sabotage is greyed out once it does.
+Kills pay small fractional bounties (½ Scrap for a Crawler or Skitter, 1½ for a Razorback, 2 for a Ruin Guard), paid as whole Scrap.
 Each tower you already own of a type adds +5 Scrap to the next one of that type (shown on the build card), so
 upgrading and mixing tower types beats spamming one tower. Every prep action re-saves the run.
 
@@ -169,16 +174,20 @@ and the Relay HP it began with (the build can't be changed). Surviving saves the
 | Burrower | Ambusher | Underground for part of its route; bullet towers can't target it there |
 | Seed Carrier | Swarm | Bursts into seedlings unless killed by a blast |
 | Ruin Guard | Elite | Shield halves kinetic damage |
-| Canopy Colossus | Boss | 1000 HP (×1.9 on N6). Loops approach → rooted (telegraph, spawns Crawlers) → charge (wind-up, then fast); has a big HP bar. Reaching the Relay deals 15–40 damage, less the more it is hurt. Night 6 prep hints to set its lane's towers to Toughest |
+| Canopy Colossus | Boss | 1020 HP (×2.5 on N6 = 2550). Loops approach → rooted (telegraph, spawns Crawlers) → charge (wind-up, then fast); has a big HP bar. At 50% health it stops and roars (red ring, shake, toast "The Colossus is enraged!"), turns red and loops faster: 4.5 s approach, faster and longer charges, and each root also spawns 4 Skitters. Reaching the Relay deals 15–40 damage, less the more it is hurt. Night 6 prep hints to set its lane's towers to Toughest |
 
 **Waves** (`src/data/waves.js`):
 - N1: Crawlers + Skitters. N2: first Razorback. N3: Spitters. N4: Burrowers + Seed Carriers.
 - N5: Ruin Guards. N6: Colossus + support.
-- Enemy HP ×1 / 1.1 / 1.3 / 1.7 / 1.9 / 1.9 for N1–N6 (steeper from night 4). Total wave HP is about 360 / 1010 / 2300 / 3870 / 4980 / 6550.
-- Tuned by full-run simulation at realistic income (~90 Scrap, 2 Circuits, 3 Biofiber, 4 Intel per expedition plus bounties):
-  a placed, upgraded mixed build loses Relay HP on nights 4–6 and wins with roughly 35–60 left; spamming level-1 Scrap Turrets
-  falls on night 5–6; one turret on night 1 costs about 40 HP and no towers about 50–80.
+- Enemy HP ×1 / 1.1 / 1.6 / 2.4 / 2.5 / 2.5 for N1–N6 (steep from night 4). Total wave HP is about 360 / 1010 / 2840 / 7350 / 6850 / 7120 (N6 includes the boss); N4 is the hardest regular night.
+- Tuned by full-run simulation of the real defense code (balance round 3) with a well-played reference run: towers funnelled
+  around the Relay, ~90–115 Scrap per expedition, objective boons, six defensive skills (Prepared Defenses, Reinforced Core,
+  Long Sightlines, Rapid Response, Overclock, Efficient Assembly), Mortar and Beacon unlocked. It loses about 10–40 Relay HP
+  on each of nights 4–6 (spread ~0–75) and wins; without unlocks it loses 25–60 a night and the boss sometimes reaches the Relay.
+  A mixed build spread mid-map scrapes through N6; a run without skills falls on N5–N6; level-1 turret spam falls on N4;
+  one turret on night 1 costs about 40 HP and no towers about 50–80.
 - Wave-size boons (and Intel Sabotage) scale the whole wave and remove enemies from the largest groups, so −10% always removes some.
+  Together they are capped at −20%.
 - The wave preview lists the district threat and active boons first, then types and counts per lane.
 
 ## 6. Progression
@@ -201,8 +210,10 @@ and the Relay HP it began with (the build can't be changed). Surviving saves the
 | Decrypted Intel (night prep) | +4 per Intel |
 | Victory | +50 |
 
-**Unlocks** (`src/data/unlocks.js`): Mortar Pod, Pulse Beacon, Scattergun start weapon, +20 starting Scrap,
-starting med kit, a 4th skill option, and a cosmetic for the first win. They add options, never raw power.
+**Unlocks** (`src/data/unlocks.js`): Mortar Pod (80), Pulse Beacon (110), Scattergun start weapon (90; buying it asks
+whether to equip it), +20 starting Scrap (60), starting med kit (55), a 4th skill option (140), and a cosmetic for the first win.
+The 535 Research total takes about 2–3 runs (a win earns ~300). They add options, never raw power.
+Skills that need a locked tower (Watchtower Network → Pulse Beacon) are only offered once it is unlocked.
 
 ## 7. Saving
 
@@ -220,5 +231,6 @@ and don't overwrite the real run save (add `&save=1` to test Continue).
 
 - Every cost is shown before you buy, and an unaffordable build explains why.
 - Resources use colour **and** icon/label, never colour alone.
-- Pause in both modes, 1×/2× speed in defense, and a toggle to turn off screen shake.
+- Pause in both modes, 1×/2× speed in defense, and a toggle to turn off screen shake. Quitting from pause always asks to
+  confirm (in night prep a click on the dimmed map just closes the pause menu), and toast messages stop fading while paused.
 - Objectives always appear on the HUD and map, so nothing important is hidden.

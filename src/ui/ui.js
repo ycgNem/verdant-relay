@@ -58,11 +58,44 @@ export function panel(cls = '', ...children) {
   return el(`div.panel.ui-block${cls ? '.' + cls.split(' ').join('.') : ''}`, {}, ...children);
 }
 
+// Sprite icons for DOM text (resources, med kits). The pick_* sprites are 12×12; they are drawn at a
+// whole multiple of their size (--ri = 12, 24 or 36 px, picked from the stage width) so every texel is
+// a whole number of screen pixels. A ResizeObserver keeps --ri in step with the letterboxed stage.
+const ICON_FILES = { pick_scrap: 'pick_scrap.png', pick_circuits: 'pick_circuits.png', pick_biofiber: 'pick_biofiber.png', pick_intel: 'pick_intel.png', pick_med: 'pick_med.png' };
+(function watchIconScale() {
+  const stage = typeof document !== 'undefined' && document.getElementById('stage');
+  if (!stage || typeof ResizeObserver === 'undefined') return;
+  const set = () => {
+    const u = stage.clientWidth / 960;
+    const s = Math.max(1, Math.round(u * 1.2 * (window.devicePixelRatio || 1))) / (window.devicePixelRatio || 1);
+    stage.style.setProperty('--ri', `${12 * s}px`);
+  };
+  new ResizeObserver(set).observe(stage);
+  set();
+})();
+
+/** A pixel icon span for a sprite key (pick_scrap…) or a resource key ('scrap'). Falls back to the glyph. */
+export function resIcon(key, opts = {}) {
+  const r = RESOURCES[key];
+  const sk = r ? r.icon : key;
+  const file = ICON_FILES[sk];
+  if (!file) return el('span.glyph', r?.glyph || '◆');
+  return el(`span.ricon${opts.cls ? '.' + opts.cls : ''}`, { style: { backgroundImage: `url(${import.meta.env.BASE_URL}sprites/${file})` }, 'aria-hidden': 'true' });
+}
+
+/** HTML string version of resIcon() for innerHTML / floating text. */
+export function resIconHtml(key) {
+  const r = RESOURCES[key];
+  const file = ICON_FILES[r ? r.icon : key];
+  if (!file) return r?.glyph || '';
+  return `<span class="ricon" style="background-image:url(${import.meta.env.BASE_URL}sprites/${file})"></span>`;
+}
+
 /** One resource as icon + amount + label (colour is never the only cue). */
 export function resChip(key, amount, opts = {}) {
   const r = RESOURCES[key];
   return el(`span.res.res-${key}${opts.short ? '.short' : ''}`, { title: r.desc ? `${r.label}: ${r.desc}` : r.label, style: { '--c': r.color } },
-    el('span.glyph', r.glyph), el('b', String(amount)), opts.noLabel ? null : el('span.lbl', opts.short ? r.short : r.label));
+    resIcon(key), el('b', String(amount)), opts.noLabel ? null : el('span.lbl', opts.short ? r.short : r.label));
 }
 
 /** All resources in a row. `res` = { scrap, circuits, ... } */
@@ -98,19 +131,41 @@ export function bar(cls = '', color = 'var(--good)') {
 /** Transient message near the top-centre of the stage. */
 export function toast(ui, text, cls = '', time = 2.4) {
   let host = ui.querySelector('.toasts');
-  if (!host) { host = el('div.toasts'); ui.append(host); }
+  if (!host) { host = el('div.toasts'); ui.append(host); host._queue = []; }
+  // Hosts can cap how many toasts show at once (the night map: 2). Extra ones wait their turn
+  // instead of stacking over the play area; a toast identical to one on screen is dropped.
+  const max = Number(getComputedStyle(host).getPropertyValue('--max-toasts')) || 3;
+  const live = () => [...host.children].filter((c) => !c.classList.contains('out'));
+  if (live().some((c) => c.textContent === String(text))) return null;
   const t = el(`div.toast${cls ? '.' + cls : ''}`, text);
-  host.append(t);
-  // Keep the stack short: the oldest of more than 3 live toasts fades out early.
-  const live = [...host.children].filter((c) => !c.classList.contains('out'));
-  if (live.length > 3) {
-    const old = live[0];
-    old.classList.add('out');
-    setTimeout(() => old.remove(), 400);
-  }
-  setTimeout(() => t.classList.add('out'), time * 1000);
-  setTimeout(() => t.remove(), time * 1000 + 400);
+  const show = () => {
+    if (!host.isConnected) return;
+    host.append(t);
+    // Game-time lifetime: the clock stops while the host is paused (setToastsPaused).
+    let left = time * 1000, last = performance.now();
+    const tick = setInterval(() => {
+      const now = performance.now();
+      if (!host._paused) left -= now - last;
+      last = now;
+      if (!host.isConnected) { clearInterval(tick); return; }
+      if (left > 0) return;
+      clearInterval(tick);
+      t.classList.add('out');
+      setTimeout(() => { t.remove(); const next = host._queue.shift(); if (next) next(); }, 400);
+    }, 100);
+  };
+  if (live().length >= max) {
+    if (host._queue.length >= 4) host._queue.shift();   // a long backlog: drop the stalest message
+    host._queue.push(show);
+  } else show();
   return t;
+}
+
+/** Freeze (or resume) toast timers, e.g. while the game is paused. */
+export function setToastsPaused(ui, paused) {
+  let host = ui.querySelector('.toasts');
+  if (!host) { host = el('div.toasts'); ui.append(host); host._queue = []; }
+  host._paused = !!paused;
 }
 
 /** A modal dialog with a title, body and buttons. Returns the overlay node (remove() to close). */

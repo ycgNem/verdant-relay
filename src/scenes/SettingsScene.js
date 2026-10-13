@@ -93,7 +93,9 @@ export function buildSettingsPanel(game, opts = {}) {
           focusables.push(...Object.values(resBtns));
           return el('div.set-row', {}, el('div.set-label', {}, el('b', 'Resolution'), el('div.small.muted', 'Internal pixel size. Chunky is the intended look.')),
             el('div.set-ctrl.seg', {}, Object.values(resBtns)));
-        })()),
+        })(),
+        toggle('Pixel-perfect scaling', 'Scale the picture by whole numbers only (every pixel the same size), with black borders.',
+          () => !!s().integerScale, (v) => { s().integerScale = v; game.fit(); })),
       sec('Tutorial',
         toggle('Tutorial hints', 'Short tips the first time you see each screen.', () => s().hints, (v) => { s().hints = v; }),
         (() => {

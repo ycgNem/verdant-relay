@@ -13,8 +13,8 @@
 }
 .df-night { line-height: 1.05; min-width: calc(var(--u) * 96); }
 .df-night b { color: var(--amber); font-size: calc(var(--u) * 15); letter-spacing: 0.08em; }
-.df-phase { font-size: calc(var(--u) * 10); color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
-.df-lbl { font-size: calc(var(--u) * 10); color: var(--muted); letter-spacing: 0.08em; margin-right: calc(var(--u) * 4); }
+.df-phase { font-size: max(var(--fmin), calc(var(--u) * 10)); color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.df-lbl { font-size: max(var(--fmin), calc(var(--u) * 10)); color: var(--muted); letter-spacing: 0.08em; margin-right: calc(var(--u) * 4); }
 .df-relay { display: flex; align-items: center; }
 .df-relay .df-lbl { color: var(--accent); }
 .df-relaybar { width: calc(var(--u) * 140); height: calc(var(--u) * 17); }
@@ -58,7 +58,7 @@
 .df-card.disabled:hover { border-color: var(--danger); }
 .df-cardicon { position: relative; flex: none; width: calc(var(--u) * 30); display: flex; justify-content: center; padding-top: calc(var(--u) * 2); }
 .df-hk {
-  position: absolute; left: calc(var(--u) * -2); top: calc(var(--u) * 26); font-size: calc(var(--u) * 9); color: var(--text);
+  position: absolute; left: calc(var(--u) * -2); top: calc(var(--u) * 26); font-size: max(var(--fmin), calc(var(--u) * 9)); color: var(--text);
   background: #262b44; border: 1px solid var(--muted); padding: 0 calc(var(--u) * 3); border-radius: calc(var(--u) * 2);
 }
 .df-cardmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: calc(var(--u) * 1); }
@@ -66,10 +66,10 @@
 .df-cardtop b { font-size: calc(var(--u) * 12.5); white-space: nowrap; }
 .df-cardcost { display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 4); }
 .df-cardcost .cost { font-size: calc(var(--u) * 11); }
-.df-desc { font-size: calc(var(--u) * 10); color: var(--muted); line-height: 1.25; }
+.df-desc { font-size: max(var(--fmin), calc(var(--u) * 10)); color: var(--muted); line-height: 1.25; }
 .df-desc.bad { color: var(--danger); }
-.df-stats { font-size: calc(var(--u) * 10); }
-.df-role { font-size: calc(var(--u) * 9); color: var(--muted); border: 1px solid #5a6988; padding: 0 calc(var(--u) * 4); border-radius: calc(var(--u) * 2); text-transform: uppercase; letter-spacing: 0.05em; }
+.df-stats { font-size: max(var(--fmin), calc(var(--u) * 10)); }
+.df-role { font-size: max(var(--fmin), calc(var(--u) * 9)); color: var(--muted); border: 1px solid #5a6988; padding: 0 calc(var(--u) * 4); border-radius: calc(var(--u) * 2); text-transform: uppercase; letter-spacing: 0.05em; }
 .df-stats { color: #c0cbdc; }
 .df-role { white-space: nowrap; }
 
@@ -78,7 +78,7 @@
   background: #181425; border: calc(var(--u) * 2) solid var(--c); color: var(--c); border-radius: calc(var(--u) * 4);
   font-size: calc(var(--u) * 15); font-weight: bold; line-height: 1;
 }
-.df-glyph.enemy { width: calc(var(--u) * 18); height: calc(var(--u) * 18); font-size: calc(var(--u) * 10); border-radius: 50%; background: var(--c); color: #181425; border-color: #181425; }
+.df-glyph.enemy { width: calc(var(--u) * 18); height: calc(var(--u) * 18); font-size: max(var(--fmin), calc(var(--u) * 10)); border-radius: 50%; background: var(--c); color: #181425; border-color: #181425; }
 .df-ico { flex: none; }
 
 /* tower details */
@@ -95,12 +95,12 @@
 .df-erow { display: flex; align-items: center; gap: calc(var(--u) * 6); font-size: calc(var(--u) * 12); }
 .df-erow.boss { color: #ff4d6d; font-weight: bold; }
 .df-ename { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.df-new { font-size: calc(var(--u) * 8); color: #181425; background: var(--amber); padding: 0 calc(var(--u) * 3); border-radius: calc(var(--u) * 2); font-weight: bold; }
+.df-new { font-size: max(var(--fmin), calc(var(--u) * 8)); color: #181425; background: var(--amber); padding: 0 calc(var(--u) * 3); border-radius: calc(var(--u) * 2); font-weight: bold; }
 .df-threat, .df-boons, .df-mods { padding: calc(var(--u) * 5) calc(var(--u) * 6); border-radius: calc(var(--u) * 3); display: flex; flex-direction: column; gap: calc(var(--u) * 2); line-height: 1.3; }
 .df-threat { background: rgba(162, 38, 51, 0.22); border: 1px solid rgba(228, 59, 68, 0.6); }
 .df-boons { background: rgba(62, 137, 72, 0.22); border: 1px solid rgba(99, 199, 77, 0.6); }
 .df-mods { background: rgba(38, 43, 68, 0.55); border: 1px solid #3a4466; }
-.df-tag { font-size: calc(var(--u) * 10); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: bold; }
+.df-tag { font-size: max(var(--fmin), calc(var(--u) * 10)); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: bold; }
 .df-tag.bad { color: var(--danger); }
 .df-tag.good { color: var(--good); }
 
@@ -138,9 +138,9 @@
 
 /* Intel actions (prep footer): two half-width buttons */
 .df-intel { display: flex; gap: calc(var(--u) * 4); }
-.btn.df-half { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 1); padding: calc(var(--u) * 3) calc(var(--u) * 2); font-size: calc(var(--u) * 10.5); line-height: 1.15; }
+.btn.df-half { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 1); padding: calc(var(--u) * 3) calc(var(--u) * 2); font-size: max(var(--fmin), calc(var(--u) * 10.5)); line-height: 1.15; }
 .btn.df-half > span { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: calc(var(--u) * 3); }
-.btn.df-half .cost { font-size: calc(var(--u) * 10); }
+.btn.df-half .cost { font-size: max(var(--fmin), calc(var(--u) * 10)); }
 .df-arrow { color: var(--amber); white-space: nowrap; }
 
 /* Toasts sit bottom-right of the map (scenery rows below both lanes): never over the boss bar, the side
@@ -155,3 +155,20 @@
   transform-origin: left center; animation-name: df-shrink; animation-timing-function: linear; animation-fill-mode: forwards;
 }
 @keyframes df-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* At most two toasts on the night map at once; the rest queue (ui.js toast). */
+.defense-ui .toasts { --max-toasts: 2; }
+/* Pixel fonts are wider than the old monospace: keep the top bar on one line. */
+.df-phase, .df-lbl { white-space: nowrap; }
+.df-res .resrow { flex-wrap: nowrap; gap: calc(var(--u) * 8); }
+.df-top { gap: calc(var(--u) * 10); }
+
+/* Balance pass: disabled prep buttons (Upgrade, Repair, Intel) keep their cost legible: the frame
+   dims and turns dashed, but the label and cost stay full contrast (shortfalls stay red). */
+.defense-ui .btn.disabled { opacity: 1; filter: none; color: #c0cbdc; background: #1c2036; border-style: dashed; border-color: #5a6988; }
+.defense-ui .btn.disabled:hover { background: #1c2036; }
+.defense-ui .btn.disabled .res b { color: #ead4aa; }
+.defense-ui .btn.disabled .res.short-of b, .defense-ui .btn.disabled .res.short-of .lbl { color: #ff6b6b; }
+/* Build cards: the role chip wraps under the cost on narrow stages instead of being clipped. */
+.df-cardcost { flex-wrap: wrap; row-gap: calc(var(--u) * 2); }
+.df-role { flex: none; }

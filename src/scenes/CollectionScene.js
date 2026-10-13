@@ -199,11 +199,25 @@ export class CollectionScene {
     if (meta.unlocks.includes(k) || meta.research < u.cost) return;
     meta.research -= u.cost;
     meta.unlocks.push(k);
-    if (k === 'scattergun') meta.startWeapon = 'scattergun';
     game.saveMeta();
     game.sfx.play('build');
     toast(game.ui, `Unlocked: ${u.name}`, 'good');
     this.render();
+    // A new start weapon is offered, never silently equipped.
+    if (k === 'scattergun') {
+      const equip = await ask(game, {
+        title: 'Equip the Scattergun?',
+        body: el('p', 'Start your next runs with the Scattergun instead of the Scrap Carbine? You can switch any time under Starting weapon here in the Collection.'),
+        confirm: 'Equip Scattergun', cancel: 'Keep Carbine',
+      });
+      if (game.scene !== this) return;
+      if (equip) {
+        meta.startWeapon = 'scattergun';
+        game.saveMeta();
+        toast(game.ui, 'Scattergun equipped. Toggle it in the Collection.', 'good', 2.4);
+      }
+      this.render();
+    }
   }
 
   // ------------------------------------------------------------------ records

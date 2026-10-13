@@ -16,6 +16,7 @@
 import * as THREE from 'three';
 import { DEFENSE_ENEMIES } from '../data/enemies.js';
 import { DEFENSE } from '../data/waves.js';
+import { JUICE } from '../data/config.js';
 import { setAnim, setFacing, flashVisual, setBaseColor, setOpacity, updateVisual } from '../core/Assets.js';
 
 const SLOW_TINT = '#7d9cff';
@@ -89,21 +90,22 @@ export class DefenseEnemy {
     this.dir = new THREE.Vector3(1, 0, 0);
 
     this.obj = new THREE.Group();
-    this.visual = scene.game.assets.makeVisual(type);
+    this.visual = scene.game.assets.makeVisual(type, { ring: JUICE.hostileRing.color });
     this.obj.add(this.visual);
     this.vis = this.visual.userData.vis;
     this.height = Math.max(0.35, this.vis.height);
     this.hasBurrowAnim = !!this.vis.anims?.burrowed;
 
     // HP bar: two camera-facing sprites (shared materials), drawn on top of everything.
-    const w = this.boss ? 0 : Math.min(1.1, 0.45 + (def.size || 0.6) * 0.5);
+    // Whole-pixel sizes at 32 px per tile: a 4 px back, a 2 px fill with a 1 px border.
+    const w = this.boss ? 0 : Math.round(Math.min(1.1, 0.45 + (def.size || 0.6) * 0.5) * 32) / 32;
     this.barW = w;
     if (w > 0) {
       this.barBg = new THREE.Sprite(scene.hpMats.bg);
-      this.barBg.scale.set(w + 0.06, 0.13, 1);
+      this.barBg.scale.set(w + 2 / 32, 4 / 32, 1);
       this.barFill = new THREE.Sprite(scene.hpMats.good);
       this.barFill.center.set(0, 0.5);
-      this.barFill.scale.set(w, 0.07, 1);
+      this.barFill.scale.set(w, 2 / 32, 1);
       this.barFill.position.x = -w / 2;
       for (const s of [this.barBg, this.barFill]) { s.renderOrder = 50; s.position.y = this.height + 0.22; s.visible = false; }
       this.barFill.renderOrder = 51;
@@ -280,7 +282,7 @@ export class DefenseEnemy {
 
   _updateStatusLook(dt) {
     const rooted = this.rootT > 0;
-    const tint = rooted ? ROOT_TINT : this.slowMult < 0.999 ? SLOW_TINT : '#ffffff';
+    const tint = rooted ? ROOT_TINT : this.slowMult < 0.999 ? SLOW_TINT : this.enraged ? this.def.enrage.tint : '#ffffff';
     if (tint !== this.tint) {
       this.tint = tint;
       setBaseColor(this.visual, tint);
@@ -369,16 +371,37 @@ export class DefenseEnemy {
   // ---------------------------------------------------------------- boss
 
   _bossUpdate(dt, speed) {
-    const P = this.def.phases;
+    const E = this.def.enrage;
     const scene = this.scene;
+    // Second act: once hurt past E.at it roars (never mid-charge), then loops on the enraged values.
+    if (E && !this.enraged && this.hp <= this.maxHp * E.at && ['approach', 'rootTele', 'rooted'].includes(this.state)) {
+      this.cancelTelegraphs();
+      this.enraged = true;
+      this.state = 'roar';
+      this.stateT = E.roar;
+      this.phaseLabel = 'ENRAGED — roaring!';
+      setAnim(this.visual, 'windup', true);
+      this.tele = scene.fx.telegraph(this.pos, { radius: 2.6, color: '#e43b44', time: E.roar });
+      scene.bossCue('enrage');
+    }
+    const P = this.enraged ? (this._enragedP ||= { ...this.def.phases, ...E.phases }) : this.def.phases;
     this.stateT -= dt;
     switch (this.state) {
+      case 'roar':
+        if (this.stateT <= 0) {
+          this.tele = null;
+          this.state = 'approach';
+          this.stateT = P.approach;
+          this.phaseLabel = 'ENRAGED — advancing';
+          setAnim(this.visual, 'walk');
+        }
+        return 0;
       case 'approach':
         setAnim(this.visual, 'walk');
         if (this.stateT <= 0 && this.onField) {
           this.state = 'rootTele';
           this.stateT = P.rootTelegraph;
-          this.phaseLabel = 'Rooting — Crawlers incoming';
+          this.phaseLabel = this.enraged ? 'Rooting — Crawlers + Skitters incoming' : 'Rooting — Crawlers incoming';
           setAnim(this.visual, 'windup', true);
           this.tele = scene.fx.telegraph(this.pos, { radius: P.rootRadius, color: '#63c74d', time: P.rootTelegraph });
           scene.bossCue('root');
@@ -391,7 +414,7 @@ export class DefenseEnemy {
           this.phaseLabel = 'Rooted';
           setAnim(this.visual, 'rooted', true);
           this.tele = null;
-          scene.bossRootSpawn(this, P.rootSpawnType, P.rootSpawn, P.rootRadius);
+          scene.bossRootSpawn(this, P.rootSpawnType, P.rootSpawn, P.rootRadius, this.enraged ? { type: E.packType, count: E.packCount } : null);
         }
         return 0;
       case 'rooted':
@@ -407,7 +430,8 @@ export class DefenseEnemy {
             const d = new THREE.Vector3().subVectors(b, a);
             const l = d.length();
             d.normalize();
-            return scene.fx.telegraph(a, { dir: { x: d.x, z: d.z }, length: Math.max(0.3, l), width: 1.4, color: '#e43b44', time: P.chargeWindup });
+            // fade: the path stays on the ground while the Colossus charges along it
+            return scene.fx.telegraph(a, { dir: { x: d.x, z: d.z }, length: Math.max(0.3, l), width: 1.4, color: '#e43b44', time: P.chargeWindup, fade: P.charge });
           });
           scene.bossCue('charge');
         }
@@ -431,7 +455,7 @@ export class DefenseEnemy {
         if (this.stateT <= 0) {
           this.state = 'approach';
           this.stateT = P.approach;
-          this.phaseLabel = 'Advancing';
+          this.phaseLabel = this.enraged ? 'ENRAGED — advancing' : 'Advancing';
           setAnim(this.visual, 'walk');
         }
         // The charge ignores the slow floor partly: slows still apply but roots never do.
@@ -449,11 +473,18 @@ export class DefenseEnemy {
     this.tele = null;
   }
 
+  /** Hand the sprite over (for the death beat in Fx.corpse); remove() then won't dispose it. */
+  detachVisual() {
+    const v = this.visual;
+    this.visual = null;
+    return v;
+  }
+
   remove() {
     if (this.removed) return;
     this.removed = true;
     this.cancelTelegraphs();
-    this.scene.game.assets.disposeVisual(this.visual);
+    if (this.visual) this.scene.game.assets.disposeVisual(this.visual);
     this.obj.removeFromParent();   // hp bars, vines and mound use shared geometry/materials
   }
 }

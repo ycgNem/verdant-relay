@@ -10,6 +10,8 @@ import { MenuBackdrop } from './MenuBackdrop.js';
 import { startNewRun } from './TitleScene.js';
 import { KeyNav, Bag, sbtn, researchChip } from '../ui/screensKit.js';
 
+const easeOut = (t) => 1 - (1 - t) * (1 - t);
+
 export class ResultsScene {
   constructor(game) {
     this.game = game;
@@ -24,6 +26,7 @@ export class ResultsScene {
     const meta = game.meta;
     const win = !!r.victory;
 
+    // The panel sits on the left third; the diorama (and a sprite tableau) gets the rest of the screen.
     this.backdrop = new MenuBackdrop(game, { mood: win ? 'dawn' : 'fallen', angle: win ? -0.4 : 0.9, speed: 0.03, radius: 13, height: 7.5, shiftX: 0.0 });
     this.three = this.backdrop.scene;
     this.camera = this.backdrop.camera;
@@ -31,13 +34,22 @@ export class ResultsScene {
     game.sfx.play(win ? 'done' : 'core');
 
     const nights = Math.max(0, r.nights | 0);
+    // Numbers count up from 0 once the title has landed (driven by update()).
+    this.counts = [];
+    const count = (to, fmt = (n) => String(n)) => {
+      const n = el('span.count', fmt(0));
+      this.counts.push({ n, to: Math.max(0, Math.round(to)), fmt, t: 0 });
+      return n;
+    };
+    this.countDelay = 0.75;
     const tile = (label, value, sub) => el('div.stat-tile', {}, el('div.small.muted', label), el('div.stat-val', value), sub ? el('div.small.muted', sub) : null);
 
     // Record line.
     const best = meta.best;
     let record;
     if (win && meta.lifetime.victories === 1) record = el('div.record.good', '★ First victory! The Verdant Scarf cosmetic is yours.');
-    else if (win) record = el('div.record.good', `★ Victory #${meta.lifetime.victories}`);
+    else if (win && r.debug) record = el('div.record.muted', 'Debug run: not counted toward records.');
+    else if (win) record = el('div.record.good', meta.lifetime.victories > 1 ? `★ Victory #${meta.lifetime.victories}` : '★ Victory!');
     else if (nights > 0 && nights >= best.nights && !best.victory) record = el('div.record.amber', `★ Best run so far: ${nights} night${nights === 1 ? '' : 's'}`);
     else record = el('div.record.muted', best.victory ? 'Your best: a full victory.' : `Your best: ${best.nights}/${CONFIG.nights} nights.`);
 
@@ -60,23 +72,28 @@ export class ResultsScene {
     const title = sbtn(game, 'Title', () => game.go('title'), { cls: 'big', hotkey: 'Esc' });
     this.buttons = [newRun, coll, title];
 
+    const titleText = win ? 'VICTORY' : 'THE RELAY HAS FALLEN';
+    // Letters drop in one by one (grouped per word so lines only break between words).
+    let li = 0;
+    const headline = el('div.res-headline', {}, titleText.split(' ').map((w) => el('span.res-word', {},
+      [...w].map((ch) => el('span.res-ch', { style: { animationDelay: `${0.05 + li++ * 0.045}s` } }, ch)))));
     const panel = el(`div.panel.ui-block.results-panel${win ? '.win' : '.lose'}`, {},
-      el('div.res-headline', win ? 'VICTORY' : 'THE RELAY HAS FALLEN'),
+      headline,
       el('div.res-sub', win
         ? `The Canopy Colossus is down. Verdant Relay holds through all ${CONFIG.nights} nights.`
         : `The Relay Core went dark on Night ${r.night}. ${nights ? `You held ${nights} night${nights === 1 ? '' : 's'}.` : 'It didn\'t survive the first night.'}`),
       el('div.stat-grid.res-grid', {},
-        tile('Nights survived', `${nights}/${CONFIG.nights}`),
-        tile('Kills', String(r.kills || 0)),
-        tile('Districts visited', String((r.districts || []).length), (r.districts || []).join(', ') || '—'),
-        tile('Research earned', el('span', {}, '+', researchChip(r.research || 0, { noLabel: true })), 'banked permanently'),
-        tile('Total Research', researchChip(meta.research, { noLabel: true }))),
+        tile('Nights survived', el('span', {}, count(nights), `/${CONFIG.nights}`)),
+        tile('Kills', count(r.kills || 0)),
+        tile('Districts visited', count((r.districts || []).length), (r.districts || []).join(', ') || '—'),
+        tile('Research earned', el('span', {}, '+', this._countChip(researchChip(r.research || 0, { noLabel: true }), r.research || 0)), r.debug ? 'debug run: not banked' : 'banked permanently'),
+        tile('Total Research', this._countChip(researchChip(meta.research, { noLabel: true }), meta.research))),
       el('div.peak', {}, el('span.small.muted', 'Peak resources  '), resRow(r.peak || {})),
       record,
       nudge,
       el('div.row.center.res-btns', {}, newRun, coll, title));
 
-    game.ui.append(el('div.screen.scr.results-screen', {}, el('div.scr-dim.light'), panel));
+    game.ui.append(el(`div.screen.scr.results-screen${win ? '.win' : '.lose'}`, {}, el('div.scr-dim.results-dim'), panel, this._tableau(win)));
 
     this.nav = this.bag.add(new KeyNav(game, {
       items: () => this.buttons,
@@ -90,7 +107,54 @@ export class ResultsScene {
     }));
   }
 
-  update(dt) { this.backdrop?.update(dt); }
+  /** Count a research chip's number up with the others. */
+  _countChip(chip, to) {
+    const b = chip.querySelector('b');
+    if (b) this.counts.push({ n: b, to: Math.max(0, Math.round(to)), fmt: (n) => String(n), t: 0 });
+    if (b) b.textContent = '0';
+    return chip;
+  }
+
+  /**
+   * A sprite tableau over the diorama, drawn at a whole-number scale: victory = the scavenger beside
+   * the toppled Colossus at dawn; defeat = the Colossus standing over the dark Relay with its swarm.
+   */
+  _tableau(win) {
+    const game = this.game;
+    const A = game.assets;
+    const u = game.stage.clientWidth / 960;
+    const s = Math.max(1, Math.round(u * 1.5));
+    const spr = (key, frame = 0, cls = '') => {
+      const info = A.spriteInfo(key);
+      if (!info?.tex?.image) return null;
+      const img = info.tex.image;
+      const frames = info.def.frames || 1;
+      const fw = img.width / frames;
+      return el(`span.tab-spr${cls ? '.' + cls : ''}`, {
+        style: {
+          width: `${fw * s}px`, height: `${img.height * s}px`,
+          backgroundImage: `url(${import.meta.env.BASE_URL}sprites/${info.def.file})`,
+          backgroundSize: `${img.width * s}px ${img.height * s}px`, backgroundPosition: `${-frame * fw * s}px 0`,
+        },
+      });
+    };
+    const kids = win
+      ? [spr('colossus', 0, 'toppled'), spr('player', 0, 'hero')]
+      : [spr('relay_core', 0, 'core.dark'), spr('colossus', 0, 'boss'), spr('crawler', 2, 'minion.m1'), spr('crawler', 4, 'minion.m2'), spr('skitter', 2, 'minion.m3')];
+    return el(`div.res-tableau${win ? '.win' : '.lose'}`, { style: { '--s': String(s) } }, kids);
+  }
+
+  update(dt) {
+    this.backdrop?.update(dt);
+    if (this.countDelay > 0) { this.countDelay -= dt; return; }
+    for (const c of this.counts || []) {
+      if (c.t >= 1) continue;
+      const before = Math.round(c.to * easeOut(c.t));
+      c.t = Math.min(1, c.t + dt / Math.min(1.2, 0.35 + c.to * 0.02));
+      const v = Math.round(c.to * easeOut(c.t));
+      if (v !== before || c.t >= 1) { c.n.textContent = c.fmt(v); if (v !== before) this.game.sfx.play('pickup'); }
+    }
+  }
 
   exit() {
     this.bag.dispose();

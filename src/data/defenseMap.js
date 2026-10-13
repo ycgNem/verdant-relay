@@ -33,13 +33,14 @@ export const DEFENSE_MAP = {
   borderTrees: 70,                   // extra trees scattered outside the field
 };
 
-// Camera and lighting for the night map. The camera is fitted at runtime so the whole field fits
-// inside `view` (a rect in 960×540 UI units), leaving room for the HUD bar and the side panel.
+// Camera and lighting for the night map. The night renders at `res` internal px (whatever the base
+// resolution) with an orthographic camera at exactly 32 px per tile (CONFIG.pixel), so the 30×17
+// field is 960×544 px (720×408 UI units). It is centred inside `view` (a rect in 960×540 UI units):
+// from the stage's left edge to the side panel (UI x 722–954), just below the top bar (UI y 6–40),
+// which leaves a ~80-unit strip under the field for hints and toasts.
 export const DEFENSE_VIEW = {
-  fov: 38,
-  pitch: 55,                         // degrees below horizontal
-  view: { x0: 6, y0: 46, x1: 718, y1: 534 },
-  fitMargin: 0.15,                   // tiles of slack around the field
+  res: [1280, 720],
+  view: { x0: 0, y0: 49, x1: 721, y1: 457 },
   spriteTint: '#9fb4e8',
   background: '#0a0d1a',
   light: {

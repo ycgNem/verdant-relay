@@ -3,7 +3,7 @@
 // Works when the player died (nothing banked) or the record is missing.
 
 import '../ui/screens.css';
-import { el } from '../ui/ui.js';
+import { el, resIcon } from '../ui/ui.js';
 import { showHint } from '../ui/hints.js';
 import { CONFIG, RESOURCES, RESOURCE_KEYS } from '../data/config.js';
 import { DISTRICTS } from '../data/districts.js';
@@ -53,9 +53,16 @@ export class SummaryScene {
     if (run.skillPoints > 0) {
       this.bag.timeout(() => {
         if (game.scene !== this) return;
+        // At the bottom of the Expedition column (above its footer), pointing down at the skill cards (it used to
+        // sit top-left, over the loot it wasn't about).
+        const col = this.root.querySelector('.sum-body > :nth-child(2)');
+        const ui = game.ui.getBoundingClientRect();
+        const r = col?.getBoundingClientRect();
+        const u = game.stage.clientWidth / 960;
+        const style = r ? { left: `${r.left - ui.left + 10}px`, bottom: `${ui.bottom - r.bottom + 52 * u}px`, maxWidth: `${r.width - 20}px` } : null;
         showHint(game, 'summary_skills',
-          'You have a <b>skill point</b> to spend. Pick one card (number keys) or save it for later. Skills last for the rest of this run.',
-          { pos: 'top-left', time: 12 });
+          'You have a <b>skill point</b> to spend: pick one of the cards below <b>▼</b> (number keys) or save it for later. Skills last for the rest of this run.',
+          { pos: 'top-left', style, time: 12 });
       }, 600);
     }
   }
@@ -95,7 +102,7 @@ export class SummaryScene {
       const kept = Math.floor(salvaged?.[k] || 0);
       const r = RESOURCES[k];
       return el(`div.loot-row${n ? '' : '.zero'}${extracted ? '' : '.lost'}`, { style: { '--c': r.color }, title: r.desc },
-        el('span.glyph', r.glyph), el('span.lbl', r.label), el('span.grow'),
+        resIcon(k), el('span.lbl', r.label), el('span.grow'),
         extracted ? el('b.good', n ? `+${n}` : '0') : el('b.bad', n ? el('s', String(n)) : '0'),
         kept ? el('b.good', ` +${kept}`) : null,
         el('span.small.muted.loot-now', extracted ? `now ${run.res[k]}` : kept ? 'salvaged' : n ? 'lost' : ''));

@@ -22,7 +22,9 @@ How the engine pieces fit together. `DESIGN.md` says what the game is; `PLAN.md`
 | `game.input` | `isDown(code)`, `wasPressed(code)`, `mouseHeld(b)`, `mouseClicked(b)`, `mouse.{x,y,ndcX,ndcY}` (codes are `KeyboardEvent.code`: `KeyW`, `Space`, `Tab`, `Escape`…) |
 | `game.sfx.play(name)` | synthesized blips (`src/core/Sfx.js`: shoot cutter hit hurt pickup open dodge build sell zap boom core done alarm error) |
 | `game.assets` | sprite/visual factory (below) |
-| `game.setResMult(m)` | render at base×m (night uses 2 → 960×540) |
+| `game.setResMult(m)` | render at base×m (resets on scene switch) |
+| `game.setInternalRes(w, h)` | render at a fixed internal size until the next scene switch (night: `DEFENSE_VIEW.res` = 1280×720) |
+| `game.fit()` | size the stage (exact base aspect; whole-number multiple with `meta.settings.integerScale`) |
 | `game.width/height` | current internal resolution |
 | `game.shake(amp, time)` | screen shake (respects the settings toggle) |
 | `game.flash(color, opacity)` | full-screen flash |
@@ -50,13 +52,17 @@ Module functions (import from `../core/Assets.js`):
 
 `new Fx(game, scene3d, camera)`: `burst(pos, {color, color2, count, speed, up, life, size, gravity})`, `ring(pos, {color, radius, life})`,
 `line(a, b, {color, life, jag})`, `telegraph(pos, {radius | dir,length,width, color, time})` (returns `{cancel()}`),
-`text(pos, str, {color, cls:'big'|'crit', life})`, `update(dt)`, `dispose()`.
+`text(pos, str, {color, cls:'big'|'crit', life, key, value, html})` (pops in, stacks, merges per `key`), `update(dt)`, `dispose()`.
+Juice (tuning in `JUICE`, `src/data/config.js`): `flash`, `muzzle`, `spark`, `light` (pooled point lights), `bolt` (2-px pixel
+lightning), `decal` (dissolving splat), `corpse(visualRoot)` (death beat; Fx disposes the visual), `telegraph({style:'dashed'})`
+for friendly markers, `hitStop(t)` / `slowMo(time, scale)` with `dt *= fx.step(realDt)` in the scene update.
+`makeVisual(key, {ring})` adds the hostile ground ring; `resIcon(key)` / `resIconHtml(key)` (ui.js) draw pick_* sprite icons.
 
 ## UI helpers (`src/ui/ui.js`)
 
 `el('div.cls', attrs, ...children)`, `button(label, onClick, {disabled, reason, cls:'primary'|'danger'|'big', hotkey})`, `panel(cls, ...children)`,
 `resChip(key, amount)`, `resRow(res)`, `costLine(cost, haveRes)` (marks shortfalls red), `bar(cls, color)` → `{node, set(frac, text)}`,
-`toast(game.ui, text, 'good'|'bad'|'amber')`, `modal(game.ui, title, body, buttons)`, `fmtTime(s)`.
+`toast(game.ui, text, 'good'|'bad'|'amber')` (game-time: `setToastsPaused(game.ui, true)` freezes them while paused), `modal(game.ui, title, body, buttons)`, `fmtTime(s)`.
 CSS sizes: `calc(var(--u) * N)` = N px on a 960-wide stage (scales with the window). Shared classes in `src/ui/style.css`.
 
 ## Run (`src/core/Run.js`) — the single source of truth
@@ -70,6 +76,7 @@ Fields: `seed night phase relayHp relayMax playerHp meds weapon res{scrap,circui
   `sellValue(t)`, `sell(t)`, `towerStats(t, relayFrac)` → merged stats with upgrades/skills/boons applied.
 - Relay: `repairAmount()`, `repairCost()` (prorated), `repair()`, `beginPrep()` (one-time per-night bonuses; returns notes), `emergencyPatch()`.
 - Intel (night prep): `decryptCost()`, `decrypt(game)` → Research; `sabotageCost()`, `sabotageBlocked()`, `sabotage()` → wave −10% once per night.
+- Wave size: `waveCountMult()` = `tonight.enemyCount` floored at `CONFIG.waveSizeFloor` (0.8); `waveCutCapped()`.
 - Expedition: `applyExpedition(result, game)` with
   `{ district, extracted, died, carried:{…}, objectiveDone, boon, optionals:[{key,name,flag?,research?}], events:[{key,flag?}], skillPointsEarned, medsLeft, playerHp, kills }`.
   Banks loot only if extracted, awards research, applies boons into `tonight`, stores `lastExpedition`.
@@ -82,7 +89,13 @@ Fields: `seed night phase relayHp relayMax playerHp meds weapon res{scrap,circui
 ## Conventions
 
 - All tuning in `src/data/`. 1 unit = 1 tile, Y up, world X = tile x, world Z = tile y.
-- Camera ~38° FOV pitched ~55°. Day renders at base res (480×270) and shows ~15 tiles across; night uses `setResMult(2)`.
+- Camera: `new PixelCamera({ dist, near, far })` from `src/core/PixelView.js` — orthographic, pitched `CONFIG.pixel.pitch` (55°),
+  1 tile = 32 internal px on the ground. `cam.setSize(w, h)` (Game does it on resolution changes), `cam.setFocus(x, z)` (snapped to 1/32),
+  `cam.placeAt(x, z, px, py)` (world point → internal pixel), `cam.toPixel(v)`. The shell calls `snapForRender`/`restoreSnap` around each
+  draw to put sprites (`isSprite`) and flat decals (`userData.pxSnap`) on whole pixels; `userData.noSnap` opts out.
+  Sprites are upright cards: a sprite `h` tiles tall on screen is `h × CARD_SCALE` (tan 55° ≈ 1.43) world units tall, which is what
+  `vis.height` reports; a world height `y` shows as `y / CARD_SCALE` tiles on screen. Sprite scales must be whole numbers (makeVisual rounds).
+  Day renders at base res (480×270, 15 tiles across); night renders at 1280×720 with the field at 32 px/tile.
 - Lighting: hemisphere + directional, Lambert materials. Day warm; night blue with a cyan point light at the core.
 
 ## Tutorial hints (`src/ui/hints.js`)

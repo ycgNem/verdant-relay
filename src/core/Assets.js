@@ -21,6 +21,7 @@
 
 import * as THREE from 'three';
 import { VISUALS } from '../data/visuals.js';
+import { CARD_SCALE } from './PixelView.js';
 
 const GEOMS = {
   box: (s) => new THREE.BoxGeometry(...s),
@@ -33,27 +34,84 @@ const GEOMS = {
 };
 
 const TINT = new THREE.Color(1, 1, 1);
-let shadowTex = null;
-function getShadowTexture() {
-  if (shadowTex) return shadowTex;
+const PPU = 32;
+
+// Blob shadows are drawn at the sprites' own texel size (1 texel = 1/32 tile), one shared texture +
+// plane per pixel size, so they stay crisp next to the sprites instead of being a stretched 16 px blob.
+const shadowCache = new Map();
+function getShadow(r) {
+  const w = Math.max(4, 2 * Math.round(r * PPU)), h = Math.max(2, 2 * Math.round(r * 0.7 * PPU));
+  const key = `${w}x${h}`;
+  let s = shadowCache.get(key);
+  if (s) return s;
   const c = document.createElement('canvas');
-  c.width = c.height = 16;
+  c.width = w; c.height = h;
   const g = c.getContext('2d');
   // A hard-edged pixel ellipse with a darker core reads better than a soft gradient at low res.
-  for (let y = 0; y < 16; y++) {
-    for (let x = 0; x < 16; x++) {
-      const d = Math.hypot((x + 0.5 - 8) / 8, (y + 0.5 - 8) / 8);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const d = Math.hypot((x + 0.5 - w / 2) / (w / 2), (y + 0.5 - h / 2) / (h / 2));
       if (d < 1) {
-        g.fillStyle = d < 0.6 ? 'rgba(10,8,20,0.55)' : 'rgba(10,8,20,0.35)';
+        g.fillStyle = d < 0.62 ? 'rgba(10,8,20,0.68)' : 'rgba(10,8,20,0.42)';
         g.fillRect(x, y, 1, 1);
       }
     }
   }
-  shadowTex = new THREE.CanvasTexture(c);
-  shadowTex.magFilter = THREE.NearestFilter;
-  shadowTex.minFilter = THREE.NearestFilter;
-  shadowTex.generateMipmaps = false;
-  return shadowTex;
+  const tex = new THREE.CanvasTexture(c);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  const geom = new THREE.PlaneGeometry(w / PPU, h / PPU);
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+  geom.userData.shared = mat.userData.shared = tex.userData.shared = true;
+  s = { geom, mat };
+  shadowCache.set(key, s);
+  return s;
+}
+
+// Hostile marker: a 1-texel elliptical ring on the floor around an enemy's feet (front arc in the
+// marker colour over a dark inner line, back arc darker), drawn at the sprites' texel size so it is
+// as crisp as they are. It keeps enemies from melting into a same-coloured floor.
+const ringCache = new Map();
+function getRing(r, color) {
+  const w = Math.max(10, 2 * Math.round(r * 1.25 * PPU)), h = Math.max(6, 2 * Math.round(r * 0.85 * PPU));
+  const key = `${w}x${h}${color}`;
+  let s = ringCache.get(key);
+  if (s) return s;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  const back = `#${new THREE.Color(color).multiplyScalar(0.6).getHexString()}`;
+  const inside = (x, y, k) => Math.hypot((x + 0.5 - w / 2) / (w / 2 - k), (y + 0.5 - h / 2) / (h / 2 - k)) < 1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const front = y >= h / 2 - 1;
+      if (inside(x, y, 0) && !inside(x, y, 1)) { g.fillStyle = front ? color : back; g.fillRect(x, y, 1, 1); }
+      else if (front && inside(x, y, 1) && !inside(x, y, 2)) { g.fillStyle = '#181425'; g.fillRect(x, y, 1, 1); }
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const geom = new THREE.PlaneGeometry(w / PPU, h / PPU);
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.5, depthWrite: false });
+  geom.userData.shared = mat.userData.shared = tex.userData.shared = true;
+  s = { geom, mat };
+  ringCache.set(key, s);
+  return s;
+}
+function makeRing(r, color) {
+  const { geom, mat } = getRing(r, color);
+  const m = new THREE.Mesh(geom, mat);
+  m.rotation.x = -Math.PI / 2;
+  m.position.y = 0.018;
+  m.renderOrder = 0;
+  m.name = 'ring';
+  m.userData.pxSnap = true;
+  m.userData.ring = true;
+  return m;
 }
 
 export class Assets {
@@ -122,7 +180,9 @@ export class Assets {
   /**
    * Build the visual for `key`. Options:
    *   shadow: false to skip the blob shadow
-   *   scale: uniform scale
+   *   ring: colour of a ground marker ring under the feet (hostile units)
+   *   scale: uniform scale. Sprites only take whole-number scales (1, 2…): a fractional scale would
+   *          draw uneven 1–2 px texels, so it is rounded.
    */
   makeVisual(key, opts = {}) {
     const root = new THREE.Group();
@@ -135,7 +195,7 @@ export class Assets {
     };
     root.userData.vis = vis;
     const sk = this.resolveKey(key);
-    const scale = opts.scale ?? 1;
+    const scale = sk ? Math.max(1, Math.round(opts.scale ?? 1)) : (opts.scale ?? 1);
 
     if (sk) {
       const def = this.manifest[sk];
@@ -156,13 +216,16 @@ export class Assets {
       vis.animFps = def.animFps || {};
       vis.tex = tex;
       vis.width = w;
-      vis.height = def.flat ? 0.05 : h;
+      // Sprites are drawn as upright cards (src/core/PixelView.js): h sprite units tall on screen is
+      // h × CARD_SCALE world units, so labels/bars at vis.height sit on top of the sprite.
+      vis.height = def.flat ? 0.05 : h * CARD_SCALE;
       if (def.flat) {
         const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.5, depthWrite: false });
         const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
         mesh.rotation.x = -Math.PI / 2;
         mesh.position.y = 0.02 + (def.layer || 0) * 0.005;
         mesh.renderOrder = 1;
+        mesh.userData.pxSnap = true;   // PixelCamera aligns its texels to the pixel grid
         vis.body = mesh;
         vis.mats.push(mat);
         root.add(mesh);
@@ -179,6 +242,7 @@ export class Assets {
       }
       const shadowR = def.shadow ?? (def.flat ? 0 : Math.min(1.4, w * 0.36));
       if (opts.shadow !== false && shadowR > 0) root.add(makeShadow(shadowR));
+      if (opts.ring) root.add(makeRing(Math.max(0.3, shadowR), opts.ring));   // hostile marker (enemies)
       setFrame(vis, 0);
     } else {
       const parts = VISUALS[key] || VISUALS[key.replace(/_\d+$/, '')];
@@ -220,9 +284,9 @@ export class Assets {
     if (!root) return;
     this._live.delete(root);
     root.traverse((o) => {
-      if (o.geometry && o.geometry !== shadowGeom) o.geometry.dispose();
-      if (o.material && o.material !== shadowMat) {
-        if (o.material.map && o.material.map !== shadowTex) o.material.map.dispose();
+      if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose();
+      if (o.material && !o.material.userData.shared) {
+        if (o.material.map && !o.material.map.userData.shared) o.material.map.dispose();
         o.material.dispose();
       }
     });
@@ -230,25 +294,25 @@ export class Assets {
   }
 }
 
-let shadowGeom = null;
-let shadowMat = null;
 function makeShadow(r) {
-  if (!shadowGeom) {
-    shadowGeom = new THREE.PlaneGeometry(1, 1);
-    shadowMat = new THREE.MeshBasicMaterial({ map: getShadowTexture(), transparent: true, depthWrite: false });
-  }
-  const m = new THREE.Mesh(shadowGeom, shadowMat);
+  const { geom, mat } = getShadow(r);
+  const m = new THREE.Mesh(geom, mat);
   m.rotation.x = -Math.PI / 2;
   m.position.y = 0.015;
-  m.scale.set(r * 2, r * 1.4, 1);
   m.renderOrder = 0;
   m.name = 'shadow';
+  m.userData.pxSnap = true;
   return m;
 }
 
 function setFrame(vis, f) {
   vis.frame = f;
-  if (vis.tex) vis.tex.offset.x = f / vis.frames;
+  if (!vis.tex) return;
+  // Facing left mirrors the frame through its UVs: THREE.Sprite ignores a negative scale (its shader
+  // uses the matrix column length), so flipping body.scale.x would not mirror anything.
+  const flip = vis.kind === 'sprite' && vis.facingLeft;
+  vis.tex.repeat.x = (flip ? -1 : 1) / vis.frames;
+  vis.tex.offset.x = (f + (flip ? 1 : 0)) / vis.frames;
 }
 
 function applyColor(vis, tint) {
@@ -293,9 +357,9 @@ export function setFacing(root, dx, dz) {
   const vis = root?.userData.vis;
   if (!vis || (dx === 0 && dz === 0)) return;
   if (vis.kind === 'sprite') {
+    const was = vis.facingLeft;
     if (Math.abs(dx) > 0.05) vis.facingLeft = dx < 0;
-    const sx = Math.abs(vis.body.scale.x);
-    vis.body.scale.x = vis.facingLeft ? -sx : sx;
+    if (vis.facingLeft !== was) setFrame(vis, vis.frame);
   } else if (vis.kind === 'model') {
     vis.body.rotation.y = Math.atan2(-dx, -dz);
   }

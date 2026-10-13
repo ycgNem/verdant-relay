@@ -14,6 +14,8 @@ import * as THREE from 'three';
 import { TOWERS } from '../data/towers.js';
 import { DEFENSE_MAP } from '../data/defenseMap.js';
 import { setAnim, setFacing, updateVisual } from '../core/Assets.js';
+import { JUICE } from '../data/config.js';
+import { CARD_SCALE } from '../core/PixelView.js';
 
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
@@ -84,7 +86,7 @@ export class Tower {
     const b = scene.levelBadge?.[this.level];
     if (b) {
       this.badge = new THREE.Sprite(b.mat);
-      this.badge.scale.set(0.6, 0.6 * b.aspect, 1);
+      this.badge.scale.set(b.w / 32, b.h / 32, 1);   // 1 texel = 1 px (32 px per tile)
       this.badge.center.set(0.5, 0);
       this.badge.position.y = scene.padBaseY + this.height + 0.08;
       this.badge.renderOrder = 40;
@@ -92,7 +94,22 @@ export class Tower {
     }
   }
 
-  muzzle(out = new THREE.Vector3()) { return out.set(this.pos.x, this.muzzleY, this.pos.z); }
+  /** The sprite's drawn muzzle / emitter in world space (JUICE.towerMuzzle; mirrors with facing). */
+  muzzle(out = new THREE.Vector3()) {
+    const m = JUICE.towerMuzzle[this.rec.type];
+    const vis = this.visual?.userData.vis;
+    if (!m || !vis || vis.kind !== 'sprite') return out.set(this.pos.x, this.muzzleY, this.pos.z);
+    const sx = vis.facingLeft ? -1 : 1;
+    return out.set(this.pos.x + sx * (m[0] - 16) / 32, this.scene.padBaseY + (m[1] / 32) * CARD_SCALE, this.pos.z + 0.02);
+  }
+
+  /** Muzzle flash matched to the art: a pixel star at the drawn flash + a small light pop. */
+  _flash(color, size = 0.34, light = 1.6) {
+    const m = this.muzzle(new THREE.Vector3());
+    const c = color || JUICE.towerMuzzle[this.rec.type]?.[2] || '#fee761';
+    this.scene.fx.flash(m, { color: c, size, life: 0.06 });
+    if (light) this.scene.fx.light(m, { color: c, intensity: light, distance: 2.6, life: 0.07 });
+  }
 
   /** Effective seconds between attacks after beacon buffs. */
   get cooldown() { return (this.stats?.cooldown || 1) / (1 + this.buffRate); }
@@ -173,6 +190,7 @@ export class Tower {
     const crit = !!s.fifthShotMult && this.shots % 5 === 0;
     const dmg = s.damage * (crit ? s.fifthShotMult : 1);
     const from = this.muzzle(_a);
+    this._flash(crit ? '#feae34' : null, crit ? 0.5 : 0.32, crit ? 2.4 : 1.2);
     scene.fx.burst(from, { color: crit ? '#feae34' : '#fee761', count: crit ? 5 : 2, speed: 1.2, up: 0.5, life: 0.12, size: 0.05, y: 0, gravity: 0 });
     if (this.rec.type === 'scrap_turret') scene.game.sfx.play('shoot');
     scene.projectiles.shoot(from, target, {
@@ -181,6 +199,9 @@ export class Tower {
       canHit: (e) => e.canBeTargetedBy('bullet'),
       onHit: (e) => {
         scene.damage(e, dmg, s.damageType, { crit, source: this });
+        const hp = e.aimPoint(new THREE.Vector3());
+        scene.fx.flash(hp, { color: crit ? '#feae34' : '#ffffff', size: crit ? 0.5 : 0.26, life: 0.05 });
+        if (crit) { scene.fx.spark(hp, { color: '#feae34', count: 6 }); scene.game.shake(JUICE.defense.critShake, 0.08); }
         if (s.slowOnHit) {
           e.applySlow(s.slowOnHit, s.slowTime, 'thorn');
           if (s.slowRadius) {
@@ -215,9 +236,14 @@ export class Tower {
       cur = next;
     }
     let from = this.muzzle(new THREE.Vector3());
+    this._flash('#8ff8ff', 0.42, 0);
+    const B = JUICE.bolt;
     hits.forEach((e, k) => {
       const to = e.aimPoint(new THREE.Vector3());
-      scene.fx.line(from, to, { color: k === 0 ? '#2ce8f5' : '#8ff8ff', life: 0.14, jag: 0.35 });
+      // 2-px pixel bolt (white core) + impact star and a cyan light pop at each link.
+      scene.fx.bolt(from, to, { color: k === 0 ? '#2ce8f5' : '#8ff8ff', life: 0.15, jag: 0.4 });
+      scene.fx.flash(to, { color: '#2ce8f5', size: 0.38, life: 0.07 });
+      if (k === 0) scene.fx.light(to, { color: '#2ce8f5', intensity: B.light, distance: B.lightDist, life: 0.1 });
       scene.fx.burst(to, { color: '#2ce8f5', color2: '#ffffff', count: 3, speed: 1.5, up: 1, life: 0.2, size: 0.05, y: 0 });
       scene.damage(e, s.damage * Math.pow(s.chainFalloff ?? 0.7, k), s.damageType, { source: this });
       if (s.chainSlow) e.applySlow(s.chainSlow, s.slowTime || 0.6, 'arc');
@@ -231,9 +257,11 @@ export class Tower {
     const aim = target.predict(s.flightTime, new THREE.Vector3());
     aim.y = 0;
     const from = this.muzzle(new THREE.Vector3());
+    this._flash('#feae34', 0.36, 1.4);
     scene.fx.burst(from, { color: '#8b9bb4', color2: '#3e8948', count: 5, speed: 1, up: 2, life: 0.35, size: 0.08, y: 0 });
-    // Landing telegraph so the player can read where shells fall.
-    scene.fx.telegraph(aim, { radius: s.blastRadius, color: '#feae34', time: s.flightTime, fade: 0.05 });
+    // Landing marker so the player can read where shells fall. Friendly markers use their own language
+    // (dashed amber ring that closes in, no fill), never the filled discs of enemy threats.
+    scene.fx.telegraph(aim, { radius: s.blastRadius, color: '#feae34', time: s.flightTime, fade: 0.05, style: 'dashed' });
     scene.projectiles.lob(from, aim, {
       time: s.flightTime,
       height: 3,
@@ -249,6 +277,8 @@ export class Tower {
           scene.damage(e, s.damage * k, s.damageType, { source: this });
         }
         scene.fx.ring(p, { color: '#feae34', radius: r, life: 0.35 });
+        scene.fx.flash({ x: p.x, y: 0.3, z: p.z }, { color: '#f77622', size: 0.8, life: 0.08 });
+        scene.fx.light(p, { color: '#f77622', intensity: 2.4, distance: 3.5, life: 0.12 });
         scene.fx.burst(p, { color: '#f77622', color2: '#3e8948', count: 16, speed: 3, up: 3, life: 0.5, size: 0.09, y: 0.05 });
         scene.game.sfx.play('boom');
         // Burning sap is still a blast (so it destroys Seed Carriers' seeds, as the note promises).

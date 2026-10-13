@@ -5,6 +5,7 @@ import { el } from './ui.js';
 
 /**
  * showHint(game, 'explore_move', '<b>WASD</b> to move…', { pos: 'top-left'|'top-right'|'bottom-left'|'bottom-right'|'map-bottom-left'|'center', time: 9 })
+ * opts.style = { left, top, … } places it explicitly (overrides pos).
  * Returns the node, or null if the hint was already seen.
  */
 export function showHint(game, id, html, opts = {}) {
@@ -12,7 +13,9 @@ export function showHint(game, id, html, opts = {}) {
   if (!meta.settings.hints || meta.hints[id]) return null;
   meta.hints[id] = true;
   game.saveMeta();
-  const pos = {
+  // opts.style: explicit placement (e.g. computed from the element the hint talks about), so a
+  // hint never covers its own subject.
+  const pos = opts.style || {
     'top-left': { left: 'calc(var(--u) * 12)', top: 'calc(var(--u) * 70)' },
     'top-right': { right: 'calc(var(--u) * 12)', top: 'calc(var(--u) * 70)' },
     'bottom-left': { left: 'calc(var(--u) * 12)', bottom: 'calc(var(--u) * 80)' },

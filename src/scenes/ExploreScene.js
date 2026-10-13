@@ -12,21 +12,22 @@
 
 import * as THREE from 'three';
 import '../ui/explore.css';
-import { CONFIG, RESOURCES, RESOURCE_KEYS, TOOL } from '../data/config.js';
+import { CONFIG, RESOURCES, RESOURCE_KEYS, TOOL, JUICE } from '../data/config.js';
 import { DISTRICTS, DISTRICT_KEYS } from '../data/districts.js';
 import { PRIMARY, OPTIONAL, EVENTS } from '../data/objectives.js';
 import { EXPLORE_ENEMIES } from '../data/enemies.js';
 import { Run } from '../core/Run.js';
-import { Fx } from '../core/Fx.js';
+import { Fx, glowTexture, beamTextures } from '../core/Fx.js';
+import { PixelCamera } from '../core/PixelView.js';
 import { setAnim, setFacing, updateVisual, setStatus, setOpacity, flashVisual } from '../core/Assets.js';
-import { generateExpedition, FLAG, CELL_W, CELL_H, nightTune, enemyRole } from '../world/ExploreGen.js';
+import { generateExpedition, FLAG, CELL_W, CELL_H, nightTune, enemyRole, nearestOpen } from '../world/ExploreGen.js';
 import { TileWorld } from '../world/TileWorld.js';
 import { moveCircle, lineOfSight } from '../world/collide.js';
 import { Player } from '../entities/Player.js';
 import { ExploreEnemy } from '../entities/ExploreEnemy.js';
 import { Shots } from '../entities/ExploreShots.js';
 import { Minimap, MARKER_STYLE, TILE_LEGEND } from '../ui/Minimap.js';
-import { el, button, bar, toast, modal, fmtTime, resChip } from '../ui/ui.js';
+import { el, button, bar, toast, modal, fmtTime, resChip, resIcon, resIconHtml, setToastsPaused } from '../ui/ui.js';
 import { showHint } from '../ui/hints.js';
 import { ROOM_W, ROOM_H } from '../data/rooms.js';
 import { openSettingsOverlay } from './SettingsScene.js';
@@ -61,10 +62,9 @@ export class ExploreScene {
     this.three = new THREE.Scene();
     this.three.background = new THREE.Color(L.fog);
     this.three.fog = new THREE.Fog(L.fog, 16, 42);
-    const cam = X().camera;
-    this.camera = new THREE.PerspectiveCamera(cam.fov, game.width / game.height, 0.5, 80);
-    const pitch = THREE.MathUtils.degToRad(cam.pitch);
-    this.camOffset = new THREE.Vector3(0, Math.sin(pitch) * cam.dist, Math.cos(pitch) * cam.dist);
+    // Orthographic, 1 tile = 32 internal px (480 px base → 15 tiles across), pixel-snapped.
+    this.camera = new PixelCamera({ dist: X().camera.dist, near: 0.5, far: 80 });
+    this.camera.setSize(game.width, game.height);
     const hemi = new THREE.HemisphereLight(L.sun, L.wall, X().light.hemi);
     const sun = new THREE.DirectionalLight(L.sun, X().light.sun);
     sun.position.set(-6, 10, -4);
@@ -167,7 +167,8 @@ export class ExploreScene {
     for (const t of this.map.things) {
       switch (t.kind) {
         case 'decor': {
-          const v = game.assets.makeVisual(t.key, { scale: t.key.startsWith('tree') ? 0.9 + ((t.tx * 7 + t.ty * 3) % 5) * 0.06 : 1 });
+          // No size jitter on trees: sprites only scale by whole numbers (fractional scales draw mixels).
+          const v = game.assets.makeVisual(t.key);
           v.position.set(t.x, 0, t.z);
           setFacing(v, t.flip ? -1 : 1, 0.01);
           if (v.userData.vis.kind === 'model') v.userData.vis.body.rotation.y = ((t.tx * 13 + t.ty * 7) % 8) * 0.785;
@@ -344,7 +345,7 @@ export class ExploreScene {
 
   _rewardText(reward, flag, sp, research) {
     const parts = [];
-    for (const k of RESOURCE_KEYS) if (reward?.[k]) parts.push(`+${reward[k]} ${RESOURCES[k].glyph} ${RESOURCES[k].label}`);
+    for (const k of RESOURCE_KEYS) if (reward?.[k]) parts.push(`+${reward[k]} ${resIconHtml(k)} ${RESOURCES[k].label}`);
     if (flag) parts.push(flag.text);
     if (research) parts.push(`+${research} Research`);
     if (sp) parts.push('+1 skill point');
@@ -379,9 +380,17 @@ export class ExploreScene {
     prog.rotation.x = -Math.PI / 2;
     prog.position.y = 0.005;
     prog.scale.setScalar(0.001);
-    const colMat = new THREE.MeshBasicMaterial({ color: '#2ce8f5', transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
-    const column = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.75, r * 0.9, 3.2, 24, 1, true), colMat);
-    column.position.y = 1.6;
+    // Light column: a pixel-art beam sprite (scrolling scan bands, dithered fade at the top), additive.
+    const B = JUICE.extraction;
+    const beam = beamTextures();
+    const map = beam.map.clone();
+    map.needsUpdate = true;
+    const colMat = new THREE.SpriteMaterial({ map, alphaMap: beam.alpha, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.85 });
+    const column = new THREE.Sprite(colMat);
+    column.center.set(0.5, 0);
+    column.scale.set(B.width, B.height, 1);
+    column.position.y = -0.03;
+    column.renderOrder = 14;
     column.visible = false;
     g.add(ring, fill, prog, column);
     this.three.add(g);
@@ -497,13 +506,17 @@ export class ExploreScene {
     n.hp -= dmg;
     n.barT = 3;
     flashVisual(n.vis, '#ffffff', 0.09);
-    this.fx.text({ x: n.x, z: n.z }, String(dmg), { color: src === 'cutter' ? '#2ce8f5' : '#ead4aa', y: 1.3, life: 0.6 });
+    this.fx.text({ x: n.x, z: n.z }, String(dmg), { color: src === 'cutter' ? '#2ce8f5' : '#ead4aa', y: (n.vis?.userData.vis.height || 1) + 0.6, life: 0.6, key: n, value: dmg });
+    if (src === 'cutter') this.fx.hitStop(JUICE.hitStop.cutterHit);
     this.fx.burst({ x: n.x, z: n.z }, { color: '#b55088', count: 5, speed: 2, up: 2, life: 0.35 });
     this.game.sfx.play('hit');
     if (n.hp <= 0) {
       n.dead = true;
       this.fx.burst({ x: n.x, z: n.z }, { color: '#b55088', color2: '#ff0044', count: 40, speed: 4, up: 4, life: 0.8, size: 0.1 });
       this.fx.ring({ x: n.x, z: n.z }, { color: '#ff0044', radius: 2.5, life: 0.5 });
+      this.fx.flash({ x: n.x, y: 0.6, z: n.z }, { color: '#ff77a8', size: 1.1, life: 0.08 });
+      this.fx.decal({ x: n.x, z: n.z }, { color: '#4a1f3a', radius: 0.9, life: 8 });
+      this.fx.hitStop(JUICE.hitStop.eliteKill);
       this.game.sfx.play('boom');
       this.game.shake(6, 0.3);
       this._removeVis(n);
@@ -583,9 +596,24 @@ export class ExploreScene {
       const l = Math.hypot(p.vx, p.vz) || 1;
       p.x += (p.vx / l) * o.out; p.z += (p.vz / l) * o.out;
     }
+    // Never inside a wall / solid prop (it would draw on top of the block and be unreachable).
+    const ok = nearestOpen(this.world, p.x, p.z);
+    p.x = ok.x; p.z = ok.z;
     setAnim(v, 'idle');
     v.position.set(p.x, p.y, p.z);
     this.three.add(v);
+    // Ground glow in the resource colour + a periodic sparkle, so grey scrap never hides on grey floors.
+    if (!this._glowMats) this._glowMats = {};
+    const gc = res === 'med' ? '#e43b44' : RESOURCES[res].color;
+    if (!this._glowMats[gc]) this._glowMats[gc] = new THREE.MeshBasicMaterial({ map: glowTexture(), color: gc, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending });
+    if (!this._glowGeom) this._glowGeom = new THREE.PlaneGeometry(20 / 32, 10 / 32);
+    p.glow = new THREE.Mesh(this._glowGeom, this._glowMats[gc]);
+    p.glow.rotation.x = -Math.PI / 2;
+    p.glow.renderOrder = 1;
+    p.glow.userData.pxSnap = true;
+    p.glow.position.set(p.x, 0.016, p.z);
+    this.three.add(p.glow);
+    p.sparkT = Math.random() * JUICE.pickup.sparkleEvery;
     this.pickups.push(p);
     return p;
   }
@@ -618,29 +646,61 @@ export class ExploreScene {
       } else p.magnet = false;
       if (!pl.dead && d < 0.6 && p.age > p.delay * 0.5) {
         if (full) {
-          if (this.medFullT <= 0) { this.fx.text(pl.pos, 'Med kits full', { color: '#8b9bb4', y: 1.5 }); this.medFullT = 2; }
+          if (this.medFullT <= 0) { this.fx.text(pl.pos, 'Med kits full', { color: '#8b9bb4', y: this._headY() }); this.medFullT = 2; }
         } else this._collect(p);
       }
-      p.vis.position.set(p.x, p.y + 0.05 + (p.y === 0 ? Math.abs(Math.sin(p.age * 3 + p.bob)) * 0.06 : 0), p.z);
+      // Idle bob: a whole-pixel step up and down (sprites are snapped to the pixel grid at draw time).
+      const bob = p.y === 0 && Math.sin(p.age * 3.2 + p.bob) > 0 ? (JUICE.pickup.bobPx * 2) / 32 : 0;
+      p.vis.position.set(p.x, p.y + 0.05 + bob, p.z);
+      p.glow.position.set(p.x, 0.016, p.z);
+      p.glow.visible = !p.magnet;
       updateVisual(p.vis, dt);
+      p.sparkT -= dt;
+      if (p.sparkT <= 0 && p.y === 0) {
+        p.sparkT = JUICE.pickup.sparkleEvery * (0.75 + Math.random() * 0.5);
+        this.fx.flash({ x: p.x + (Math.random() - 0.5) * 0.2, y: p.y + 0.25 + Math.random() * 0.15, z: p.z }, { color: '#ffffff', size: 9 / 32, life: 0.09 });
+      }
     }
     for (let i = this.pickups.length - 1; i >= 0; i--) {
-      if (this.pickups[i].dead) { this.game.assets.disposeVisual(this.pickups[i].vis); this.pickups.splice(i, 1); }
+      if (this.pickups[i].dead) { this.game.assets.disposeVisual(this.pickups[i].vis); this.pickups[i].glow.removeFromParent(); this.pickups.splice(i, 1); }
     }
   }
 
+  /** World height just above the player's head (for floating text). */
+  _headY() { return (this.player.vis?.userData.vis.height || 1.6) + 0.3; }
+
   _collect(p) {
     p.dead = true;
+    this.fx.flash({ x: p.x, y: 0.3, z: p.z }, { color: '#ffffff', size: 9 / 32, life: 0.06 });
     if (p.res === 'med') {
       this.player.meds += 1;
-      this.fx.text(this.player.pos, '+1 ✚ Med kit', { color: '#e43b44', y: 1.5 });
+      this.fx.text(this.player.pos, '', { html: `+1 ${resIconHtml('pick_med')} Med kit`, color: '#e43b44', y: this._headY() });
+      this._flyLoot(p, 'pick_med', this.hud.meds);
     } else {
       this.carried[p.res] += p.amount;
       const r = RESOURCES[p.res];
-      this.fx.text(this.player.pos, `+${p.amount} ${r.glyph} ${r.label}`, { color: r.color, y: 1.5 });
-      this._bumpLoot(p.res);
+      this.fx.text(this.player.pos, '', { html: `+${p.amount} ${resIconHtml(p.res)} ${r.label}`, color: r.color, y: this._headY() });
+      this._flyLoot(p, p.res, this.hud.loot[p.res].chip, () => this._bumpLoot(p.res));
     }
     this.game.sfx.play('pickup');
+  }
+
+  /** A pickup icon arcs from the world into its HUD chip, then the chip pulses. */
+  _flyLoot(p, key, target, done) {
+    const ui = this.game.ui;
+    if (!target || !target.isConnected) { done?.(); return; }
+    const sr = this.game.stage.getBoundingClientRect();
+    const from = this.game.project(new THREE.Vector3(p.x, 0.3, p.z), this.camera);
+    const r = target.getBoundingClientRect();
+    const tx = r.left - sr.left + Math.min(r.width * 0.3, 14), ty = r.top - sr.top + r.height / 2;
+    const n = resIcon(key, { cls: 'x-fly' });
+    ui.append(n);
+    const at = (x, y, s) => `translate(${x.toFixed(0)}px, ${y.toFixed(0)}px) translate(-50%, -50%) scale(${s})`;
+    const mx = (from.x + tx) / 2, my = Math.min(from.y, ty) - 40 * (sr.width / 960);
+    const ms = JUICE.pickup.flyTime * 1000;
+    n.style.transform = at(from.x, from.y, 1.3);
+    if (n.animate) n.animate([{ transform: at(from.x, from.y, 1.3) }, { transform: at(mx, my, 1.15), offset: 0.45 }, { transform: at(tx, ty, 0.9) }], { duration: ms, easing: 'ease-in', fill: 'forwards' });
+    setTimeout(() => { n.remove(); done?.(); }, ms);
   }
 
   _ambush(it) {
@@ -738,7 +798,7 @@ export class ExploreScene {
         const b = list[j];
         if (b.dead || b.state === 'spawn') continue;
         const dx = b.x - a.x, dz = b.z - a.z;
-        const r = a.radius + b.radius;
+        const r = a.radius + b.radius + JUICE.separation.pad;
         const d2 = dx * dx + dz * dz;
         if (d2 >= r * r || d2 < 1e-8) continue;
         const d = Math.sqrt(d2);
@@ -746,6 +806,19 @@ export class ExploreScene {
         const ax = a.state === 'attack' ? 0 : 1, bx = b.state === 'attack' ? 0 : 1;
         if (ax) moveCircle(this.world, a, (-dx / d) * push, (-dz / d) * push, a.radius);
         if (bx) moveCircle(this.world, b, (dx / d) * push, (dz / d) * push, b.radius);
+      }
+    }
+    // Keep bodies off the player too (lunges and charges still connect), so he never vanishes under a pack.
+    const pl = this.player;
+    if (!pl.dead) {
+      for (const e of list) {
+        if (e.dead || e.state === 'spawn' || e.state === 'attack') continue;
+        const dx = e.x - pl.pos.x, dz = e.z - pl.pos.z;
+        const r = e.radius + pl.r + JUICE.separation.player;
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= r * r || d2 < 1e-8) continue;
+        const d = Math.sqrt(d2);
+        moveCircle(this.world, e, (dx / d) * (r - d) * 0.6, (dz / d) * (r - d) * 0.6, e.radius);
       }
     }
     for (let i = list.length - 1; i >= 0; i--) {
@@ -1034,25 +1107,29 @@ export class ExploreScene {
     if (p === this.paused) return;
     this.paused = p;
     this.player.reticle.visible = !p;
+    setToastsPaused(this.game.ui, p);
     if (p) {
       const body = el('div.col', {},
         el('p.muted.small', 'WASD move · mouse aim · LMB fire · RMB Pulse Cutter · Space dodge · E interact (hold) · Q med kit · Tab map'),
         el('p', {}, 'Objective: ', el('b.amber', this.objDef.name), this.objectiveDone ? el('span.good', ' (done)') : null));
+      // Resume first and loudest; the destructive choice last (and it still asks to confirm).
       this.pauseModal = modal(this.game.ui, 'Paused', body, [
-        button('Abandon expedition', () => this._confirmAbandon(), { cls: 'danger' }),
-        button('Quit to title', () => this._confirmQuit()),
+        button('Resume', () => this.setPaused(false), { cls: 'primary', hotkey: 'Esc' }),
         button('Settings', () => {
           this.settingsOpen = true;
           this.pauseModal.style.display = 'none';
           openSettingsOverlay(this.game, { onClose: () => { this.settingsOpen = false; if (this.pauseModal) this.pauseModal.style.display = ''; } });
         }),
-        button('Resume', () => this.setPaused(false), { cls: 'primary', hotkey: 'Esc' }),
+        button('Quit to title', () => this._confirmQuit()),
+        button('Abandon expedition', () => this._confirmAbandon(), { cls: 'danger' }),
       ]);
       this.pauseModal.classList.add('x-pause');
+      this.hud.root.classList.add('paused');
       this.game.stage.style.cursor = '';
     } else {
       this.pauseModal?.remove();
       this.pauseModal = null;
+      this.hud.root.classList.remove('paused');
       this.confirmModal?.remove();
       this.confirmModal = null;
       this.game.stage.style.cursor = 'none';
@@ -1087,6 +1164,17 @@ export class ExploreScene {
   toggleMap(open = !this.mapOpen) {
     this.mapOpen = open;
     this.hud.bigmap.style.display = open ? '' : 'none';
+    if (open) {
+      // Draw the big map 1:1 in device pixels (whole pixels per tile), sized to fit ~2/3 of the stage,
+      // so wall lines are even instead of being scaled by a fraction.
+      const dpr = window.devicePixelRatio || 1;
+      const st = this.game.stage;
+      const maxW = st.clientWidth * 0.66 * dpr, maxH = st.clientHeight * 0.62 * dpr;
+      this._bigPpt = Math.max(3, Math.floor(Math.min(maxW / this.map.w, maxH / this.map.h)));
+      const w = (this.map.w * this._bigPpt) / dpr;
+      this.hud.big.style.width = `${w}px`;
+      this.hud.bigmap.querySelector('.x-legend').style.width = `${w}px`;
+    }
   }
 
   toast(text, cls = '', time = 2.4) { toast(this.game.ui, text, cls, time); }
@@ -1110,7 +1198,7 @@ export class ExploreScene {
     if (input.wasPressed('Tab') && !this.paused) this.toggleMap();
     if (this.paused || this.finished) return;
 
-    dt *= this.timeScale;
+    dt *= this.timeScale * this.fx.step(dt);   // hit-stop freezes the simulation for a few frames
     this.time += dt;
     for (let i = this.timers.length - 1; i >= 0; i--) {
       const t = this.timers[i];
@@ -1152,10 +1240,9 @@ export class ExploreScene {
       this.camFocus.x += (tx - this.camFocus.x) * f;
       this.camFocus.z += (tz - this.camFocus.z) * f;
     }
-    // Snap to the texel grid (1/32 tile) so the floor doesn't shimmer while the camera glides.
-    const fx = Math.round(this.camFocus.x * 32) / 32, fz = Math.round(this.camFocus.z * 32) / 32;
-    this.camera.position.set(fx + this.camOffset.x, this.camOffset.y, fz + this.camOffset.z);
-    this.camera.lookAt(fx, 0, fz);
+    // camFocus glides smoothly; the camera itself sits on the texel grid (1/32 tile = 1 px), so the
+    // floor and walls move in whole pixels and never shimmer (sprites are snapped at draw time).
+    this.camera.setFocus(this.camFocus.x, this.camFocus.z);
   }
 
   _roomAt(x, z) {
@@ -1271,7 +1358,7 @@ export class ExploreScene {
         this.sporeT = X().spore.tick;
         if (this.game.run.hasSkill('safe_hands') && !this.safeHandsUsed) {
           this.safeHandsUsed = true;
-          this.fx.text(pl.pos, 'Safe Hands: hazard ignored', { color: '#63c74d', y: 1.6, life: 1.2 });
+          this.fx.text(pl.pos, 'Safe Hands: hazard ignored', { color: '#63c74d', y: this._headY(), life: 1.2 });
           pl.iframes = Math.max(pl.iframes, 0.8);
         } else pl.hurt(X().spore.damage, 0, 0, 'spores');
       }
@@ -1385,7 +1472,14 @@ export class ExploreScene {
       const hold = X().extractHold * (this.game.run.hasSkill('quick_extraction') ? X().quickExtraction : 1);
       zone.prog.scale.setScalar(Math.max(0.001, (it?.progress || 0) / hold));
       zone.ring.rotation.z += dt * (zone.open ? 0.8 : 0.2);
-      zone.column.material.opacity = 0.12 + 0.06 * Math.sin(this.time * 4);
+      if (zone.open) {
+        zone.column.material.map.offset.y = (this.time * JUICE.extraction.scroll) % 1;
+        zone.column.material.opacity = Math.sin(this.time * 5) > 0 ? 0.85 : 0.7;   // two-step flicker
+        if (Math.random() < 0.25) {
+          const a = Math.random() * Math.PI * 2, rr = Math.random() * X().extractRadius * 0.8;
+          this.fx.burst({ x: zone.g.position.x + Math.cos(a) * rr, y: -0.35, z: zone.g.position.z + Math.sin(a) * rr }, { color: '#8ff8ff', color2: '#ffffff', count: 1, speed: 0.1, up: 1.6, gravity: -1.5, life: 1.1, size: 2 / 32 });
+        }
+      }
     }
     // Floating markers over current objective targets.
     for (const f of this.floaters) {
@@ -1430,7 +1524,7 @@ export class ExploreScene {
     const lootRow = el('div.x-lootrow', {}, RESOURCE_KEYS.map((k) => {
       const r = RESOURCES[k];
       const n = el('b', '0');
-      const chip = el(`span.x-res`, { style: { '--c': r.color }, title: `${r.label}: ${r.desc}` }, el('span.glyph', r.glyph), n, el('span.lbl', r.short));
+      const chip = el(`span.x-res`, { style: { '--c': r.color }, title: `${r.label}: ${r.desc}` }, resIcon(k), n, el('span.lbl', r.short));
       h.loot[k] = { n, chip, v: -1 };
       return chip;
     }));
@@ -1466,6 +1560,7 @@ export class ExploreScene {
     h.bigmap = el('div.x-bigmap', { style: { display: 'none' } },
       el('div.x-bigbox.x-panel', {}, el('div.x-bigtitle', {}, el('b', this.D.name), el('span.muted', ` · ${this.objDef.name}`), el('span.muted.x-bigclose', 'Tab / Esc to close')), h.big, legend));
     h.root = el('div.x-hud', {}, h.vignette, tl, loot, timer, tr, h.prompt, h.arrowObj, h.arrowExt, h.bigmap);
+    h.panels = [tl, loot, timer, tr];
     ui.append(h.root);
     this.hud = h;
     this._hudCache = {};
@@ -1496,7 +1591,7 @@ export class ExploreScene {
     h.hp.set(hpf, `${Math.ceil(pl.hp)} / ${pl.maxHp}`);
     this._set('hpc', h.hp.node.firstChild, 'background', hpf > 0.5 ? 'var(--good)' : hpf > 0.25 ? 'var(--amber)' : 'var(--danger)');
     this._set('vig', h.vignette, 'opacity', hpf < 0.3 && !pl.dead ? String(0.35 + 0.25 * Math.sin(this.time * 6)) : '0');
-    this._set('meds', h.meds, 'html', `<span style="color:#e43b44">✚</span> ${pl.meds}/${C.maxMeds} <span class="key">Q</span>`);
+    this._set('meds', h.meds, 'html', `${resIconHtml('pick_med')} ${pl.meds}/${C.maxMeds} <span class="key">Q</span>`);
     const df = 1 - Math.max(0, pl.dodgeCd) / C.dodgeCooldown;
     const cf = 1 - Math.max(0, pl.cutCd) / TOOL.cooldown;
     h.dodge.firstChild.style.width = `${df * 100}%`;
@@ -1576,11 +1671,54 @@ export class ExploreScene {
     this._edgeArrow(h.arrowObj, !this.objectiveDone && !this.ending ? objT : null);
     this._edgeArrow(h.arrowExt, !this.ending ? exit : null);
 
+    this._fadeHudOverThreats();
+
     // Minimap (every other frame is plenty)
     this._miniT = (this._miniT || 0) + 1;
     const state = this._mapState();
     if (this._miniT % 2 === 0) this.minimap.draw(h.mini, 4, state);
-    if (this.mapOpen) this.minimap.draw(h.big, 10, state);
+    if (this.mapOpen) this.minimap.draw(h.big, this._bigPpt || 10, state);
+  }
+
+  /** HUD panels go see-through while an enemy, telegraph or enemy shot is behind them. */
+  _fadeHudOverThreats() {
+    const h = this.hud;
+    this._fadeN = (this._fadeN || 0) + 1;
+    if (this._fadeN % 3) return;
+    const stage = this.game.stage.getBoundingClientRect();
+    if (!this._panelRects || this._fadeN % 30 === 0) {
+      this._panelRects = h.panels.map((p) => {
+        const r = p.getBoundingClientRect();
+        return { l: r.left - stage.left, t: r.top - stage.top, r: r.right - stage.left, b: r.bottom - stage.top };
+      });
+    }
+    const pad = JUICE.hudFade.pad * (stage.width / 960);
+    const pts = [];
+    const v = new THREE.Vector3();
+    for (const e of this.enemies) {
+      if (e.dead || !e.vis) continue;
+      const hh = e.vis.userData.vis.height;
+      pts.push(this.game.project(v.set(e.x, 0, e.z), this.camera), this.game.project(v.set(e.x, hh, e.z), this.camera));
+    }
+    for (const it of this.fx.items) {
+      if (it.kind !== 'tele') continue;
+      const g = it.obj;
+      pts.push(this.game.project(v.set(g.position.x, 0, g.position.z), this.camera));
+      if (it.line) {
+        // far end of a lane telegraph (it lies along the group's local -Z)
+        const len = (it.fill.geometry.parameters?.height || 0) * g.scale.z;
+        v.set(0, 0, -len).applyEuler(g.rotation).add(g.position);
+        pts.push(this.game.project(v, this.camera));
+        v.set(0, 0, -len / 2).applyEuler(g.rotation).add(g.position);
+        pts.push(this.game.project(v, this.camera));
+      }
+    }
+    for (const s of this.shots.list) if (s.team === 'enemy' && !s.dead) pts.push(this.game.project(v.set(s.x, 0.5, s.z), this.camera));
+    h.panels.forEach((panel, i) => {
+      const R = this._panelRects[i];
+      const hit = pts.some((p) => p.x > R.l - pad && p.x < R.r + pad && p.y > R.t - pad && p.y < R.b + pad);
+      panel.classList.toggle('x-fade', hit);
+    });
   }
 
   _nearestExit() {
@@ -1719,6 +1857,9 @@ export class ExploreScene {
       zone.g.removeFromParent();
       zone.g.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
     }
+    for (const m of Object.values(this._glowMats || {})) m.dispose();
+    this._glowGeom?.dispose();
+    for (const zone of [this.extractZone, this.beacon?.zone]) zone?.column.material.map?.dispose();
     this.player.dispose();
     this.shots.dispose();
     this.fx.dispose();

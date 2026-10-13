@@ -5,11 +5,17 @@ Read `DESIGN.md` for what the game is. This file covers how it's built and in wh
 ## Tech
 
 - **Three.js 0.186.1** (pinned) + **Vite 5**, plain JavaScript (ES modules). Run `npm run dev` (port 5190) or `Play.bat`.
-- **Pixel look:** render at 480×270 (Settings option 640×360) with `renderer.setPixelRatio(1)`.
-  Scale the canvas up with CSS `image-rendering: pixelated`, letterboxed to 16:9. Use `NearestFilter` on every texture and turn off mipmaps.
+- **Pixel look:** render at 480×270 (Settings option 640×360) with `renderer.setPixelRatio(1)`; the night map renders at a fixed
+  1280×720 (`game.setInternalRes`). Scale the canvas up with CSS `image-rendering: pixelated`, letterboxed to the exact base aspect;
+  Settings → "Pixel-perfect scaling" (`meta.settings.integerScale`) letterboxes to a whole-number multiple instead.
+  Use `NearestFilter` on every texture and turn off mipmaps.
 - **World units:** 1 unit = 1 tile, Y up, world X = tile x, world Z = tile y. Models face −Z.
   To face direction (dx, dz), set `rotation.y = atan2(-dx, -dz)`.
-- **Camera:** a `PerspectiveCamera` with a narrow FOV (about 35–40°), pitched about 55°, so the angle reads close to top-down.
+- **Camera:** a `PixelCamera` (`src/core/PixelView.js`): an `OrthographicCamera` pitched 55° (`CONFIG.pixel`) with **1 tile = 32 internal px**
+  on the ground in both directions (480 px → 15 tiles across; the 30×17 night field is 960×544 px), so floor tiles and 32-ppu sprites draw 1:1.
+  Sprites are drawn as upright cards (patched sprite shader): same 1:1 pixels on screen, but depth of a vertical card at their feet, so walls
+  behind a sprite never cut it. The camera focus and every sprite/decal are snapped to the pixel grid each draw (no shimmer).
+  Sprite scales are whole numbers only. Wall boxes show a fixed `wallFrontPx` (16) of their camera-facing side.
   It follows the player by day and is fixed over the whole map at night.
 - **Lighting:** a hemisphere light plus one directional light with Lambert materials. Day is warm. Night is blue, with a cyan point light on the core.
 - **Art:** detailed, realistic-feeling pixel sprites drawn as camera-facing billboards (`THREE.Sprite`, `center = (0.5, 0)` so the feet sit on the floor),
@@ -89,7 +95,7 @@ verdant-relay/
 
 ### Stage 4: Art and polish
 - [ ] Detailed sprites for every key in `visuals.js` via `public/sprites/manifest.json`
-- [ ] Hit flashes, particles, telegraphs, screen shake (toggleable)
+- [x] Hit flashes, particles, telegraphs, screen shake (toggleable) — plus hit-stop, death beats, tracers/muzzle flashes, pixel bolts (JUICE in `src/data/config.js`)
 - [ ] Sound effects and music
 - [ ] Tutorial prompts on first run, balance pass, edge cases (generation, saves)
 

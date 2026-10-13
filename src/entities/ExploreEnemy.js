@@ -14,9 +14,10 @@
 // ground warning and can't attack while emerging; nothing spawns near the player (see the scene).
 
 import * as THREE from 'three';
-import { CONFIG } from '../data/config.js';
+import { CONFIG, JUICE } from '../data/config.js';
 import { EXPLORE_ENEMIES } from '../data/enemies.js';
 import { setAnim, setFacing, updateVisual, flashVisual, setBaseColor } from '../core/Assets.js';
+import { shade } from '../core/Fx.js';
 import { moveCircle, lineOfSight, rayLength, castRay } from '../world/collide.js';
 import { nightTune } from '../world/ExploreGen.js';
 
@@ -75,7 +76,9 @@ export class ExploreEnemy {
     this.seenT = 0;
     this.walkT = Math.random() * 10;
 
-    this.vis = this.game.assets.makeVisual(key, { scale });
+    // Sprites stay 1:1 (whole-number scales only, no mixels): an elite reads through its tint and an
+    // amber ground ring instead of being drawn bigger. `scale` still sizes its hitbox.
+    this.vis = this.game.assets.makeVisual(key, { scale: this.game.assets.hasSprite(key) ? 1 : scale, ring: this.elite ? (X.elite.ringColor || JUICE.hostileRing.color) : JUICE.hostileRing.color });
     if (this.elite) setBaseColor(this.vis, X.elite.tint);
     scene.three.add(this.vis);
     // HP bar (two sprites: back + left-anchored fill), drawn on top.
@@ -84,8 +87,10 @@ export class ExploreEnemy {
     this.barFill = new THREE.Sprite(barMaterial(this.elite ? '#feae34' : '#e43b44'));
     this.barBg.center.set(0.5, 0.5);
     this.barFill.center.set(0, 0.5);
-    this.barBg.scale.set(this.barW + 0.08, 0.13, 1);
-    this.barFill.scale.set(this.barW, 0.07, 1);
+    // Whole-pixel bar sizes (32 px per tile): a 4 px back with a 2 px fill and a 1 px border.
+    this.barW = Math.round(this.barW * 32) / 32;
+    this.barBg.scale.set(this.barW + 2 / 32, 4 / 32, 1);
+    this.barFill.scale.set(this.barW, 2 / 32, 1);
     this.barBg.renderOrder = 20; this.barFill.renderOrder = 21;
     scene.three.add(this.barBg, this.barFill);
     if (this.state === 'spawn') {
@@ -104,9 +109,20 @@ export class ExploreEnemy {
     dmg = Math.round(dmg);
     this.hp -= dmg;
     this.barT = 2.5;
+    this.lastHit = { x: dx, z: dz };
     flashVisual(this.vis, '#ffffff', 0.09);
-    this.scene.fx.text({ x: this.x, z: this.z }, String(dmg), { color: src === 'cutter' ? '#2ce8f5' : '#ead4aa', y: this.vis.userData.vis.height + 0.2, life: 0.6 });
-    this.scene.fx.burst({ x: this.x, z: this.z }, { color: this.bloodColor, count: 4, speed: 1.8, up: 1.5, life: 0.3, size: 0.06, vx: dx * 1.5, vz: dz * 1.5 });
+    const fx = this.scene.fx;
+    const H = JUICE.hitStop;
+    const big = this.elite || this.objective;
+    fx.text({ x: this.x, z: this.z }, String(dmg), {
+      color: src === 'cutter' ? '#2ce8f5' : big ? '#feae34' : '#ead4aa', cls: big ? 'elite' : '',
+      y: this.vis.userData.vis.height + 0.55, life: 0.6, key: this, value: dmg,
+    });
+    fx.burst({ x: this.x, z: this.z }, { color: this.bloodColor, count: 4, speed: 1.8, up: 1.5, life: 0.3, size: 0.06, vx: dx * 1.5, vz: dz * 1.5 });
+    // Impact spark on the side the hit came from.
+    fx.flash({ x: this.x - dx * this.radius * 0.6, y: this.vis.userData.vis.height * 0.45, z: this.z - dz * this.radius * 0.6 }, { color: src === 'cutter' ? '#2ce8f5' : '#ffffff', size: big ? 0.42 : 0.3, life: 0.05 });
+    if (src === 'cutter') fx.hitStop(H.cutterHit);
+    else if (dmg >= H.heavyDamage || big) fx.hitStop(H.heavyHit);
     this.game.sfx.play('hit');
     // Knockback (heavier enemies resist; lunges and charges carry through).
     if (this.state !== 'attack') {
@@ -132,10 +148,27 @@ export class ExploreEnemy {
     this.tele?.cancel();
     const fx = this.scene.fx;
     const [c1, c2] = this.def.burst || ['#e43b44', '#733e39'];
-    fx.burst({ x: this.x, z: this.z }, { color: c1, color2: c2, count: 16 + Math.round(this.scale * 8), speed: 3, up: 3, life: 0.6, size: 0.09 });
+    const h = this.vis.userData.vis.height;
+    const kd = this.lastHit || { x: 0, z: 0 };
+    fx.burst({ x: this.x, z: this.z }, { color: c1, color2: c2, count: 16 + Math.round(this.scale * 8), speed: 3, up: 3, life: 0.6, size: 0.09, y: h * 0.4, vx: kd.x * 1.5, vz: kd.z * 1.5 });
+    fx.burst({ x: this.x, z: this.z }, { color: '#ffffff', color2: c1, count: 6, speed: 4.5, up: 2, life: 0.18, size: 2 / 32, y: h * 0.5 });
+    fx.flash({ x: this.x, y: h * 0.5, z: this.z }, { color: c1, size: 0.55 + this.radius, life: 0.07 });
     fx.ring({ x: this.x, z: this.z }, { color: c1, radius: 1 + this.radius, life: 0.35 });
+    fx.decal({ x: this.x + kd.x * 0.15, z: this.z + kd.z * 0.15 }, { color: shade(c2 || c1, JUICE.death.decalShade), radius: (0.3 + this.radius) * JUICE.death.decalSize });
+    // The sprite stays for a beat: flash, squash and pop, slide along the killing hit, fade.
+    for (const s of [this.barBg, this.barFill]) s.visible = false;
+    fx.corpse(this.vis, { dx: kd.x, dz: kd.z });
+    this.vis = null;
     this.game.sfx.play(this.def.size >= 1 ? 'boom' : 'hit');
-    if (this.elite) this.game.shake(6, 0.3);
+    if (this.elite || this.objective) {
+      this.game.shake(7, 0.35);
+      this.game.flash('#ffffff', 0.18);
+      fx.hitStop(JUICE.hitStop.eliteKill);
+      fx.ring({ x: this.x, z: this.z }, { color: '#feae34', radius: 2.6, life: 0.5 });
+      fx.light({ x: this.x, z: this.z }, { color: '#feae34', intensity: 3, distance: 5, life: 0.25 });
+    } else {
+      fx.hitStop(JUICE.hitStop.kill);
+    }
     this.scene.onEnemyKilled(this);
   }
 
@@ -405,17 +438,17 @@ export class ExploreEnemy {
     const show = !this.dead && this.state !== 'spawn' && (this.elite || this.objective || this.barT > 0) && this.hp < this.maxHp + (this.elite ? 1 : 0);
     this.barBg.visible = this.barFill.visible = show;
     if (show) {
-      const hy = vis.height + 0.25;
+      const hy = vis.height + 0.2;
       this.barBg.position.set(this.x, hy, this.z);
       const f = Math.max(0, this.hp / this.maxHp);
       this.barFill.scale.x = Math.max(0.001, this.barW * f);
-      this.barFill.position.set(this.x - this.barW / 2, hy, this.z);
+      this.barFill.position.set(this.barBg.position.x - this.barW / 2, this.barBg.position.y, this.barBg.position.z);
     }
   }
 
   dispose() {
     this.tele?.cancel();
-    this.game.assets.disposeVisual(this.vis);
+    if (this.vis) this.game.assets.disposeVisual(this.vis);
     for (const s of [this.barBg, this.barFill]) { s.removeFromParent(); s.material.dispose(); }
   }
 }

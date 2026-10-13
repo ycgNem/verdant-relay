@@ -410,6 +410,7 @@ function buildMap(rng, ctx) {
     return rng.weighted(w);
   };
   const countEnemy = (r, key) => { const c = countOf(r); c.total++; c[enemyRole(key)]++; };
+  const guardSpots = [];   // guard tiles: other enemies in the objective room keep their distance
 
   // ---- primary objective
   const objective = PRIMARY[ctx.objective];
@@ -438,15 +439,35 @@ function buildMap(rng, ctx) {
     }
   });
 
+  // Guards ring the prop, spread out (at least X.guardSpacing tiles apart, so they never stack into
+  // one firing squad), within the room's night caps: objectiveCap in total and at most
+  // byNight.guardRanged ranged guards (Spitters / Rival Scavengers).
   function placeGuards(r, prop, n) {
+    const spacing = X.guardSpacing || 2;
+    const placed = [];
+    const spread = (x, y) => placed.every((q) => Math.hypot(x - q[0], y - q[1]) >= spacing);
+    if (r.role === 'objective') n = Math.min(n, nightTune('objectiveCap', night) - countOf(r).total);
+    let ranged = 0;
     for (let g = 0; g < n; g++) {
-      const key = pickEnemyFor(r, district.enemies);
+      let weights = district.enemies;
+      if (ranged >= nightTune('guardRanged', night)) {
+        weights = Object.fromEntries(Object.entries(weights).filter(([k]) => enemyRole(k) !== 'ranged'));
+      }
+      const key = pickEnemyFor(r, weights);
       if (!key) break;
-      const p = randomValid(r, false, (x, y) => {
+      const ring = (x, y) => {
         const d = Math.hypot(x - prop.tx, y - prop.ty);
-        return d >= 1.5 && d <= 3.6;
-      }) || randomValid(r, false);
-      if (p) { put({ kind: 'enemy', key, guard: true, room: r.id, solid: false }, p); countEnemy(r, key); }
+        return d >= 1.5 && d <= 3.6 && spread(x, y);
+      };
+      const p = randomValid(r, false, ring)
+        || randomValid(r, false, (x, y) => Math.hypot(x - prop.tx, y - prop.ty) <= 5 && spread(x, y))
+        || randomValid(r, false, spread);
+      if (!p) break;   // no room left to spread out: fewer guards rather than a pile-up
+      put({ kind: 'enemy', key, guard: true, room: r.id, solid: false }, p);
+      countEnemy(r, key);
+      placed.push(p);
+      guardSpots.push(p);
+      if (enemyRole(key) === 'ranged') ranged++;
     }
   }
 
@@ -528,10 +549,12 @@ function buildMap(rng, ctx) {
       // The elite's room already has its support; other objective rooms share a cap with the guards.
       count = eliteRoom(r) ? 0 : Math.min(count, nightTune('objectiveCap', night) - countOf(r).total);
     }
+    const apart = (x, y) => farFromStart(x, y)
+      && guardSpots.every((q) => Math.hypot(x - q[0], y - q[1]) >= (X.guardSpacing || 2));
     for (let n = 0; n < count; n++) {
       const key = pickEnemyFor(r, district.enemies);
       if (!key) break;
-      const p = takeSpot(r, 'e', false, farFromStart);
+      const p = takeSpot(r, 'e', false, r.role === 'objective' ? apart : farFromStart);
       if (p) { put({ kind: 'enemy', key, room: r.id, solid: false }, p); countEnemy(r, key); }
     }
   }
@@ -593,6 +616,32 @@ function buildMap(rng, ctx) {
 }
 
 // ------------------------------------------------------------------ loot
+
+/**
+ * Placement validation for runtime loot: a point that sits in a solid tile (a container against a
+ * wall spilling into it, a drop from an enemy pinned to a wall) is moved to the nearest walkable tile,
+ * keeping the sub-tile offset toward the original point so pickups don't line up on tile centres.
+ * `world` needs solidAt(tx, ty). Returns { x, z } (the input point when it is already open).
+ */
+export function nearestOpen(world, x, z, maxR = 3, margin = 0.2) {
+  const tx = Math.floor(x), ty = Math.floor(z);
+  if (!world.solidAt(tx, ty)) return { x, z };
+  let best = null, bd = Infinity;
+  for (let r = 1; r <= maxR && !best; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r || world.solidAt(tx + dx, ty + dy)) continue;
+        const cx = tx + dx + 0.5, cz = ty + dy + 0.5;
+        const d = (cx - x) ** 2 + (cz - z) ** 2;
+        if (d < bd) { bd = d; best = { x: cx, z: cz }; }
+      }
+    }
+  }
+  if (!best) return { x, z };
+  // Nudge from the tile centre toward the original point, staying `margin` inside the open tile.
+  const lim = 0.5 - margin;
+  return { x: best.x + Math.max(-lim, Math.min(lim, x - best.x)), z: best.z + Math.max(-lim, Math.min(lim, z - best.z)) };
+}
 
 export function stochasticRound(rng, v) {
   const f = Math.floor(v);

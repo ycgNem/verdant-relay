@@ -57,7 +57,7 @@ export const OPTIONAL = {
   },
   survivor: {
     name: 'Rescue the stranded engineer', prop: 'survivor', type: 'activate', hold: 2, skillPoint: true,
-    reward: {}, flag: { text: 'Engineer rescued: free Relay repair (+25) tonight.', freeRepair: 25 },
+    reward: {}, flag: { text: 'Engineer rescued: free Relay repair (+25) tonight, or +15 Scrap if the Relay is full.', freeRepair: 25 },
   },
   data_log: {
     name: 'Recover a district data log', prop: 'data_log', type: 'pickup', skillPoint: true,

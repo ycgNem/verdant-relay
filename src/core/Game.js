@@ -6,14 +6,21 @@
 // UI lives in `game.ui` (a DOM overlay); it is cleared on every scene switch.
 //
 // Resolution: the base size comes from settings (480×270 "chunky" or 640×360 "sharp"). A scene may
-// call `game.setResMult(2)` to render at twice that (the night map shows the whole field, so it
-// needs more pixels to keep sprites at roughly one texel per screen pixel).
+// call `game.setResMult(m)` to render at m × that, or `game.setInternalRes(w, h)` for a fixed size
+// (the night map renders at 1280×720 so the whole field fits at exactly 32 px per tile). Both reset
+// on every scene switch. 3D scenes use a PixelCamera (src/core/PixelView.js): 1 tile = 32 internal px.
+//
+// Stage: the canvas is CSS-scaled (nearest-neighbour) to fill the window at the base aspect. With
+// Settings → "Pixel-perfect scaling" (meta.settings.integerScale) it is letterboxed to the largest
+// whole-number multiple of the internal resolution instead (falling back to a multiple of the base
+// resolution when the window is smaller than the internal resolution).
 
 import * as THREE from 'three';
 import { CONFIG } from '../data/config.js';
 import { Input } from './Input.js';
 import { Sfx } from './Sfx.js';
 import { loadMeta, saveMeta } from './Save.js';
+import './PixelView.js';   // installs the upright-card sprite shader (no-op for other cameras)
 
 const MAX_DT = 1 / 20;
 
@@ -38,6 +45,7 @@ export class Game {
     this.scene = null;
     this.sceneName = null;
     this.resMult = 1;
+    this.resOverride = null;         // [w, h] from setInternalRes, or null
     this.time = 0;                   // seconds since boot (real time, unaffected by pause)
     this._shake = { t: 0, amp: 0 };
     this._raycaster = new THREE.Raycaster();
@@ -62,6 +70,7 @@ export class Game {
     }
     this.ui.innerHTML = '';
     this.ui.className = '';
+    this.resOverride = null;
     this.setResMult(1);
     this.stage.style.cursor = '';
     this.scene = new Cls(this);
@@ -83,8 +92,17 @@ export class Game {
         } catch (e) {
           console.error(e);
         }
-        if (this.scene && this.scene.three && this.scene.camera) {
-          this.renderer.render(this.scene.three, this.scene.camera);
+        const sc = this.scene;
+        if (sc && sc.three && sc.camera) {
+          const cam = sc.camera;
+          if (cam.isPixelCamera) {
+            // Align every sprite / decal to the pixel grid for this draw (restored right after).
+            cam.snapForRender(sc.three);
+            this.renderer.render(sc.three, cam);
+            cam.restoreSnap();
+          } else {
+            this.renderer.render(sc.three, cam);
+          }
         }
       }
       this._updateShake(real);
@@ -97,33 +115,62 @@ export class Game {
   // ---------------------------------------------------------------- display
 
   get baseRes() { return CONFIG.resolutions[this.meta.settings.resolution] || CONFIG.resolutions.chunky; }
-  get width() { return this.baseRes[0] * this.resMult; }
-  get height() { return this.baseRes[1] * this.resMult; }
+  get width() { return this.resOverride ? this.resOverride[0] : this.baseRes[0] * this.resMult; }
+  get height() { return this.resOverride ? this.resOverride[1] : this.baseRes[1] * this.resMult; }
 
   setResMult(m) {
     this.resMult = m;
+    this._applyRes();
+  }
+
+  /** Render at a fixed internal size (until the next scene switch), e.g. 1280×720 for the night map. */
+  setInternalRes(w, h) {
+    this.resOverride = [w, h];
+    this._applyRes();
+  }
+
+  _applyRes() {
     this.renderer.setSize(this.width, this.height, false);
-    if (this.scene?.camera?.isPerspectiveCamera) {
-      this.scene.camera.aspect = this.width / this.height;
-      this.scene.camera.updateProjectionMatrix();
+    const cam = this.scene?.camera;
+    if (cam?.isPixelCamera) cam.setSize(this.width, this.height);
+    else if (cam?.isPerspectiveCamera) {
+      cam.aspect = this.width / this.height;
+      cam.updateProjectionMatrix();
     }
     this.fit();
   }
 
-  /** Letterbox the stage to 16:9 at the largest size that fits the window. */
+  /**
+   * Size the stage: the base aspect exactly (whole CSS px, W:H = base W:H), as large as the window
+   * allows — or, with integerScale, a whole-number multiple of the internal resolution.
+   */
   fit() {
     const [W, H] = this.baseRes;
-    const s = Math.min(window.innerWidth / W, window.innerHeight / H);
-    this.stage.style.width = `${Math.floor(W * s)}px`;
-    this.stage.style.height = `${Math.floor(H * s)}px`;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    let sw, sh;
+    if (this.meta.settings.integerScale) {
+      // The canvas is width × height; scale it by a whole number k so each texel is k×k screen px.
+      const k = Math.floor(Math.min(vw / this.width, vh / this.height));
+      if (k >= 1) { sw = this.width * k; sh = this.height * k; }
+      else {
+        const kb = Math.max(1, Math.floor(Math.min(vw / W, vh / H)));
+        sw = W * kb; sh = H * kb;
+      }
+    } else {
+      // Largest n with n·(W/g) × n·(H/g) fitting (g = gcd), so the stage keeps the exact aspect.
+      const g = gcd(W, H), uw = W / g, uh = H / g;
+      const n = Math.max(1, Math.floor(Math.min(vw / uw, vh / uh)));
+      sw = uw * n; sh = uh * n;
+    }
+    this.stage.style.width = `${sw}px`;
+    this.stage.style.height = `${sh}px`;
     // UI scales with the stage so layouts look the same at every window size.
-    this.stage.style.setProperty('--u', `${(Math.floor(W * s) / 960).toFixed(4)}px`);
+    this.stage.style.setProperty('--u', `${(sw / 960).toFixed(4)}px`);
   }
 
   applySettings() {
     this.sfx.volume = this.meta.settings.volume;
-    this.renderer.setSize(this.width, this.height, false);
-    this.fit();
+    this._applyRes();   // resolution / pixel-perfect scaling may have changed
   }
 
   saveMeta() { saveMeta(this.meta); }
@@ -161,7 +208,8 @@ export class Game {
 
   // ---------------------------------------------------------------- helpers
 
-  /** Where the mouse ray hits the horizontal plane y = h (world). Returns a Vector3 or null. */
+  /** Where the mouse ray hits the horizontal plane y = h (world). Returns a Vector3 or null.
+   *  (Raycaster.setFromCamera handles both perspective and orthographic cameras.) */
   mouseOnPlane(camera, h = 0, out = new THREE.Vector3()) {
     this._raycaster.setFromCamera({ x: this.input.mouse.ndcX, y: this.input.mouse.ndcY }, camera);
     this._plane.constant = -h;
@@ -178,3 +226,5 @@ export class Game {
     };
   }
 }
+
+function gcd(a, b) { while (b) [a, b] = [b, a % b]; return a; }

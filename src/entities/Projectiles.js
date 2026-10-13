@@ -6,15 +6,41 @@
 // Impact effects go through the shared Fx instance (src/core/Fx.js).
 
 import * as THREE from 'three';
+import { JUICE } from '../data/config.js';
+import { canvasTex } from '../core/Fx.js';
 
-// Looks: unlit (MeshBasic) so they read at night. Sizes are in tiles.
+// Looks: unlit so they read at night. Streaks are camera-facing tracer quads (`w` texels wide, `len`
+// tiles long) with a bright head pixel; shells and sap are small pixel sprites (`px` texels).
 const LOOKS = {
-  bullet: { shape: 'box', size: [0.1, 0.1, 0.26], color: '#fee761' },
-  crit: { shape: 'box', size: [0.18, 0.18, 0.4], color: '#feae34' },
-  thorn: { shape: 'box', size: [0.06, 0.06, 0.24], color: '#99e550' },
-  shell: { shape: 'sph', size: [0.16], color: '#3e8948' },
-  sap: { shape: 'sph', size: [0.14], color: '#ff4d8d' },
+  bullet: { streak: true, w: 2, len: 0.42, color: '#fee761', head: '#ffffff' },
+  crit: { streak: true, w: 3, len: 0.62, color: '#feae34', head: '#ffffff' },
+  thorn: { streak: true, w: 2, len: 0.3, color: '#99e550', head: '#e4ffb0' },
+  shell: { sprite: 'shell', px: 9 },
+  sap: { sprite: 'sap', px: 8 },
 };
+
+/** Pixel sprites for lobbed shots: a green seed pod with a dark outline, a pink sap glob. */
+function lobTexture(kind) {
+  const N = kind === 'shell' ? 9 : 8;
+  const c = document.createElement('canvas');
+  c.width = c.height = N;
+  const g = c.getContext('2d');
+  const [body, hi, lo] = kind === 'shell' ? ['#3e8948', '#63c74d', '#265c42'] : ['#ff4d8d', '#ff9ec4', '#b55088'];
+  const r = N / 2;
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const d = Math.hypot(x + 0.5 - r, y + 0.5 - r);
+      if (d > r) continue;
+      let col = d > r - 1 ? '#181425' : body;
+      if (d <= r - 1 && x + y >= N + 1) col = lo;
+      if (d <= r - 1 && x + y <= N / 2) col = hi;
+      if (kind === 'shell' && d <= r - 1 && y === Math.floor(r) && x > 1 && x < N - 2 && x % 2) col = '#feae34';   // glowing seed band
+      g.fillStyle = col;
+      g.fillRect(x, y, 1, 1);
+    }
+  }
+  return canvasTex(c);
+}
 
 const _v = new THREE.Vector3();
 
@@ -38,7 +64,7 @@ function makeEmberTexture() {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-const _w = new THREE.Vector3();
+const _t = new THREE.Vector3();
 
 export class Projectiles {
   /** scene: the DefenseScene (needs .three, .fx, .enemies, .damage(enemy, amount, type, opts)). */
@@ -50,10 +76,15 @@ export class Projectiles {
     this.geoms = {};
     this.mats = {};
     for (const [k, l] of Object.entries(LOOKS)) {
-      this.geoms[k] = l.shape === 'box' ? new THREE.BoxGeometry(...l.size) : new THREE.SphereGeometry(l.size[0], 6, 4);
-      this.mats[k] = new THREE.MeshBasicMaterial({ color: l.color });
+      if (l.streak) {
+        this.mats[k] = new THREE.MeshBasicMaterial({ color: l.color, side: THREE.DoubleSide, depthWrite: false, depthTest: false, transparent: true });
+        this.mats[k + '_head'] = new THREE.SpriteMaterial({ color: l.head, depthWrite: false, depthTest: false });
+      } else {
+        this.mats[k] = new THREE.SpriteMaterial({ map: lobTexture(l.sprite), alphaTest: 0.5, transparent: true });
+      }
       this.pools[k] = [];
     }
+    this.streakGeom = new THREE.PlaneGeometry(1, 1);
     // Burning sap patch: a flat disc with a speckled pixel ember texture (alpha-tested, flickers).
     this.zoneGeom = new THREE.CircleGeometry(1, 20);
     this.zoneTex = makeEmberTexture();
@@ -63,15 +94,44 @@ export class Projectiles {
   }
 
   _mesh(look) {
-    const m = this.pools[look].pop() || new THREE.Mesh(this.geoms[look], this.mats[look]);
+    const L = LOOKS[look];
+    let m = this.pools[look].pop();
+    if (!m) {
+      if (L.streak) {
+        m = new THREE.Mesh(this.streakGeom, this.mats[look]);
+        m.matrixAutoUpdate = false;
+        m.renderOrder = 34;
+        const head = new THREE.Sprite(this.mats[look + '_head']);
+        head.scale.set((L.w + 1) / 32, (L.w + 1) / 32, 1);
+        head.renderOrder = 35;
+        m.userData.head = head;
+      } else {
+        m = new THREE.Sprite(this.mats[look]);
+        m.scale.set(L.px / 32, L.px / 32, 1);
+      }
+    }
     m.visible = true;
     this.scene.three.add(m);
+    if (m.userData.head) this.scene.three.add(m.userData.head);
     return m;
+  }
+
+  /** Streak from the shot's start (or `len` behind its head) to its head. */
+  _streak(p) {
+    const L = LOOKS[p.look];
+    const head = p.pos;
+    _t.subVectors(p.start, head);
+    const back = Math.min(L.len, _t.length());
+    if (back > 1e-4) _t.multiplyScalar(back / _t.length()); else _t.set(-0.01, 0, 0);
+    _t.add(head);
+    this.scene.fx.orientStreak(p.mesh, _t, head, (L.w / 32));
+    p.mesh.userData.head.position.copy(head);
   }
 
   _release(p) {
     p.mesh.visible = false;
     p.mesh.removeFromParent();
+    p.mesh.userData.head?.removeFromParent();
     this.pools[p.look].push(p.mesh);
     if (p.shadow) { p.shadow.removeFromParent(); p.shadow = null; }   // geometry/material are shared
   }
@@ -83,11 +143,12 @@ export class Projectiles {
   shoot(from, target, opts) {
     const look = opts.look || 'bullet';
     const mesh = this._mesh(look);
-    mesh.position.copy(from);
-    this.list.push({
-      kind: 'shot', look, mesh, target, aim: target.aimPoint(new THREE.Vector3()),
+    const p = {
+      kind: 'shot', look, mesh, target, aim: target.aimPoint(new THREE.Vector3()), pos: from.clone(), start: from.clone(),
       speed: opts.speed || 12, onHit: opts.onHit, canHit: opts.canHit, tracking: true,
-    });
+    };
+    this._streak(p);
+    this.list.push(p);
   }
 
   /** Parabolic lob from `from` to ground point `to`. opts: { time, height, look, onLand(point) }. */
@@ -127,7 +188,7 @@ export class Projectiles {
           if (tg.dead || tg.removed || (p.canHit && !p.canHit(tg))) p.tracking = false;
           else tg.aimPoint(p.aim);
         }
-        _v.subVectors(p.aim, p.mesh.position);
+        _v.subVectors(p.aim, p.pos);
         const d = _v.length();
         const step = p.speed * dt;
         if (d <= Math.max(step, 0.18)) {
@@ -138,16 +199,14 @@ export class Projectiles {
           continue;
         }
         _v.multiplyScalar(step / d);
-        _w.copy(p.mesh.position).add(_v);
-        p.mesh.lookAt(_w);
-        p.mesh.position.copy(_w);
+        p.pos.add(_v);
+        this._streak(p);
       } else {
         p.t += dt;
         const k = Math.min(1, p.t / p.time);
         p.mesh.position.lerpVectors(p.from, p.to, k);
         p.mesh.position.y = p.from.y * (1 - k) + p.to.y * k + p.height * 4 * k * (1 - k);
         p.shadow.position.set(p.mesh.position.x, 0.03, p.mesh.position.z);
-        p.mesh.rotation.x += dt * 8;
         if (k >= 1) {
           p.onLand?.(p.to);
           this._release(p);
@@ -192,11 +251,9 @@ export class Projectiles {
 
   dispose() {
     this.clear();
-    for (const k of Object.keys(this.geoms)) {
-      this.geoms[k].dispose();
-      this.mats[k].dispose();
-      for (const m of this.pools[k]) m.removeFromParent();
-    }
+    for (const k of Object.keys(this.mats)) this.mats[k].dispose();
+    for (const k of Object.keys(this.pools)) for (const m of this.pools[k]) { m.removeFromParent(); m.userData.head?.removeFromParent(); }
+    this.streakGeom.dispose();
     this.zoneGeom.dispose();
     this.zoneTex.dispose();
     this.shadowGeom.dispose();

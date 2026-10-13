@@ -166,7 +166,9 @@ export class Run {
   /** Skill options for one pick: up to n random unowned skills whose prerequisites are met. */
   skillOptions(meta, salt = 0) {
     const n = meta.unlocks.includes('wide_choice') ? 4 : 3;
-    const pool = SKILL_KEYS.filter((k) => !this.hasSkill(k) && (!SKILLS[k].req || this.hasSkill(SKILLS[k].req)));
+    // Skip skills whose effect needs a locked tower (needsUnlock: a meta unlock key).
+    const pool = SKILL_KEYS.filter((k) => !this.hasSkill(k) && (!SKILLS[k].req || this.hasSkill(SKILLS[k].req))
+      && (!SKILLS[k].needsUnlock || meta.unlocks.includes(SKILLS[k].needsUnlock)));
     return this.rng('skills', this.skills.length, salt).shuffle(pool).slice(0, n);
   }
 
@@ -309,6 +311,7 @@ export class Run {
   /** Why Sabotage can't be used right now, or null. */
   sabotageBlocked() {
     if (this.tonight.sabotaged) return 'Already used tonight';
+    if (this.waveCutCapped()) return `Wave cuts are already at the −${Math.round((1 - CONFIG.waveSizeFloor) * 100)}% cap`;
     return this.missing(this.sabotageCost());
   }
 
@@ -321,6 +324,12 @@ export class Run {
     return true;
   }
 
+  /** Wave-size multiplier actually used tonight: every cut stacks, floored at CONFIG.waveSizeFloor. */
+  waveCountMult() { return Math.max(CONFIG.waveSizeFloor ?? 0, this.tonight.enemyCount ?? 1); }
+
+  /** True when tonight's stacked wave cuts reach (or would pass) the floor. */
+  waveCutCapped() { return (this.tonight.enemyCount ?? 1) <= (CONFIG.waveSizeFloor ?? 0) + 1e-6; }
+
   /** Called when prep starts each night: one-time bonuses (free repairs, Prepared Defenses). */
   beginPrep() {
     const t = this.tonight;
@@ -331,7 +340,13 @@ export class Run {
     if (t.freeRepair > 0) {
       const before = this.relayHp;
       this.relayHp = Math.min(this.relayMax, this.relayHp + t.freeRepair);
-      notes.push(`Engineer repaired the Relay (+${this.relayHp - before} HP)`);
+      const healed = Math.round(this.relayHp - before);
+      if (healed > 0) notes.push(`Engineer repaired the Relay (+${healed} HP)`);
+      else {
+        // Relay already full: the engineer's work becomes salvage instead of being lost.
+        this.add({ scrap: CONFIG.relay.fullRepairScrap });
+        notes.push(`Relay full: the engineer's repair became +${CONFIG.relay.fullRepairScrap} Scrap`);
+      }
     }
     return notes;
   }
@@ -486,6 +501,7 @@ export class Run {
       districts: this.stats.districts.map((k) => DISTRICTS[k].name),
       peak: { ...this.stats.peak },
       research: this.stats.research,
+      debug: !!this.debug,   // debug-URL runs show research but don't bank it
     };
   }
 }

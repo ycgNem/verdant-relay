@@ -4,8 +4,11 @@
 //           district tile sprites (floor_<d>, floor_alt_<d>, water) when the manifest has them, or from
 //           procedural pixel textures built from the district `look` colours. Wall contact shadows,
 //           shorelines and scattered decals are painted on top so the repetition breaks up.
-//   walls   one InstancedMesh of boxes (room walls tall, rubble blocks low); top = wall_<d> texture.
-//   canopy  unused grid cells and the area outside the map are a flat jungle canopy at wall height.
+//   walls   InstancedMeshes of boxes (room walls, lower rubble blocks); top = wall_<d> texture. With the
+//           pixel camera (src/core/PixelView.js) tops draw 32x32 px and the camera-facing side exactly
+//           CONFIG.pixel.wallFrontPx / blockFrontPx rows, so each box height is derived from those.
+//   canopy  unused grid cells and the area outside the map are a flat jungle canopy at wall height,
+//           textured with a palette pixel-leaf tile (32 px per tile, Endesga-32 greens).
 //
 // Collision: solidAt / opaqueAt / flagAt work on a copy of the generator's flag grid, so brambles and
 // props can be cleared at runtime (setFlags / clearFlags).
@@ -13,10 +16,14 @@
 import * as THREE from 'three';
 import { TILE, FLAG } from './ExploreGen.js';
 import { makeRng } from '../core/rng.js';
+import { CONFIG } from '../data/config.js';
+import { CARD_SCALE } from '../core/PixelView.js';
 
 const TS = 32;               // texels per tile
-const WALL_H = 1.15;
-const BLOCK_H = 0.7;
+// World height that shows exactly N px of a box's camera-facing side (screen px per unit height = 32 / CARD_SCALE).
+const WALL_FRONT = CONFIG.pixel.wallFrontPx, BLOCK_FRONT = CONFIG.pixel.blockFrontPx;
+const WALL_H = (WALL_FRONT / TS) * CARD_SCALE;
+const BLOCK_H = (BLOCK_FRONT / TS) * CARD_SCALE;
 
 export class TileWorld {
   constructor(game, three, map, look, districtKey) {
@@ -191,34 +198,38 @@ export class TileWorld {
   // ---------------------------------------------------------------- walls
 
   _buildWalls() {
-    const list = [];
-    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
-      const t = this.tiles[x + y * this.w];
-      if (t === TILE.WALL || t === TILE.BLOCK) list.push([x, y, t]);
-    }
     const topTex = texFromCanvases(this.tex.wall);
-    const sideTex = texFromCanvases(this.tex.wall.map((c) => wallSide(c, this.look)));
     const top = new THREE.MeshLambertMaterial({ map: topTex });
-    const side = new THREE.MeshLambertMaterial({ map: sideTex });
     const geo = new THREE.BoxGeometry(1, 1, 1);
     geo.translate(0, 0.5, 0);
-    // Box face order: +x, -x, +y, -y, +z, -z.
-    const mesh = new THREE.InstancedMesh(geo, [side, side, top, side, side, side], Math.max(1, list.length));
-    mesh.count = list.length;
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
-    const col = new THREE.Color();
-    list.forEach(([x, y, t], i) => {
-      const hgt = t === TILE.WALL ? WALL_H : BLOCK_H;
-      m.compose(p.set(x + 0.5, 0, y + 0.5), q, s.set(1, hgt, 1));
-      mesh.setMatrixAt(i, m);
-      const v = 0.86 + this.rng.next() * 0.2;
-      mesh.setColorAt(i, col.setRGB(v, v, v * (0.97 + this.rng.next() * 0.06)));
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    this.three.add(mesh);
-    this.wallMesh = mesh;
-    this.disposables.push(geo, top, side, topTex, sideTex);
+    this.disposables.push(geo, top, topTex);
+    this.wallMeshes = [];
+    // One instanced mesh per height, each with a side texture exactly as many texels tall as the
+    // side shows on screen (1:1 texels). Only the +z side faces the camera (the camera has no yaw,
+    // so the +-x sides are edge-on and the -z sides face away).
+    for (const [kind, hgt, rows] of [[TILE.WALL, WALL_H, WALL_FRONT], [TILE.BLOCK, BLOCK_H, BLOCK_FRONT]]) {
+      const list = [];
+      for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) if (this.tiles[x + y * this.w] === kind) list.push([x, y]);
+      if (!list.length) continue;
+      const sideTex = texFromCanvases(this.tex.wall.map((c) => wallSide(c, this.look, rows)));
+      const side = new THREE.MeshLambertMaterial({ map: sideTex });
+      // Box face order: +x, -x, +y, -y, +z, -z.
+      const mesh = new THREE.InstancedMesh(geo, [side, side, top, side, side, side], list.length);
+      const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3();
+      const col = new THREE.Color();
+      list.forEach(([x, y], i) => {
+        m.compose(p.set(x + 0.5, 0, y + 0.5), q, sc.set(1, hgt, 1));
+        mesh.setMatrixAt(i, m);
+        const v = 0.86 + this.rng.next() * 0.2;
+        mesh.setColorAt(i, col.setRGB(v, v, v * (0.97 + this.rng.next() * 0.06)));
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      this.three.add(mesh);
+      this.wallMeshes.push(mesh);
+      this.disposables.push(side, sideTex);
+    }
+    this.wallMesh = this.wallMeshes[0] || null;
   }
 
   // ---------------------------------------------------------------- canopy
@@ -242,7 +253,8 @@ export class TileWorld {
     for (const [x0, z0, x1, z1] of quads) {
       const b = pos.length / 3;
       pos.push(x0, y, z0, x1, y, z0, x1, y, z1, x0, y, z1);
-      uv.push(x0 / 2, -z0 / 2, x1 / 2, -z0 / 2, x1 / 2, -z1 / 2, x0 / 2, -z1 / 2);
+      const k = CANOPY_TILES;   // the canopy texture spans k×k tiles (32 texels per tile)
+      uv.push(x0 / k, -z0 / k, x1 / k, -z0 / k, x1 / k, -z1 / k, x0 / k, -z1 / k);
       idx.push(b, b + 2, b + 1, b, b + 3, b + 2);
     }
     const geo = new THREE.BufferGeometry();
@@ -277,7 +289,7 @@ export class TileWorld {
 
   dispose() {
     for (const d of this.disposables) d.dispose?.();
-    this.wallMesh?.dispose();
+    for (const m of this.wallMeshes || []) m.dispose();
     this.disposables = [];
   }
 }
@@ -436,51 +448,96 @@ function paintPattern(pattern, baseHex, look, variant, frame) {
   return c;
 }
 
-/** Wall face texture: the top texture darkened toward the base, with a lit lip and moss drips. */
-function wallSide(topCanvas, look) {
-  const c = canvas(TS, TS);
+/**
+ * Wall face texture, `rows` texels tall (= the px the side shows on screen): the top texture's upper
+ * rows darkened, stepped darker toward the base, with a 1 px lit lip, a dark seam under it and moss drips.
+ */
+export function wallSide(topCanvas, look, rows = TS) {
+  const c = canvas(TS, rows);
   const g = c.getContext('2d');
-  g.drawImage(topCanvas, 0, 0);
-  g.fillStyle = 'rgba(24,20,37,0.35)';
-  g.fillRect(0, 0, TS, TS);
-  const grad = [0.0, 0.05, 0.1, 0.18, 0.28, 0.4];
-  for (let i = 0; i < grad.length; i++) { g.fillStyle = `rgba(16,12,28,${grad[i]})`; g.fillRect(0, TS - 12 + i * 2, TS, 2); }
-  g.fillStyle = 'rgba(234,212,170,0.25)';
-  g.fillRect(0, 0, TS, 2);
+  g.drawImage(topCanvas, 0, 0, TS, rows, 0, 0, TS, rows);
+  g.fillStyle = 'rgba(24,20,37,0.38)';
+  g.fillRect(0, 0, TS, rows);
+  // Hard 2 px steps toward the ground (no smooth gradient).
+  const steps = [0.08, 0.18, 0.3];
+  for (let i = 0; i < steps.length; i++) { g.fillStyle = `rgba(16,12,28,${steps[i]})`; g.fillRect(0, rows - 6 + i * 2, TS, 2); }
+  g.fillStyle = 'rgba(234,212,170,0.3)';
+  g.fillRect(0, 0, TS, 1);
+  g.fillStyle = 'rgba(16,12,28,0.45)';
+  g.fillRect(0, 1, TS, 1);
   g.fillStyle = look.moss || '#3e8948';
   for (let x = 0; x < TS; x++) {
     if (hash(x, 1, 41) < 0.35) {
-      const len = 1 + Math.floor(hash(x, 2, 43) * 7);
-      g.fillRect(x, 2, 1, len);
+      const len = 1 + Math.floor(hash(x, 2, 43) * Math.min(7, rows / 2));
+      g.fillRect(x, 1, 1, len);
     }
   }
   return c;
 }
 
+// Endesga-32 canopy ramps (dark gap → shadow → body → light → highlight), picked by the district's canopy colour.
+const CANOPY_RAMPS = {
+  '#265c42': ['#181425', '#193c3e', '#265c42', '#3e8948', '#63c74d'],
+  '#193c3e': ['#181425', '#262b44', '#193c3e', '#265c42', '#3e8948'],
+};
+
+/**
+ * Jungle canopy seen from above: a 128×128 (4×4 tiles, 32 px per tile) seamless tile of overlapping
+ * leaf clumps in 4–5 palette steps, lit from the top-left, with a dark seam where clumps overlap
+ * and dark gaps between them. No gradients, no off-palette colours.
+ */
+const CANOPY_TILES = 4;
 function paintCanopy(look) {
-  const S = 64;
+  const S = CANOPY_TILES * TS, N = S / 16;
+  const ramp = (CANOPY_RAMPS[look.canopy] || CANOPY_RAMPS['#265c42']).map(hexRgb);
   const c = canvas(S, S);
   const g = c.getContext('2d');
   const img = g.createImageData(S, S);
-  const base = hexRgb(look.canopy || '#265c42');
-  for (let y = 0; y < S; y++) {
-    for (let x = 0; x < S; x++) {
-      // Overlapping leaf clumps: brighter on their top-left, darker gaps between.
-      const cx = Math.floor(x / 8), cy = Math.floor(y / 8);
-      let k = -0.15;
-      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
-        const qx = (cx + ox + 8) % 8, qy = (cy + oy + 8) % 8;
-        const ccx = (cx + ox) * 8 + 4 + (hash(qx, qy, 3) - 0.5) * 6;
-        const ccy = (cy + oy) * 8 + 4 + (hash(qx, qy, 5) - 0.5) * 6;
-        const r = 5 + hash(qx, qy, 7) * 3;
-        const d = Math.hypot(x - ccx, y - ccy);
-        if (d < r) k = Math.max(k, 0.05 + (1 - d / r) * 0.2 - ((x - ccx) + (y - ccy)) / r * 0.12);
-      }
-      k += (hash(x, y, 11) - 0.5) * 0.08;
-      const rgb = shade(base, k);
-      const i = (y * S + x) * 4;
-      img.data[i] = rgb[0]; img.data[i + 1] = rgb[1]; img.data[i + 2] = rgb[2]; img.data[i + 3] = 255;
+  const idx = new Int8Array(S * S).fill(0);        // ramp index per pixel (0 = gap)
+  const owner = new Int16Array(S * S).fill(-1);    // which clump drew the pixel
+  // Clump centres on a jittered N×N grid (16 px cells), two per cell, drawn top to bottom so lower
+  // clumps overlap the ones above them.
+  const clumps = [];
+  for (let gy = 0; gy < N; gy++) for (let gx = 0; gx < N; gx++) {
+    for (let k = 0; k < 2; k++) {
+      clumps.push({
+        x: gx * 16 + 8 + Math.round((hash(gx, gy, 3 + k * 17) - 0.5) * 12),
+        y: gy * 16 + 8 + Math.round((hash(gx, gy, 5 + k * 17) - 0.5) * 12),
+        r: 7 + Math.floor(hash(gx, gy, 7 + k * 17) * 4) - k * 2,
+      });
     }
+  }
+  clumps.sort((a, b) => a.y - b.y);
+  const mod = (v) => ((v % S) + S) % S;   // wrap around: the tile is seamless
+  clumps.forEach((cl, ci) => {
+    const R = Math.ceil(cl.r * 1.2) + 1;
+    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+      const x = mod(cl.x + dx), y = mod(cl.y + dy);
+      // Lumpy leaf outline: the radius wobbles with the angle (5 lobes) plus a little per-pixel jitter.
+      const a = Math.atan2(dy, dx);
+      const rr = cl.r * (0.86 + 0.14 * Math.cos(a * 5 + ci)) + (hash(x, y, 13) - 0.5) * 1.2;
+      const d = Math.hypot(dx, dy);
+      if (d > rr) continue;
+      const i = x + y * S;
+      // Light from the top-left: lit side, body, shadow side; a darker rim on the lower-right edge.
+      const l = (-dx - dy) / (rr * 1.41);
+      let k = l > 0.42 ? 3 : l > -0.25 ? 2 : 1;
+      if (d > rr - 1.2 && l < 0.2) k = 1;
+      if (k === 3 && hash(x, y, 21) < 0.12 && d < rr - 2) k = 4;   // leaf glints
+      if (k === 2 && hash(x >> 1, y, 23) < 0.08) k = 1;            // veins / small gaps
+      idx[i] = k;
+      owner[i] = ci;
+    }
+  });
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const i = x + y * S;
+    let k = idx[i];
+    // Where a later (lower) clump starts just below this pixel, darken it: a seam between clumps.
+    const below = x + ((y + 1) % S) * S;
+    if (k > 0 && owner[below] > owner[i]) k = Math.max(0, k - 2);
+    const rgb = ramp[Math.min(ramp.length - 1, k)];
+    const o = i * 4;
+    img.data[o] = rgb[0]; img.data[o + 1] = rgb[1]; img.data[o + 2] = rgb[2]; img.data[o + 3] = 255;
   }
   g.putImageData(img, 0, 0);
   return c;

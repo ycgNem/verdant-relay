@@ -5,7 +5,7 @@
 // the expedition result (Run.applyExpedition), so the Run stays the single source of truth.
 
 import * as THREE from 'three';
-import { CONFIG, WEAPONS, TOOL } from '../data/config.js';
+import { CONFIG, WEAPONS, TOOL, JUICE } from '../data/config.js';
 import { setAnim, setFacing, updateVisual, flashVisual, setOpacity } from '../core/Assets.js';
 import { moveCircle, lineOfSight } from '../world/collide.js';
 
@@ -172,7 +172,10 @@ export class Player {
         speed: w.speed, range: w.range, damage: w.damage, knockback: w.knockback,
       });
     }
-    sc.fx.burst({ x: mx, y: CONFIG.player.shotHeight - 0.4, z: mz }, { color: w.color || '#fee761', color2: '#ffffff', count: 3, speed: 1.2, up: 0.6, life: 0.12, size: 0.07, vx: Math.cos(base) * 2, vz: Math.sin(base) * 2 });
+    // Muzzle flash (flame + star + light pop) and an ejected casing.
+    const dir = { x: Math.cos(base), z: Math.sin(base) };
+    sc.fx.muzzle({ x: mx, y: JUICE.tracer.y, z: mz }, dir, { color: w.color || '#fee761', size: JUICE.muzzle.size * (n > 1 ? 1.25 : 1) });
+    sc.fx.burst({ x: this.pos.x, y: JUICE.tracer.y - 0.4, z: this.pos.z }, { color: '#feae34', count: 1, speed: 1.4, up: 2.2, life: 0.35, size: 2 / 32, gravity: 12, vx: -dir.z * 1.5, vz: dir.x * 1.5 });
     this.game.sfx.play('shoot');
     if (n > 1) this.game.shake(1.5, 0.08);
     // Small recoil.
@@ -197,7 +200,7 @@ export class Player {
     this.hp += heal;
     this.meds -= 1;
     this.medCd = C.medCooldown;
-    this.scene.fx.text(this.pos, `+${heal} HP`, { color: '#63c74d', cls: 'big', y: 1.4 });
+    this.scene.fx.text(this.pos, `+${heal} HP`, { color: '#63c74d', cls: 'big', y: this.vis.userData.vis.height + 0.3 });
     this.scene.fx.burst(this.pos, { color: '#63c74d', color2: '#ffffff', count: 14, speed: 1.6, up: 3, life: 0.6, size: 0.07 });
     this.scene.fx.ring(this.pos, { color: '#63c74d', radius: 1.1, life: 0.4 });
     this.game.sfx.play('pickup');
@@ -209,7 +212,7 @@ export class Player {
   hurt(dmg, dx = 0, dz = 0, source = '') {
     if (this.dead) return false;
     if (this.dodging) {
-      if (source && Math.random() < 0.5) this.scene.fx.text(this.pos, 'DODGED', { color: '#2ce8f5', y: 1.5, life: 0.5 });
+      if (source && Math.random() < 0.5) this.scene.fx.text(this.pos, 'DODGED', { color: '#2ce8f5', y: this.vis.userData.vis.height + 0.3, life: 0.5 });
       return false;
     }
     if (this.iframes > 0 || this.scene.ending || this.god) return false;
@@ -224,8 +227,9 @@ export class Player {
     setAnim(this.vis, 'hurt', true);
     this.game.flash('#e43b44', 0.3);
     this.game.shake(5, 0.2);
+    this.scene.fx.hitStop(JUICE.hitStop.playerHurt);
     this.game.sfx.play('hurt');
-    this.scene.fx.text(this.pos, `-${dmg}`, { color: '#e43b44', cls: 'big', y: 1.4 });
+    this.scene.fx.text(this.pos, `-${dmg}`, { color: '#e43b44', cls: 'big', y: this.vis.userData.vis.height + 0.25 });
     this.scene.fx.burst(this.pos, { color: '#e43b44', count: 8, speed: 2, up: 2, life: 0.4, size: 0.07 });
     this.scene.onPlayerHurt?.(dmg);
     if (this.hp <= 0) {

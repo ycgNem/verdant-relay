@@ -15,9 +15,12 @@
 
 import * as THREE from 'three';
 import '../ui/defense.css';
-import { el, button, resChip, resRow, costLine, bar, toast, modal } from '../ui/ui.js';
+import { el, button, resChip, resRow, costLine, bar, toast, modal, resIconHtml, setToastsPaused } from '../ui/ui.js';
 import { showHint } from '../ui/hints.js';
+import { JUICE } from '../data/config.js';
+import { vineTextures, shade } from '../core/Fx.js';
 import { Fx } from '../core/Fx.js';
+import { PixelCamera } from '../core/PixelView.js';
 import { updateVisual, flashVisual, setAnim } from '../core/Assets.js';
 import { CONFIG, RESOURCE_KEYS } from '../data/config.js';
 import { TOWERS, TARGET_RULES, TARGET_RULE_TEXT, TARGET_RULE_LABEL } from '../data/towers.js';
@@ -67,7 +70,7 @@ function scaleWaveCount(groups, mult) {
  *     DEFENSE.extraGroupFrom and extraGroupTo of the authored wave's length, alternating lanes (the
  *     first goes to the lane with fewer authored enemies). Each uses the enemy type's own spawn gap.
  *  3. tonight.enemyCount (objective boons, optional flags, Intel sabotage) scales the whole wave's
- *     count (see scaleWaveCount).
+ *     count (see scaleWaveCount). The cuts stack but are floored at CONFIG.waveSizeFloor (−20%).
  *  4. Groups expand into one spawn event per enemy, sorted by time.
  * Per-enemy modifiers (HP × HEALTH_MULT[night − 1], tonight.enemySpeed, laneSlow, Rapid Response)
  * are applied when each enemy spawns / moves, not here.
@@ -75,7 +78,7 @@ function scaleWaveCount(groups, mult) {
 export function buildWave(run) {
   const night = Math.max(1, Math.min(WAVES.length, run.night));
   const t = run.tonight || {};
-  const mult = t.enemyCount ?? 1;
+  const mult = run.waveCountMult ? run.waveCountMult() : Math.max(CONFIG.waveSizeFloor ?? 0, t.enemyCount ?? 1);
   const groups = WAVES[night - 1].map((g) => ({ ...g, extra: false }));
   const length = Math.max(...groups.map((g) => g.at + g.gap * (g.count - 1)));
   const load = [0, 0];
@@ -131,7 +134,8 @@ export class DefenseScene {
 
     this.three = new THREE.Scene();
     this.three.background = new THREE.Color(DEFENSE_VIEW.background);
-    this.camera = new THREE.PerspectiveCamera(DEFENSE_VIEW.fov, 16 / 9, 0.5, 300);
+    // Orthographic, exactly 32 px per tile (sprites 1:1), rendered at DEFENSE_VIEW.res (1280×720).
+    this.camera = new PixelCamera({ dist: 30, near: 0.5, far: 300 });
     game.assets.setTint(DEFENSE_VIEW.spriteTint);
 
     // Tonight's night number / modifiers as they were when the scene opened: run.nightSurvived()
@@ -157,8 +161,8 @@ export class DefenseScene {
     this._buildPads();
     this._buildIndicators();
     this._buildChevrons();
+    game.setInternalRes(...DEFENSE_VIEW.res);
     this._fitCamera();
-    game.setResMult(2);
 
     // State
     this.phase = 'prep';
@@ -197,9 +201,9 @@ export class DefenseScene {
     this._hintQueue = [
       { id: 'def_boss_target', pos: 'map-bottom-left', when: () => this.phase === 'prep' && bossLane != null,
         html: `The <b>${DEFENSE_ENEMIES.colossus.name}</b> comes down the <b>${this.lanes[bossLane ?? 0]?.name}</b> tonight. Select the towers covering it and set targeting to <b>Toughest</b> (<span class="key">T</span>) so they focus the boss; leave the other lane on <b>Lead</b>.` },
-      { id: 'def_build', pos: 'top-left', when: () => this.phase === 'prep',
+      { id: 'def_build', pos: 'map-bottom-left', when: () => this.phase === 'prep',
         html: `Click a glowing <b>build pad</b> beside a lane to place a tower (or press <b>1–${run.availableTowers(game.meta).length}</b>, then click a pad). Costs are listed on the right.` },
-      { id: 'def_select', pos: 'top-left', when: () => this.phase === 'prep' && this.towers.length > 0,
+      { id: 'def_select', pos: 'map-bottom-left', when: () => this.phase === 'prep' && this.towers.length > 0,
         html: 'Click a tower to <b>upgrade</b> (<span class="key">U</span>), <b>sell</b> for 70% (<span class="key">S</span>) or change its <b>targeting</b> (<span class="key">T</span>).' },
       { id: 'def_preview', pos: 'map-bottom-left', when: () => this.phase === 'prep' && (this.towers.length > 0 || this.prepTime > 14),
         html: 'The <b>wave preview</b> (right panel, click empty ground to show it) lists every enemy per lane, tonight\'s district threat and your boons.' },
@@ -210,7 +214,7 @@ export class DefenseScene {
       { id: 'def_wave', pos: 'map-bottom-left', when: () => this.phase === 'wave',
         html: 'Pause with <span class="key">Esc</span>, toggle <b>2×</b> speed with <span class="key">F</span>. Enemies that reach the Relay damage it.' },
       { id: 'def_boss', pos: 'map-bottom-left', when: () => this.phase === 'wave' && !!this.boss,
-        html: 'The <b>Canopy Colossus</b> roots itself to spawn Crawlers (green circle), then charges along the <b>red</b> path. Slow it and focus fire.' },
+        html: 'The <b>Canopy Colossus</b> roots itself to spawn Crawlers (the <b style="color:#63c74d">filled green disc</b> around it), then charges along the <b>red</b> path. Your Mortar Pod landings show as <b style="color:#feae34">dashed amber rings</b>. At half health it <b>roars and enrages</b>: faster charges, and Skitters sprout with its roots. Slow it and focus fire.' },
     ];
     this._curHint = null;
 
@@ -278,8 +282,6 @@ export class DefenseScene {
     };
     this.pipGeom = T(new THREE.BoxGeometry(0.11, 0.06, 0.11));
     this.pipMat = T(new THREE.MeshBasicMaterial({ color: '#feae34' }));
-    this.vineGeom = T(new THREE.ConeGeometry(0.075, 0.6, 4));
-    this.vineMat = T(new THREE.MeshLambertMaterial({ color: '#63c74d', emissive: '#1f5c2a' }));
     this.moundGeom = T(new THREE.SphereGeometry(0.32, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2));
     this.moundMat = T(new THREE.MeshLambertMaterial({ color: '#6b4a3a' }));
     // Amber ring under towers boosted by a Pulse Beacon (opacity pulses in _frameVisuals).
@@ -293,18 +295,21 @@ export class DefenseScene {
       const c = document.createElement('canvas');
       c.width = 16; c.height = n * 4 + 6;
       const g = c.getContext('2d');
-      g.lineJoin = 'miter';
-      for (let k = 0; k < n; k++) {
-        const y = 3 + k * 4;
-        g.beginPath(); g.moveTo(2, y + 4); g.lineTo(8, y); g.lineTo(14, y + 4);
-        g.strokeStyle = '#181425'; g.lineWidth = 4; g.stroke();
-        g.strokeStyle = n === 3 ? '#fee761' : '#feae34'; g.lineWidth = 2; g.stroke();
-      }
+      // Hard pixel chevrons (no anti-aliased strokes): a 2 px colour line inside a 1 px dark outline.
+      const chevron = (y, color, grow) => {
+        for (let x = 2 - grow; x <= 13 + grow; x++) {
+          const py = y + Math.round(Math.abs(x - 7.5) * (4 / 6));
+          g.fillStyle = color;
+          g.fillRect(x, py - grow, 1, 2 + grow * 2);
+        }
+      };
+      for (let k = 0; k < n; k++) chevron(2 + k * 4, '#181425', 1);
+      for (let k = 0; k < n; k++) chevron(2 + k * 4, n === 3 ? '#fee761' : '#feae34', 0);
       const tex = T(new THREE.CanvasTexture(c));
       tex.magFilter = tex.minFilter = THREE.NearestFilter;
       tex.generateMipmaps = false;
       tex.colorSpace = THREE.SRGBColorSpace;
-      this.levelBadge[n] = { mat: T(new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false })), aspect: c.height / c.width };
+      this.levelBadge[n] = { mat: T(new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false })), aspect: c.height / c.width, w: c.width, h: c.height };
     }
     this.slowRingGeom = T(new THREE.RingGeometry(0.3, 0.42, 20));
     this.slowRingMat = T(new THREE.MeshBasicMaterial({ color: '#8ff8ff', transparent: true, opacity: 0.75, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
@@ -321,18 +326,34 @@ export class DefenseScene {
     return m;
   }
 
-  /** Root vines around a rooted enemy (shared geometry). */
+  /**
+   * Root vines around a rooted enemy, as pixel art: a floor decal of roots plus an upright sprite of
+   * thorny tendrils wrapped around the feet (drawn in front of the enemy). Shared textures.
+   */
   makeVines(enemy) {
-    const g = new THREE.Group();
-    const r = 0.22 + (enemy.def.size || 0.6) * 0.25;
-    for (let i = 0; i < 7; i++) {
-      // Fan of thorny tendrils curling up around the feet, biased toward the camera side (+Z).
-      const a = Math.PI * (0.05 + (i / 6) * 0.9);
-      const m = new THREE.Mesh(this.vineGeom, this.vineMat);
-      m.position.set(Math.cos(a) * r, 0.24, Math.sin(a) * r * 0.7);
-      m.rotation.set(Math.sin(a) * 0.55, 0, -Math.cos(a) * 0.55);
-      g.add(m);
+    if (!this.vineMats) {
+      const v = vineTextures();
+      this.vineMats = {
+        wrap: this._track(new THREE.SpriteMaterial({ map: v.wrap, alphaTest: 0.5, transparent: true })),
+        roots: this._track(new THREE.MeshLambertMaterial({ map: v.roots, alphaTest: 0.5, depthWrite: false })),
+        wrapSize: v.wrapSize, rootSize: v.rootSize,
+      };
+      this.vineRootGeom = this._track(new THREE.PlaneGeometry(v.rootSize[0] / 32, v.rootSize[1] / 32));
     }
+    const M = this.vineMats;
+    const g = new THREE.Group();
+    const big = (enemy.def.size || 0.6) >= 1.1 ? 2 : 1;   // whole-number scales only (crisp texels)
+    const roots = new THREE.Mesh(this.vineRootGeom, M.roots);
+    roots.rotation.x = -Math.PI / 2;
+    roots.position.y = 0.025;
+    roots.scale.setScalar(big);
+    roots.userData.pxSnap = true;
+    const wrap = new THREE.Sprite(M.wrap);
+    wrap.center.set(0.5, 0);
+    wrap.scale.set((M.wrapSize[0] / 32) * big, (M.wrapSize[1] / 32) * big, 1);
+    wrap.position.z = 0.06;   // just in front of the feet
+    wrap.renderOrder = 3;
+    g.add(roots, wrap);
     enemy.obj.add(g);
     return g;
   }
@@ -607,7 +628,7 @@ export class DefenseScene {
       if (!outside) continue;
       if (z > H && z < H + 1.6) continue;
       if (x < 0 && laneRows.some((r) => Math.abs(z - r) < 1.6)) continue;
-      this._addVisual(pick('tree', 3), x, z, { scale: rng.range(0.9, 1.2) });
+      this._addVisual(pick('tree', 3), x, z);   // no size jitter: sprites only take whole-number scales
       placed++;
     }
   }
@@ -720,42 +741,19 @@ export class DefenseScene {
   }
 
   /**
-   * Fixed camera framing the whole 30×17 field inside DEFENSE_VIEW.view (UI units), leaving the
-   * top bar and the right panel clear. Distance is solved iteratively; then a view offset shifts
-   * the image so the field sits centred in that rect (no skew, unlike moving the camera).
+   * Fixed camera: the night map renders at DEFENSE_VIEW.res with 1 tile = 32 px, so the 30×17 field
+   * is 960×544 px. It is placed (on whole pixels) centred inside DEFENSE_VIEW.view — the part of the
+   * stage left of the side panel and below the top bar (960×540 UI units).
    */
   _fitCamera() {
-    const V = DEFENSE_VIEW;
-    const cam = this.camera;
-    const pitch = V.pitch * DEG;
-    const W = DEFENSE_MAP.width, H = DEFENSE_MAP.height, m = V.fitMargin;
-    const center = new THREE.Vector3(W / 2, 0, H / 2);
-    const corners = [[-m, -m], [W + m, -m], [-m, H + m], [W + m, H + m]].map(([x, z]) => new THREE.Vector3(x, 0, z));
-    const tx0 = (V.view.x0 / UI_W) * 2 - 1, tx1 = (V.view.x1 / UI_W) * 2 - 1;
-    const ty0 = 1 - (V.view.y1 / UI_H) * 2, ty1 = 1 - (V.view.y0 / UI_H) * 2;
-    cam.aspect = 16 / 9;
-    cam.clearViewOffset();
-    let d = 30, box = null;
-    const p = new THREE.Vector3();
-    for (let it = 0; it < 40; it++) {
-      cam.position.set(center.x, d * Math.sin(pitch), center.z + d * Math.cos(pitch));
-      cam.lookAt(center);
-      cam.updateMatrixWorld();
-      cam.updateProjectionMatrix();
-      box = [Infinity, Infinity, -Infinity, -Infinity];
-      for (const c of corners) {
-        p.copy(c).project(cam);
-        box[0] = Math.min(box[0], p.x); box[1] = Math.min(box[1], p.y);
-        box[2] = Math.max(box[2], p.x); box[3] = Math.max(box[3], p.y);
-      }
-      const s = Math.max((box[2] - box[0]) / (tx1 - tx0), (box[3] - box[1]) / (ty1 - ty0));
-      if (Math.abs(s - 1) < 1e-4) break;
-      d *= s;
-    }
-    const dx = (tx0 + tx1) / 2 - (box[0] + box[2]) / 2;
-    const dy = (ty0 + ty1) / 2 - (box[1] + box[3]) / 2;
-    cam.setViewOffset(UI_W, UI_H, (-dx / 2) * UI_W, (dy / 2) * UI_H, UI_W, UI_H);
-    cam.updateProjectionMatrix();
+    const V = DEFENSE_VIEW, cam = this.camera, g = this.game;
+    cam.setSize(g.width, g.height);
+    const W = g.width, H = g.height, ppu = cam.ppu;
+    const fw = DEFENSE_MAP.width * ppu, fh = DEFENSE_MAP.height * ppu;
+    const x0 = (V.view.x0 / UI_W) * W, x1 = (V.view.x1 / UI_W) * W;
+    const y0 = (V.view.y0 / UI_H) * H, y1 = (V.view.y1 / UI_H) * H;
+    // World (0, 0) — the field's top-left corner — lands on this internal pixel.
+    cam.placeAt(0, 0, x0 + Math.max(0, (x1 - x0 - fw) / 2), y0 + Math.max(0, (y1 - y0 - fh) / 2));
   }
 
   // =================================================================== UI
@@ -1129,7 +1127,11 @@ export class DefenseScene {
     const mods = [];
     if (night > 1) mods.push(`Enemy health +${Math.round((this.hpMult - 1) * 100)}% (night ${night})`);
     const t = tn;
-    if (t.enemyCount !== 1) mods.push(`Wave size ${t.enemyCount < 1 ? '−' : '+'}${Math.round(Math.abs(1 - t.enemyCount) * 100)}%`);
+    if (t.enemyCount !== 1) {
+      const wm = Math.max(CONFIG.waveSizeFloor ?? 0, t.enemyCount);
+      const capped = t.enemyCount <= (CONFIG.waveSizeFloor ?? 0) + 1e-6;
+      mods.push(`Wave size ${wm < 1 ? '−' : '+'}${Math.round(Math.abs(1 - wm) * 100)}%${capped ? ` (capped at −${Math.round((1 - CONFIG.waveSizeFloor) * 100)}%)` : ''}`);
+    }
     if (t.enemySpeed !== 1) mods.push(`Enemies ${t.enemySpeed > 1 ? '+' : '−'}${Math.round(Math.abs(t.enemySpeed - 1) * 100)}% speed`);
     if (t.laneSlow) mods.push(`${this.lanes[t.laneSlow.lane]?.name || 'Lane'}: enemies ${Math.round((1 - t.laneSlow.mult) * 100)}% slower`);
     if (t.towerRate !== 1) mods.push(`Towers attack ${Math.round((t.towerRate - 1) * 100)}% faster`);
@@ -1237,7 +1239,7 @@ export class DefenseScene {
     game.sfx.play('build');
     this.fx.ring(t.pos, { color: '#fee761', radius: 1.1, life: 0.45 });
     this.fx.burst(t.pos, { color: '#fee761', color2: '#feae34', count: 18, speed: 1.6, up: 4, life: 0.6, size: 0.07, y: 0.5 });
-    this.fx.text(t.pos, `LEVEL ${t.rec.level}`, { color: '#fee761', cls: 'big', y: 1.6, life: 1 });
+    this.fx.text(t.pos, `LEVEL ${t.rec.level}`, { color: '#fee761', cls: 'big', y: this.padBaseY + t.height + 0.7, life: 1 });
     if (free) toast(game.ui, 'Free upgrade used', 'good');
     run.save('prep');
     this.sideDirty = true;
@@ -1259,7 +1261,7 @@ export class DefenseScene {
     this.towers.splice(this.towers.indexOf(t), 1);
     game.sfx.play('sell');
     this.fx.burst(t.pos, { color: '#c0cbdc', count: 12, speed: 2, up: 2.5, life: 0.4, size: 0.07, y: 0.3 });
-    this.fx.text(t.pos, `+${v} ⚙`, { color: '#c0cbdc', y: 1.2 });
+    this.fx.text(t.pos, '', { html: `+${v} ${resIconHtml('scrap')}`, color: '#c0cbdc', y: this.padBaseY + t.height + 0.4 });
     run.save('prep');
     this.sideDirty = true;
     this._refreshTop();
@@ -1329,6 +1331,7 @@ export class DefenseScene {
   togglePause(force) {
     if (this.phase === 'won' || this.phase === 'lost') return;
     this.paused = force ?? !this.paused;
+    setToastsPaused(this.game.ui, this.paused);
     if (this.paused && !this.pauseOv) {
       const body = el('div', {},
         el('p', `Night ${this.night} · ${this.phase === 'prep' ? 'Preparation' : 'Wave in progress'}`),
@@ -1336,19 +1339,43 @@ export class DefenseScene {
           ? 'Your run is saved. Quitting returns to the title; Continue resumes this preparation as you left it.'
           : 'Your run was saved when this wave began. If you quit, Continue restarts the wave with the same towers and the Relay health it started with; the build can\'t be changed.'),
         el('p.small.muted', {}, el('span.key', 'Esc'), ' resume · ', el('span.key', 'F'), ' speed · ', el('span.key', 'Space'), ' start / pause'));
+      // Resume first and loudest, the destructive choice last.
       this.pauseOv = modal(this.game.ui, 'Paused', body, [
-        button('Quit to Title', () => this.game.go('title'), { cls: 'danger' }),
+        button('Resume', () => this.togglePause(false), { cls: 'primary', hotkey: 'Esc' }),
         button('Settings', () => {
           if (this.settingsOpen) return;
           this.settingsOpen = openSettingsOverlay(this.game, { onClose: () => { this.settingsOpen = null; this._skipInput = true; } });
         }),
-        button('Resume', () => this.togglePause(false), { cls: 'primary' }),
+        button('Quit to Title', () => this._confirmQuit(), { cls: 'danger' }),
       ]);
+      this.pauseOv.classList.add('x-pause');
+      // In prep, a click on the dimmed map outside the dialog just closes it (Esc there is often a
+      // "deselect" reflex; the next pad click must not land on a menu button).
+      this.pauseOv.addEventListener('mousedown', (ev) => {
+        if (ev.target === this.pauseOv && this.phase === 'prep' && !this.settingsOpen) this.togglePause(false);
+      });
     } else if (!this.paused && this.pauseOv) {
       this.pauseOv.remove();
       this.pauseOv = null;
+      this.confirmOv?.remove();
+      this.confirmOv = null;
     }
     this._refreshTop(true);
+  }
+
+  /** Quitting needs a second, deliberate click (a stray pad click must never quit the run). */
+  _confirmQuit() {
+    this.confirmOv?.remove();
+    const body = el('div.col', {},
+      el('p', 'Quit to the title screen?'),
+      el('p.muted.small', this.phase === 'prep'
+        ? 'Your preparation is saved; Continue resumes it as you left it.'
+        : 'Continue restarts this wave with the same towers and the Relay health it began with.'));
+    this.confirmOv = modal(this.game.ui, 'Quit to title?', body, [
+      button('Keep playing', () => { this.confirmOv?.remove(); this.confirmOv = null; }, { cls: 'primary' }),
+      button('Quit to title', () => this.game.go('title'), { cls: 'danger' }),
+    ]);
+    this.confirmOv.classList.add('x-pause');
   }
 
   startWave() {
@@ -1408,8 +1435,10 @@ export class DefenseScene {
     if (opts.source) opts.source.dmgDealt = (opts.source.dmgDealt || 0) + dealt;
     if (!opts.silent && (dealt >= DEFENSE.damageNumbersMin || opts.crit) && this.fx.texts.length < DEFENSE.maxFloatingText) {
       const resisted = (e.def.resist?.[type] ?? 1) < 1;
+      // Rapid hits on one enemy merge into one rising number (key = the enemy); crits pop bigger.
       this.fx.text(e.pos, String(Math.round(dealt)), {
-        color: opts.crit ? '#feae34' : resisted ? '#6fd3ff' : '#ead4aa', cls: opts.crit ? 'crit' : '', y: e.height + 0.15, life: 0.6, rise: 0.6,
+        color: opts.crit ? '#feae34' : resisted ? '#6fd3ff' : '#ead4aa', cls: opts.crit ? 'crit' : '', y: e.height + 0.45, life: 0.6, rise: 0.6,
+        key: opts.crit ? null : e, value: dealt,
       });
     }
     if (e.boss) {
@@ -1425,10 +1454,21 @@ export class DefenseScene {
     const d = e.def;
     run.stats.kills += 1;
     if (d.bounty) {
-      run.add({ scrap: d.bounty });
-      if (this.fx.texts.length < DEFENSE.maxFloatingText) this.fx.text(e.pos, `+${d.bounty}⚙`, { color: '#c0cbdc', y: e.height + 0.5, life: 0.7, rise: 0.5 });
+      // Fractional bounties accumulate; whole Scrap is paid as it adds up.
+      this._bountyAcc = (this._bountyAcc || 0) + d.bounty;
+      const pay = Math.floor(this._bountyAcc + 1e-6);
+      if (pay > 0) {
+        this._bountyAcc -= pay;
+        run.add({ scrap: pay });
+        this.bountyEarned = (this.bountyEarned || 0) + pay;
+        if (this.fx.texts.length < DEFENSE.maxFloatingText) this.fx.text(e.pos, '', { html: `+${pay} ${resIconHtml('scrap')}`, color: '#c0cbdc', y: e.height + 0.9, life: 0.7, rise: 0.5 });
+      }
     }
     this.fx.burst(e.pos, { color: d.color || '#3e8948', color2: '#181425', count: e.boss ? 60 : 10 + Math.round((d.size || 0.6) * 6), speed: e.boss ? 5 : 2.4, up: 3, life: 0.6, size: e.boss ? 0.14 : 0.08, y: e.height * 0.4 });
+    // Death beat: a flash, the sprite squashes and pops (Fx.corpse), and a splat stays on the grass.
+    this.fx.flash({ x: e.pos.x, y: e.height * 0.45, z: e.pos.z }, { color: d.color || '#ead4aa', size: 0.45 + (d.size || 0.6) * 0.4, life: 0.07 });
+    this.fx.decal(e.pos, { color: shade(d.color || '#3e8948', JUICE.death.decalShade), radius: (0.25 + (d.size || 0.6) * 0.35) * JUICE.death.decalSize });
+    if (!e.burrowed) this.fx.corpse(e.detachVisual(), { dx: e.dir.x, dz: e.dir.z });
     this.game.sfx.play('hit');
     // Seed Carrier: bursts into seedlings unless the killing blow was a blast.
     const od = d.onDeath;
@@ -1449,6 +1489,20 @@ export class DefenseScene {
       this.game.shake(10, 0.6);
       this.game.sfx.play('boom');
       this.fx.ring(e.pos, { color: '#ff0044', radius: 4, life: 0.8 });
+      // Boss down: white screen flash, hit-stop into half a second of slow motion, a multi-burst of
+      // bark and heart-core embers, falling leaves and a big splat.
+      this.game.flash('#ffffff', JUICE.defense.bossDeathFlash);
+      this.fx.hitStop(JUICE.hitStop.bossDeath);
+      this.fx.slowMo(JUICE.slowmo.bossDeath.time, JUICE.slowmo.bossDeath.scale);
+      for (let i = 0; i < 4; i++) {
+        const o = { x: e.pos.x + (Math.random() - 0.5) * 1.6, y: e.height * (0.3 + Math.random() * 0.5), z: e.pos.z + (Math.random() - 0.5) * 0.8 };
+        this.fx.flash(o, { color: i % 2 ? '#ff0044' : '#feae34', size: 1.1, life: 0.1 + i * 0.03 });
+        this.fx.burst(o, { color: '#ff0044', color2: '#feae34', count: 14, speed: 4, up: 4, life: 0.8, size: 0.1, y: 0 });
+      }
+      this.fx.burst(e.pos, { color: '#63c74d', color2: '#3e8948', count: 40, speed: 2.2, up: 5, gravity: 2.5, life: 2.2, size: 3 / 32, y: e.height * 0.8 });
+      this.fx.ring(e.pos, { color: '#ffffff', radius: 6, life: 1 });
+      this.fx.light(e.pos, { color: '#ff0044', intensity: 6, distance: 8, life: 0.6 });
+      this.fx.decal(e.pos, { color: '#3e2731', radius: 1.6, life: 30 });
       toast(this.game.ui, `The ${d.name} falls!`, 'good', 3.5);
       this.bossBox.style.display = 'none';
     }
@@ -1505,6 +1559,11 @@ export class DefenseScene {
     game.sfx.play('core');
     this.coreHitT = 0.35;
     this.fx.burst(this.corePos, { color: '#e43b44', color2: '#2ce8f5', count: 10 + Math.min(30, amount * 2), speed: 2.5, up: 3, life: 0.5, size: 0.08, y: 1.2 });
+    // Debris off the plinth, a shockwave ring on the plaza and a crystal flicker.
+    this.fx.burst(this.corePos, { color: '#8b9bb4', color2: '#5a6988', count: 8 + Math.min(12, amount), speed: 3.5, up: 2.5, life: 0.6, size: 3 / 32, y: 0.3, gravity: 12 });
+    this.fx.ring(this.corePos, { color: '#e43b44', radius: JUICE.defense.coreShock, life: 0.4, from: 0.6 });
+    this.fx.flash({ x: this.corePos.x, y: 2.2, z: this.corePos.z + 0.05 }, { color: '#2ce8f5', size: 0.9, life: 0.08 });
+    this.fx.hitStop(JUICE.hitStop.coreHit * Math.min(1, amount / 8));
     this.fx.text(this.corePos, `-${amount}`, { color: '#e43b44', cls: 'big', y: 3.2, life: 0.9 });
     this.relayBar.node.classList.remove('hit');
     void this.relayBar.node.offsetWidth;
@@ -1516,19 +1575,40 @@ export class DefenseScene {
     this.game.sfx.play('alarm');
     if (kind === 'charge') this.game.shake(3, 0.3);
     this._bossCues = this._bossCues || {};
+    if (kind === 'enrage') {
+      // The second act: a roar, a heavy shake and a red pulse; it turns red and loops faster.
+      this.game.shake(7, 0.6);
+      this.game.sfx.play('boom');
+      const b = this.boss;
+      if (b && !b.removed) {
+        this.fx.ring(b.pos, { color: '#e43b44', radius: 3.2, life: 0.7 });
+        this.fx.burst(b.pos, { color: '#ff0044', color2: '#feae34', count: 36, speed: 3.5, up: 3, life: 0.7, size: 0.1, y: b.height * 0.6 });
+      }
+      this.game.flash('#e43b44', 0.18);
+    }
     if (!this._bossCues[kind]) {
       this._bossCues[kind] = true;
-      toast(this.game.ui, kind === 'root' ? 'The Colossus roots itself — Crawlers will sprout!' : 'The Colossus is about to CHARGE along the red path!', 'bad', 2.6);
+      const msg = {
+        root: 'The Colossus roots itself — Crawlers will sprout!',
+        charge: 'The Colossus is about to CHARGE along the red path!',
+        enrage: 'The Colossus is enraged! Faster charges, and Skitters sprout with its roots.',
+      }[kind];
+      toast(this.game.ui, msg, 'bad', kind === 'enrage' ? 3.2 : 2.6);
     }
   }
 
-  bossRootSpawn(boss, type, count, radius) {
+  bossRootSpawn(boss, type, count, radius, extra = null) {
     this.fx.ring(boss.pos, { color: '#63c74d', radius, life: 0.5 });
     this.fx.burst(boss.pos, { color: '#63c74d', color2: '#733e39', count: 30, speed: 3, up: 3, life: 0.6, size: 0.09, y: 0.1 });
     this.game.shake(3, 0.25);
     this.game.sfx.play('boom');
     for (let i = 0; i < count; i++) {
       this.spawnEnemy(type, boss.laneIndex, { dist: boss.dist + 0.6 + i * 0.55 });
+      this.totalEnemies += 1;
+    }
+    // Enraged: a pack of a second type sprouts too (spread just behind the first group).
+    for (let i = 0; extra && i < extra.count; i++) {
+      this.spawnEnemy(extra.type, boss.laneIndex, { dist: Math.max(0, boss.dist + 0.3 - i * 0.45) });
       this.totalEnemies += 1;
     }
   }
@@ -1619,7 +1699,8 @@ export class DefenseScene {
     if (!this.paused) {
       if (this.phase === 'wave') {
         // Fixed sub-steps: 2× speed runs the simulation twice per frame (keeps hits accurate).
-        let remaining = dt * this.speed;
+        // Hit-stop / slow motion (Fx.step) scale the simulation, never the UI.
+        let remaining = dt * this.speed * this.fx.step(dt);
         while (remaining > 1e-6 && this.phase === 'wave') {
           const step = Math.min(remaining, DEFENSE.maxSubstep);
           this._step(step, true);
@@ -1763,10 +1844,12 @@ export class DefenseScene {
       if (n.textContent !== txt) n.textContent = txt;
       n.style.display = txt ? '' : 'none';
       if (!txt) return;
-      lane.pointAt(3.4, tagPos);
-      tagPos.y = 0.9;
+      // Under the lane's entry row at the field edge: enemies (and the boss) walk in along the lane
+      // and draw upward from their feet, so a tag below the lane never covers them.
+      lane.pointAt(0, tagPos);
+      tagPos.set(0.2, 0, tagPos.z + 0.58);
       const p = game.project(tagPos, this.camera);
-      n.style.transform = `translate(${p.x.toFixed(0)}px, ${p.y.toFixed(0)}px) translate(-50%, -100%)`;
+      n.style.transform = `translate(${p.x.toFixed(0)}px, ${p.y.toFixed(0)}px)`;
     });
 
     // Boss bar
@@ -1774,7 +1857,7 @@ export class DefenseScene {
       this.bossBar.set(this.boss.hp / this.boss.maxHp, `${Math.ceil(this.boss.hp)} / ${Math.ceil(this.boss.maxHp)}`);
       if (this.bossPhase.textContent !== this.boss.phaseLabel) {
         this.bossPhase.textContent = this.boss.phaseLabel;
-        this.bossPhase.className = `df-bossphase ${/CHARG|charge/.test(this.boss.phaseLabel) ? 'bad' : /Root/.test(this.boss.phaseLabel) ? 'good' : ''}`;
+        this.bossPhase.className = `df-bossphase ${/CHARG|charge|ENRAG/.test(this.boss.phaseLabel) ? 'bad' : /Root/.test(this.boss.phaseLabel) ? 'good' : ''}`;
       }
     }
 
