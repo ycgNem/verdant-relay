@@ -55,13 +55,14 @@ export class SummaryScene {
         if (game.scene !== this) return;
         // At the bottom of the Expedition column (above its footer), pointing down at the skill cards (it used to
         // sit top-left, over the loot it wasn't about).
-        const col = this.root.querySelector('.sum-body > :nth-child(2)');
+        // In the skill panel's header row, between "Pick 1 of 3" and "Save point for later": next to
+        // the cards it explains, covering neither the cards nor the expedition checklist.
+        const panel = this.root.querySelector('.sum-skills');
         const ui = game.ui.getBoundingClientRect();
-        const r = col?.getBoundingClientRect();
-        const u = game.stage.clientWidth / 960;
-        const style = r ? { left: `${r.left - ui.left + 10}px`, bottom: `${ui.bottom - r.bottom + 52 * u}px`, maxWidth: `${r.width - 20}px` } : null;
+        const r = panel?.getBoundingClientRect();
+        const style = r ? { left: `${r.left - ui.left + r.width * 0.33}px`, top: `${r.top - ui.top + 4}px`, maxWidth: `${r.width * 0.46}px` } : null;
         showHint(game, 'summary_skills',
-          'You have a <b>skill point</b> to spend: pick one of the cards below <b>▼</b> (number keys) or save it for later. Skills last for the rest of this run.',
+          'Pick a card <b>▼</b> (keys 1–3) to spend your <b>skill point</b>, or save it for later.',
           { pos: 'top-left', style, time: 12 });
       }, 600);
     }
@@ -105,6 +106,7 @@ export class SummaryScene {
         resIcon(k), el('span.lbl', r.label), el('span.grow'),
         extracted ? el('b.good', n ? `+${n}` : '0') : el('b.bad', n ? el('s', String(n)) : '0'),
         kept ? el('b.good', ` +${kept}`) : null,
+        k === 'scrap' && x.bonusScrap ? el('b.amber.loot-bonus', { title: `+${x.bonusScrap} bonus Scrap from objectives / optionals (see Tonight)` }, ` +${x.bonusScrap}`) : null,
         el('span.small.muted.loot-now', extracted ? `now ${run.res[k]}` : kept ? 'salvaged' : n ? 'lost' : ''));
     });
     const anyLoot = RESOURCE_KEYS.some((k) => carried[k]);
@@ -123,7 +125,8 @@ export class SummaryScene {
       el('div', {}, el('b', obj ? obj.name : 'Primary objective'), el('div.small.muted', x.objectiveDone ? 'Complete: +1 skill point and a boon tonight.' : 'Not completed.'))));
     for (const o of x.optionals || []) {
       const def = OPTIONAL[o.key];
-      outcome.push(el('div.out-row.ok', {}, el('span.mark', '✓'), el('div', {}, el('b', o.name || def?.name || o.key), el('div.small.muted', 'Optional objective'))));
+      // One line each (name + "optional" tag) so a busy expedition still fits without scrolling.
+      outcome.push(el('div.out-row.ok.compact', {}, el('span.mark', '✓'), el('div', {}, el('b', o.name || def?.name || o.key), el('span.small.muted', ' · optional'))));
     }
     for (const e of x.events || []) {
       const def = EVENTS[e.key];
@@ -141,16 +144,16 @@ export class SummaryScene {
 
     // Tonight + research column.
     const t = run.tonight || {};
-    const boons = (x.boons || []).map((b) => el('div.boon-row', {}, el('span.good', '▲ '), b));
-    const research = (x.research || []).map((r) => el('div.res-line', {}, el('span', r.reason), el('span.grow'), el('b', `+${r.amount}`)));
+    const boons = (x.boons || []).map((b) => el('div.boon-row.small', {}, el('span.good', '▲ '), b));
+    const research = (x.research || []).map((r) => el('div.res-line', { title: r.reason }, el('span.res-reason', r.reason.replace(/^Optional: /, '')), el('span.grow'), el('b', `+${r.amount}`)));
     const earned = (x.research || []).reduce((s, r) => s + r.amount, 0);
     const tonight = el('div.panel.ui-block.sum-col', {},
       el('h3', 'Tonight'),
       t.threat ? el('div.threat-row', {}, el('span.bad', '▼ '), t.threat.text) : null,
       boons.length ? boons : el('div.small.muted', 'No boons active tonight.'),
-      el('h3', 'Research Data'),
-      research.length ? el('div.res-lines.small', {}, research) : el('div.small.muted', 'None this expedition.'),
-      el('div.res-total', {}, el('span.muted', 'Earned '), el('b.amber', `+${earned}`), el('span.grow'), el('span.muted', 'Total '), researchChip(game.meta.research, { noLabel: true })));
+      // Header doubles as the total line (saves a row so a busy night fits at 720p).
+      el('h3.res-head', {}, 'Research Data', el('span.grow'), el('span.small.muted', 'Earned '), el('b.amber', `+${earned}`), el('span.small.muted', ' · Total '), researchChip(game.meta.research, { noLabel: true })),
+      research.length ? el(`div.res-lines.small${research.length > 4 ? '.two' : ''}`, {}, research) : el('div.small.muted', 'None this expedition.'));
 
     // Skill pick / skills owned.
     let skillArea;

@@ -14,7 +14,9 @@ export const CONFIG = {
 
   // DOM UI. fontGrid: the em size (device px) the pixel fonts Tiny5 / Silkscreen are drawn on —
   // UI font sizes snap to whole multiples of it (Game.fit → --fq).
-  ui: { fontGrid: 8 },
+  // sceneClickGuard: seconds after a scene switch during which mouse clicks on the new UI are swallowed
+  // (a click that dismissed the last screen must not land on a button of the next one).
+  ui: { fontGrid: 8, sceneClickGuard: 0.3 },
 
   player: {
     hp: 100,
@@ -52,22 +54,25 @@ export const CONFIG = {
     lushBiofiber: 2,         // Biofiber weight multiplier in containers with Lush Finds (+ crates may hold one)
 
     // ---- generation
-    grid: [4, 3],            // room cells (cols × rows); unused cells become solid canopy
-    exploreRooms: [3, 5],
-    optionalRooms: [1, 2],
+    grid: [6, 3],            // room cells (cols × rows); unused cells become solid canopy
+    // Room counts by night live in byNight.exploreRooms / byNight.optionalRooms (a district is sized so a
+    // thorough clear doesn't comfortably fit the 180 s timer: stay or extract is a real choice).
+    exploreRooms: [6, 8],    // fallback when byNight has no entry
+    optionalRooms: [2, 3],
     extraLoopChance: 0.4,    // chance of a second loop beyond the guaranteed one
     eventChance: 0.7,        // chance an event (workshop / surge / infested cache) appears
     brambleDoors: [1, 2],    // doors choked with brambles (cut them with the Pulse Cutter)
-    // Tuned so a thorough, successful expedition banks ~90–130 Scrap in a neutral district (balance round 3).
+    // Tuned so a thorough, successful expedition banks ~90–130 Scrap in a neutral district (balance round 4:
+    // bigger districts with leaner containers, so looting ~75–85% of a district lands in that range).
     containersPerRoom: { start: [0, 1], explore: [1, 2], objective: [0, 1], extract: [0, 1], optional: [0, 1] },
-    containerWeights: { crate: 50, chest: 25, cache: 8, intel_terminal: 17 },
+    containerWeights: { crate: 52, chest: 25, cache: 8, intel_terminal: 15 },
     // hold: seconds of "hold E" to open (shown in the prompt). Containers are short; objective and
     // event holds live in src/data/objectives.js.
     containers: {
-      crate: { scrap: [7, 14], hold: 0.4 },
-      chest: { scrap: [14, 22], componentChance: 0.5, hold: 0.8 },
-      cache: { scrap: [20, 30], components: [1, 3], hold: 1.2 },
-      intel_terminal: { intel: [1, 3], hold: 1.0 },
+      crate: { scrap: [4, 9], hold: 0.6 },
+      chest: { scrap: [9, 14], componentChance: 0.35, hold: 1.0 },
+      cache: { scrap: [13, 19], components: [1, 2], hold: 1.5 },
+      intel_terminal: { intel: [1, 2], hold: 1.0 },
     },
     holdGrace: 0.8,            // once a hold has started it survives drifting this far past the interact radius (knockback)
     containerMedChance: 0.08,  // × district med multiplier
@@ -88,6 +93,9 @@ export const CONFIG = {
       eliteHp:      [1.8, 2.0, 2.1, 2.2, 2.4, 2.6],     // elite HP multiplier (× the night's enemyHp)
       eliteSupport: [1, 1, 1, 2, 2, 2],                 // light enemies (Crawlers / Skitters) beside the elite
       deathSalvage: [0.3, 0.2, 0, 0, 0, 0],             // share of carried loot the drone recovers when you go down
+      exploreRooms: [[4, 6], [5, 7], [6, 9]],           // [min, max] exploration rooms (nights 1–2 smaller)
+      optionalRooms: [[1, 2], [2, 3], [2, 3]],          // [min, max] optional rooms
+      containerScrap: [1.2, 1.1, 1, 1, 1, 1],           // container Scrap multiplier (smaller early maps pay a bit more)
     },
     guardSpacing: 2,           // guards (and other enemies in the objective room) stand at least this many tiles apart
     startMedNights: 2,         // a med kit lies in the start room on nights up to this one

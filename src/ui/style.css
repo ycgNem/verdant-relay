@@ -183,10 +183,11 @@ body { display: flex; align-items: center; justify-content: center; }
 /* Headings and the logo use the display face; small uppercase labels use Silkscreen (built for tiny caps). */
 .title-logo, .logo-big, .headline, .res-headline, .df-bannertitle, .x-banner-t, .x-time { font-family: var(--font-display); }
 .x-title, .df-lbl, .df-phase, .df-tag, .dc-k, .skill-branch, .df-role, .df-new, .badge { font-family: var(--font-label); letter-spacing: round(0.02em, var(--fpx)); font-weight: 400; }
-b, strong { font-weight: 700; }
-/* Tiny5 has no bold: the browser fakes one by smearing stems ~1 px, which turns 8 px (1×) text to mush.
-   Small stages (most text at 1×) drop the fake bold; Silkscreen has a real 700 and is unaffected. */
-@media (max-width: 959px), (max-height: 539px) { #stage { font-synthesis-weight: none; font-synthesis: none; } }
+/* Tiny5 ships one weight: a synthesized bold smears every stem ~1 px and fills the counters of 8, 6, C, %
+   ('80' reads as '$0', '6' as '€'). Never synthesize; emphasis in Tiny5 text is brightness/colour instead
+   (Silkscreen has a real 700, so display/label text can still be bold). */
+html, body, #stage, #ui, #ui * { font-synthesis: none; font-synthesis-weight: none; }
+b, strong { font-weight: 400; filter: brightness(1.3); }
 
 /* Pause menus (explore + defense): one column, Resume on top, the destructive choice at the bottom. */
 .x-pause .modal .row.end { flex-direction: column; align-items: stretch; gap: calc(var(--u) * 6); }
@@ -196,3 +197,4 @@ b, strong { font-weight: 700; }
 .title-logo.logo-big { letter-spacing: round(0.02em, var(--fpx)); font-weight: 700; }
 .logo-big .logo-b { letter-spacing: round(0.12em, var(--fpx)); }
 .headline, .res-headline, .df-bannertitle, .x-banner-t { letter-spacing: round(0.04em, var(--fpx)); }
+.panel h2.bad { color: var(--danger); }

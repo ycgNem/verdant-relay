@@ -142,8 +142,10 @@ function buildMap(rng, ctx) {
   const district = DISTRICTS[ctx.district];
   const night = ctx.run.night;
   const [gw, gh] = X.grid;
-  const E = rng.int(X.exploreRooms[0], X.exploreRooms[1]);
-  const O = rng.int(X.optionalRooms[0], X.optionalRooms[1]);
+  const er = X.byNight.exploreRooms ? nightTune('exploreRooms', night) : X.exploreRooms;
+  const or = X.byNight.optionalRooms ? nightTune('optionalRooms', night) : X.optionalRooms;
+  const E = rng.int(er[0], er[1]);
+  const O = rng.int(or[0], or[1]);
   const N = Math.min(gw * gh, 3 + E + O);
   const graph = layoutGraph(rng, gw, gh, N);
   if (!graph) return null;
@@ -654,7 +656,7 @@ function rollLoot(rng, key, district, run) {
   const def = X.containers[key];
   const m = district.loot;
   const lush = run.hasSkill('lush_finds');
-  const scrapMult = m.scrap * (run.hasSkill('pack_rat_2') ? X.packRatScrap : 1);
+  const scrapMult = m.scrap * (run.hasSkill('pack_rat_2') ? X.packRatScrap : 1) * (X.byNight.containerScrap ? nightTune('containerScrap', run.night) : 1);
   const loot = { scrap: 0, circuits: 0, biofiber: 0, intel: 0, med: 0 };
   const component = () => rng.weighted({ circuits: m.circuits, biofiber: m.biofiber * (lush ? X.lushBiofiber : 1) });
   if (def.scrap) loot.scrap = Math.round(rng.int(def.scrap[0], def.scrap[1]) * scrapMult);

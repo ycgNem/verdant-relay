@@ -1039,13 +1039,17 @@ export class ExploreScene {
       const salv = this._salvage();
       const lost = RESOURCE_KEYS.filter((k) => this.carried[k] - (salv[k] || 0) > 0).map((k) => resChip(k, this.carried[k] - (salv[k] || 0)));
       const kept = RESOURCE_KEYS.filter((k) => salv[k] > 0).map((k) => resChip(k, salv[k]));
+      // Carried med kits are lost too (Run.applyExpedition sets meds to 0 on a failed expedition).
+      const meds = Math.min(CONFIG.player.maxMeds, this.player.meds | 0);
+      if (meds > 0) lost.push(el('span.res', { style: { '--c': '#e43b44' }, html: `${resIconHtml('pick_med')} <b>${meds}</b> <span class="lbl">${meds === 1 ? 'Med kit' : 'Med kits'}</span>` }));
       const body = el('div.col', {},
         el('p', 'You collapse, and a passing Relay drone drags you home.'),
         lost.length ? el('div', {}, el('p.bad', 'Carried loot lost:'), el('div.resrow', {}, lost)) : el('p.muted', 'You weren\'t carrying anything.'),
         kept.length ? el('div', {}, el('p.good', 'The drone salvaged:'), el('div.resrow', {}, kept)) : null,
         this.objectiveDone ? el('p.good', 'Objective progress still counts.') : null,
         el('p.muted.small', `You return with ${CONFIG.expedition.deathReturnHp} HP. Towers, banked resources and research are safe.`));
-      modal(this.game.ui, 'You went down', body, [button('Return to the Relay', () => this._finish('died'), { cls: 'primary' })]);
+      const ov = modal(this.game.ui, 'You went down', body, [button('Return to the Relay', () => this._finish('died'), { cls: 'primary' })]);
+      ov.querySelector('h2')?.classList.add('bad');
     });
   }
 
@@ -1166,6 +1170,8 @@ export class ExploreScene {
     this.mapOpen = open;
     this.hud.bigmap.style.display = open ? '' : 'none';
     if (open) {
+      // The opening "District — Objective" banner would sit over the map's header.
+      for (const b of this.game.ui.querySelectorAll('.x-banner')) b.remove();
       // Draw the big map 1:1 in device pixels (whole pixels per tile), sized to fit ~2/3 of the stage,
       // so wall lines are even instead of being scaled by a fraction.
       const dpr = window.devicePixelRatio || 1;

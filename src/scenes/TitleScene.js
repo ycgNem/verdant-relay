@@ -90,8 +90,11 @@ export class TitleScene {
     game.ui.append(root);
     this.buttons = buttons;
 
+    // The first (primary) button starts focused, so Enter works straight away.
     this.nav = this.bag.add(new KeyNav(game, {
       items: () => this.buttons,
+      start: 0,
+      onEnter: () => this.buttons[0]?.click(),
       onKey: (e) => {
         const map = { KeyC: save ? 0 : -1, KeyN: save ? 1 : 0, KeyK: save ? 2 : 1, KeyO: save ? 3 : 2 };
         const i = map[e.code];

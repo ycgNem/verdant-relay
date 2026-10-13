@@ -8,7 +8,7 @@ import { UNLOCKS, UNLOCK_KEYS } from '../data/unlocks.js';
 import { DEFENSE_ENEMIES, EXPLORE_ENEMIES } from '../data/enemies.js';
 import { TOWERS, TOWER_ORDER } from '../data/towers.js';
 import { DISTRICTS, DISTRICT_KEYS } from '../data/districts.js';
-import { WAVES } from '../data/waves.js';
+import { WAVES, HEALTH_MULT } from '../data/waves.js';
 import { MenuBackdrop } from './MenuBackdrop.js';
 import { KeyNav, Bag, ask, sbtn, researchChip, iconEl } from '../ui/screensKit.js';
 
@@ -262,7 +262,7 @@ export class CollectionScene {
         iconEl(game, k, 40, { color: e.color }),
         el('div.codex-main', {},
           el('div.row.codex-title', {}, el('b', e.name), el('span.badge', e.role), fn ? el('span.small.muted', `from Night ${fn}`) : null),
-          el('div.codex-stats.small', {}, stat('HP', e.hp), stat('Speed', e.speed), stat('Relay dmg', e.coreDamage)),
+          el('div.codex-stats.small', {}, stat('HP', e.boss && fn ? `${e.hp} base · ${Math.round(e.hp * (HEALTH_MULT[fn - 1] ?? 1))} on Night ${fn}` : e.hp), stat('Speed', e.speed), stat('Relay dmg', e.coreDamage)),
           enemyNotes(k, e).map((n) => el('div.small.muted.note', n)))));
     }
     c.append(elist);

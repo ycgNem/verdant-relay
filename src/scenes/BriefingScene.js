@@ -42,8 +42,15 @@ function wavePreview(game, night) {
   const groups = WAVES[night - 1] || [];
   const counts = {};
   for (const g of groups) counts[g.type] = (counts[g.type] || 0) + g.count;
-  return el('div.wave-mini', {}, Object.entries(counts).map(([k, n]) =>
-    el('span.wave-chip', { title: `${DEFENSE_ENEMIES[k]?.name || k} (${DEFENSE_ENEMIES[k]?.role || ''})` }, iconEl(game, k, DEFENSE_ENEMIES[k]?.boss ? 32 : 20), el('b', `×${n}`))));
+  // New types (not in any earlier night) get a NEW tag; the boss chip is labelled.
+  const isNew = (k) => night > 1 && !WAVES.slice(0, night - 1).some((w) => w.some((g) => g.type === k));
+  return el('div.wave-mini', {}, Object.entries(counts).map(([k, n]) => {
+    const d = DEFENSE_ENEMIES[k];
+    const fresh = isNew(k);
+    return el(`span.wave-chip${d?.boss ? '.boss' : ''}${fresh ? '.new' : ''}`, { title: `${d?.name || k} (${d?.role || ''})${fresh ? ' — new tonight' : ''}${d?.note ? ' · ' + d.note : ''}` },
+      iconEl(game, k, d?.boss ? 32 : 20), el('b', `×${n}`),
+      d?.boss ? el('span.wave-lbl', d.name.replace(/^Canopy /, '')) : fresh ? el('span.wave-new', 'NEW') : null);
+  }));
 }
 
 export class BriefingScene {
@@ -145,7 +152,9 @@ export class BriefingScene {
       spend,
       el('h3', `Night ${run.night} wave`),
       wavePreview(game, run.night),
-      el('div.small.muted', 'Plus the threat from the district you choose.'),
+      this.selected
+        ? el('div.small', {}, el('span.bad', 'Plus: '), run.threatFor(this.selected).text)
+        : el('div.small.muted', 'Plus the threat from the district you choose. Hover an icon for its name.'),
       el('div.side-research.small', {}, el('span.muted', 'Research Data '), researchChip(meta.research, { noLabel: true })));
 
     const beginReason = 'Pick a district first (1 / 2)';

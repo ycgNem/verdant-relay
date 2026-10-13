@@ -57,6 +57,12 @@ export class Game {
     const unlock = () => { this.sfx.unlock(); this.sfx.volume = this.meta.settings.volume; };
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
+    // Swallow clicks for a moment after a scene switch (see CONFIG.ui.sceneClickGuard).
+    this._clickGuardUntil = 0;
+    const guard = (e) => {
+      if (e.isTrusted && performance.now() < this._clickGuardUntil) { e.stopPropagation(); e.preventDefault(); }
+    };
+    for (const type of ['click', 'dblclick', 'mousedown']) ui.addEventListener(type, guard, true);
   }
 
   register(name, SceneClass) { this.scenes[name] = SceneClass; }
@@ -73,6 +79,7 @@ export class Game {
     this.resOverride = null;
     this.setResMult(1);
     this.stage.style.cursor = '';
+    this._clickGuardUntil = performance.now() + (CONFIG.ui.sceneClickGuard || 0) * 1000;
     this.scene = new Cls(this);
     this.sceneName = name;
     this.scene.enter(params);

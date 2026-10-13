@@ -55,9 +55,11 @@ district consequences, player HP. All of it resets when the run ends. Permanent 
 - **Scrap Carbine:** medium range, moderate damage, slow-ish fire rate, infinite ammo.
 - **Pulse Cutter:** short arc melee that also cuts bramble barriers. Brief cooldown.
 
-**Map:** connected rooms on a grid, stamped from hand-authored 12×9 templates (`src/data/rooms.js`).
-There is a start room, 3–5 exploration rooms, an objective room, an extraction room and 1–2 optional rooms,
-with at least one loop so there are two routes. Every template gets a guaranteed plus-shaped corridor, so
+**Map:** connected rooms on a 6×3 grid, stamped from hand-authored 12×9 templates (`src/data/rooms.js`).
+There is a start room, exploration rooms (4–6 on night 1, 5–7 on night 2, 6–9 from night 3), an objective room,
+an extraction room (far from the start) and optional rooms (1–2 on night 1, then 2–3), with at least one loop so
+there are two routes. A district is sized so a full clear does not comfortably fit the timer: a thorough player
+loots ~75–85% and extracts around 130–170 s, so "one more room or extract now" is a real choice. Every template gets a guaranteed plus-shaped corridor, so
 doors always connect and nothing important can be walled off.
 Room types: street, shop, residential, greenhouse, transit platform, utility, courtyard, flooded, security.
 
@@ -65,7 +67,7 @@ Room types: street, shop, residential, greenhouse, transit platform, utility, co
 - 180 s timer. It adds pressure but doesn't fail you outright.
 - Extraction unlocks when the objective is done. It's marked on the map, and you hold E for 2 s in the zone. You may keep exploring after that.
 - When time runs out, a warning plays, then an emergency beacon appears at the start room and reinforcements keep spawning.
-- **Death:** you lose everything carried this expedition and return to the Relay at low HP. Towers, banked resources and research are kept. The run continues.
+- **Death:** you lose everything carried this expedition (including carried med kits; the "You went down" dialog lists them) and return to the Relay at low HP. Towers, banked resources and research are kept. The run continues.
   On nights 1–2 a Relay drone salvages a share of what you carried (30% / 20%), so one early mistake doesn't end the run.
 
 **Loot (carried until extraction):**
@@ -78,14 +80,15 @@ Room types: street, shop, residential, greenhouse, transit platform, utility, co
 | Intel | Spent in night prep: Decrypt (1 Intel → +4 Research Data) or Sabotage (3 Intel → tonight's wave 10% smaller, once per night) |
 
 Each resource has its own colour **and** icon. A thorough, successful expedition in a neutral district banks
-about 90–130 Scrap (rooms hold 1–2 containers; optional rooms 0–1). Container yields:
+about 90–130 Scrap (rooms hold 1–2 containers; optional rooms 0–1; bigger districts with leaner containers).
+Container Scrap is ×1.2 on night 1 and ×1.1 on night 2 (smaller maps). Container yields:
 
 | Container | Yield | Hold E |
 |---|---|---|
-| Crate | 7–14 Scrap | 0.4 s |
-| Tool chest | 14–22 Scrap, chance of a Circuit or Biofiber | 0.8 s |
-| Rare cache | 20–30 Scrap + 1–3 components | 1.2 s |
-| Intel terminal | 1–3 Intel | 1.0 s |
+| Crate | 4–9 Scrap | 0.6 s |
+| Tool chest | 9–14 Scrap, 35% chance of a Circuit or Biofiber | 1.0 s |
+| Rare cache | 13–19 Scrap + 1–2 components | 1.5 s |
+| Intel terminal | 1–2 Intel | 1.0 s |
 
 Every hold shows its duration in the prompt ("Hold · Open Tool Chest 0.8s") with a progress ring around the E key.
 Progress is kept if you let go (except extraction), and a hit that knocks you slightly out of reach doesn't cancel it.
@@ -146,7 +149,7 @@ upgrading and mixing tower types beats spamming one tower. Every prep action re-
 
 **Wave phase:** no building, upgrades or repairs. You can pause or play at 1×/2× and change targeting. Leftover resources carry over.
 The run is saved as the wave starts: quitting mid-wave and pressing Continue restarts that wave with the same towers
-and the Relay HP it began with (the build can't be changed). Surviving saves the next briefing at once; a defeat ends the run at once.
+and the Relay HP it began with (the build can't be changed), after a 3-second "Get ready" beat. Surviving saves the next briefing at once; a defeat ends the run at once.
 
 **Towers** (`src/data/towers.js`; every tower has 3 levels):
 
@@ -174,18 +177,22 @@ and the Relay HP it began with (the build can't be changed). Surviving saves the
 | Burrower | Ambusher | Underground for part of its route; bullet towers can't target it there |
 | Seed Carrier | Swarm | Bursts into seedlings unless killed by a blast |
 | Ruin Guard | Elite | Shield halves kinetic damage |
-| Canopy Colossus | Boss | 1020 HP (×2.5 on N6 = 2550). Loops approach → rooted (telegraph, spawns Crawlers) → charge (wind-up, then fast); has a big HP bar. At 50% health it stops and roars (red ring, shake, toast "The Colossus is enraged!"), turns red and loops faster: 4.5 s approach, faster and longer charges, and each root also spawns 4 Skitters. Reaching the Relay deals 15–40 damage, less the more it is hurt. Night 6 prep hints to set its lane's towers to Toughest |
+| Canopy Colossus | Boss | 1020 HP (×2.5 on N6 = 2550; the Codex shows both). Loops approach → rooted (telegraph, spawns 2 Crawlers) → charge (wind-up, then fast); has a big HP bar. At 60% health it stops and roars (red ring, shake, toast "The Colossus is enraged!"; it takes only 30% damage while roaring), turns red, its bark hardens (15% less damage taken for the rest of the fight) and it loops faster: 4.5 s approach, faster and longer charges, and each root also spawns 3 Skitters. Reaching the Relay deals 15–40 damage, less the more it is hurt. Night 6 prep hints to set its lane's towers to Toughest |
 
 **Waves** (`src/data/waves.js`):
 - N1: Crawlers + Skitters. N2: first Razorback. N3: Spitters. N4: Burrowers + Seed Carriers.
-- N5: Ruin Guards. N6: Colossus + support.
-- Enemy HP ×1 / 1.1 / 1.6 / 2.4 / 2.5 / 2.5 for N1–N6 (steep from night 4). Total wave HP is about 360 / 1010 / 2840 / 7350 / 6850 / 7120 (N6 includes the boss); N4 is the hardest regular night.
-- Tuned by full-run simulation of the real defense code (balance round 3) with a well-played reference run: towers funnelled
-  around the Relay, ~90–115 Scrap per expedition, objective boons, six defensive skills (Prepared Defenses, Reinforced Core,
-  Long Sightlines, Rapid Response, Overclock, Efficient Assembly), Mortar and Beacon unlocked. It loses about 10–40 Relay HP
-  on each of nights 4–6 (spread ~0–75) and wins; without unlocks it loses 25–60 a night and the boss sometimes reaches the Relay.
-  A mixed build spread mid-map scrapes through N6; a run without skills falls on N5–N6; level-1 turret spam falls on N4;
-  one turret on night 1 costs about 40 HP and no towers about 50–80.
+- N5: Ruin Guards. N6: Colossus + a thinner support wave (28 enemies), so the night is a boss fight rather than a swarm.
+- Enemy HP ×0.8 / 1.9 / 2.3 / 2.05 / 2.4 / 2.5 for N1–N6. Total wave HP is about 270 / 1750 / 4080 / 5540 / 6570 / 6550
+  (N6 includes the boss). District threats (extra groups) are half size on night 1 and ¾ on night 2.
+- Tuned by full-run simulation of the real defense code (balance round 4) with budgets that accumulate over the nights
+  (~70 / 90 / 100 / 100 / 100 / 105 Scrap per expedition plus bounties, objective boons). A well-played run (towers funnelled
+  around the Relay, six or seven defensive skills, Mortar and Beacon) loses ~0–15 Relay HP on N2, ~12–27 on N3, ~24–40 on N4,
+  ~0–35 on N5 and ~19–35 on N6, where it fights the enraged Colossus for ~20–23 s and the boss gets ~96% of the way to the
+  Relay (sometimes reaching it with a sliver of health). A typical run with three defensive skills plays out about the same;
+  without unlocks the boss usually reaches the Relay but the night holds. A run without skills falls on N5; level-1 turret
+  spam falls on N4; a build spread mid-map bleeds ~45–95 a night from N4 and usually falls on N6.
+  On night 1 one turret costs ~25–30 HP, two towers ~5–20 and no towers ~60. Most Relay damage comes from tanks
+  (Razorbacks, Ruin Guards) reaching the core.
 - Wave-size boons (and Intel Sabotage) scale the whole wave and remove enemies from the largest groups, so −10% always removes some.
   Together they are capped at −20%.
 - The wave preview lists the district threat and active boons first, then types and counts per lane.
@@ -196,6 +203,8 @@ and the Relay HP it began with (the build can't be changed). Surviving saves the
 - **Scavenger:** Pack Rat I/II, Safe Hands, Field Medic, Quick Extraction, Lush Finds
 - **Engineer:** Efficient Assembly, Circuit Recovery, Long Sightlines, Field Tuning, Overclock, Emergency Patch
 - **Warden:** Reinforced Core, Prepared Defenses, Watchtower Network, Last Stand, Rapid Response, Living Barricade
+- Economy skills were trimmed in balance round 4 (they decided whole nights): Prepared Defenses gives +10 Scrap a night,
+  Field Tuning takes 40% off the first upgrade each night. Values live in `src/data/skills.js`.
 
 **Research Data (permanent).** It's banked the moment it's earned, so it survives a quit or a loss:
 
@@ -234,3 +243,8 @@ and don't overwrite the real run save (add `&save=1` to test Continue).
 - Pause in both modes, 1×/2× speed in defense, and a toggle to turn off screen shake. Quitting from pause always asks to
   confirm (in night prep a click on the dimmed map just closes the pause menu), and toast messages stop fading while paused.
 - Objectives always appear on the HUD and map, so nothing important is hidden.
+- Pixel fonts are never synthesized bold (Tiny5 has one weight; a fake bold turns 8 into $ and 6 into €): emphasis in body
+  text is brightness or colour, headings use Silkscreen's real bold.
+- Clicks are ignored for 0.3 s after a screen change, so the click that dismissed one screen can't press a button on the next.
+- On the night map each occupied pad's corner brackets take the tower's type colour, and hovering a tower shows its name
+  and level. The briefing's wave row labels the boss and tags new enemy types (names on hover).

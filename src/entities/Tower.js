@@ -71,6 +71,14 @@ export class Tower {
     if (vis.kind === 'model' && !scene.game.assets.hasSprite(key)) vis.body.scale.setScalar(1 + 0.1 * (this.level - 1));
     this.visual.position.y = scene.padBaseY;
     this.obj.add(this.visual);
+    // Pad brackets in the tower's type colour (see DefenseScene.typeMarkMat).
+    if (!this.typeMark && scene.typeMarkMat && scene.markerGeom) {
+      this.typeMark = new THREE.Mesh(scene.markerGeom, scene.typeMarkMat(this.rec.type));
+      this.typeMark.rotation.x = -Math.PI / 2;
+      this.typeMark.position.y = scene.padBaseY + 0.03;
+      this.typeMark.renderOrder = 2;
+      this.obj.add(this.typeMark);
+    }
     // Level pips along the front edge of the pad.
     for (let i = 0; i < this.level; i++) {
       const pip = new THREE.Mesh(scene.pipGeom, scene.pipMat);

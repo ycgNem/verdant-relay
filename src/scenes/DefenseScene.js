@@ -68,7 +68,8 @@ function scaleWaveCount(groups, mult) {
  *  1. Take the authored groups for this night (WAVES[night − 1]).
  *  2. District threats add `tonight.extraGroups`. They are scheduled mid-wave, spread evenly between
  *     DEFENSE.extraGroupFrom and extraGroupTo of the authored wave's length, alternating lanes (the
- *     first goes to the lane with fewer authored enemies). Each uses the enemy type's own spawn gap.
+ *     first goes to the lane with fewer authored enemies). Each uses the enemy type's own spawn gap;
+ *     its count is scaled by DEFENSE.threatScale[night − 1] (smaller threats on the first nights).
  *  3. tonight.enemyCount (objective boons, optional flags, Intel sabotage) scales the whole wave's
  *     count (see scaleWaveCount). The cuts stack but are floored at CONFIG.waveSizeFloor (−20%).
  *  4. Groups expand into one spawn event per enemy, sorted by time.
@@ -92,7 +93,7 @@ export function buildWave(run) {
     const def = DEFENSE_ENEMIES[x.type];
     groups.push({
       at: Math.round(length * f * 10) / 10, lane, type: x.type,
-      count: x.count, gap: x.gap ?? def?.gap ?? 1, extra: true,
+      count: Math.max(1, Math.round(x.count * (DEFENSE.threatScale?.[night - 1] ?? 1))), gap: x.gap ?? def?.gap ?? 1, extra: true,
     });
     lane = 1 - lane;
   });
@@ -202,7 +203,7 @@ export class DefenseScene {
       { id: 'def_boss_target', pos: 'map-bottom-left', when: () => this.phase === 'prep' && bossLane != null,
         html: `The <b>${DEFENSE_ENEMIES.colossus.name}</b> comes down the <b>${this.lanes[bossLane ?? 0]?.name}</b> tonight. Select the towers covering it and set targeting to <b>Toughest</b> (<span class="key">T</span>) so they focus the boss; leave the other lane on <b>Lead</b>.` },
       { id: 'def_build', pos: 'map-bottom-left', when: () => this.phase === 'prep',
-        html: `Click a glowing <b>build pad</b> beside a lane to place a tower (or press <b>1–${run.availableTowers(game.meta).length}</b>, then click a pad). Costs are listed on the right.` },
+        html: `Click a glowing <b>build pad</b> beside a lane to place a tower (or press <b>1–${run.availableTowers(game.meta).length}</b>, then click a pad). The right panel shows tonight's wave; click a pad to see the towers and their costs there.` },
       { id: 'def_select', pos: 'map-bottom-left', when: () => this.phase === 'prep' && this.towers.length > 0,
         html: 'Click a tower to <b>upgrade</b> (<span class="key">U</span>), <b>sell</b> for 70% (<span class="key">S</span>) or change its <b>targeting</b> (<span class="key">T</span>).' },
       { id: 'def_preview', pos: 'map-bottom-left', when: () => this.phase === 'prep' && (this.towers.length > 0 || this.prepTime > 14),
@@ -214,7 +215,7 @@ export class DefenseScene {
       { id: 'def_wave', pos: 'map-bottom-left', when: () => this.phase === 'wave',
         html: 'Pause with <span class="key">Esc</span>, toggle <b>2×</b> speed with <span class="key">F</span>. Enemies that reach the Relay damage it.' },
       { id: 'def_boss', pos: 'map-bottom-left', when: () => this.phase === 'wave' && !!this.boss,
-        html: 'The <b>Canopy Colossus</b> roots itself to spawn Crawlers (the <b style="color:#63c74d">filled green disc</b> around it), then charges along the <b>red</b> path. Your Mortar Pod landings show as <b style="color:#feae34">dashed amber rings</b>. At half health it <b>roars and enrages</b>: faster charges, and Skitters sprout with its roots. Slow it and focus fire.' },
+        html: 'The <b>Canopy Colossus</b> roots itself to spawn Crawlers (the <b style="color:#63c74d">filled green disc</b> around it), then charges along the <b>red</b> path. Your Mortar Pod landings show as <b style="color:#feae34">dashed amber rings</b>. At 60% health it <b>roars and enrages</b>: its bark hardens, it charges faster, and Skitters sprout with its roots. Slow it and focus fire.' },
     ];
     this._curHint = null;
 
@@ -237,6 +238,12 @@ export class DefenseScene {
     if (resumeWave) {
       this.startWave();
       toast(game.ui, `Night ${this.night}: the wave restarts — your build was locked when it began`, 'amber', 3.5);
+      // A short "get ready" beat before the restarted wave runs (DEFENSE.resumeReady seconds).
+      this.readyT = DEFENSE.resumeReady || 0;
+      if (this.readyT > 0) {
+        this.readyEl = el('div.df-ready', {}, el('div.df-ready-t', 'Get ready'), el('div.df-ready-s', ''));
+        this.uiRoot.append(this.readyEl);
+      }
     }
   }
 
@@ -657,6 +664,10 @@ export class DefenseScene {
     tex.magFilter = tex.minFilter = THREE.NearestFilter;
     tex.generateMipmaps = false;
     this.markerGeom = this._track(new THREE.PlaneGeometry(1.1, 1.1));
+    this.markerTex = tex;
+    // Occupied pads keep their corner brackets in the tower's type colour (towers are small at night
+    // zoom: the coloured pad says "Arc" vs "Beacon" vs "Snare" at a glance). One material per type.
+    this.typeMarkMats = {};
 
     this.pads = DEFENSE_MAP.pads.map(([x, y], i) => {
       const base = this._addVisual('tower_base', x + 0.5, y + 0.5, { shadow: false });
@@ -676,6 +687,16 @@ export class DefenseScene {
     this.selMarker.renderOrder = 3;
     this.selMarker.visible = false;
     this.three.add(this.selMarker);
+  }
+
+  /** Shared material for the type-coloured pad brackets under a tower (see Tower.refreshVisual). */
+  typeMarkMat(type) {
+    if (!this.typeMarkMats[type]) {
+      this.typeMarkMats[type] = this._track(new THREE.MeshBasicMaterial({
+        map: this.markerTex, color: TOWERS[type]?.icon?.color || '#ead4aa', transparent: true, opacity: 0.9, depthWrite: false,
+      }));
+    }
+    return this.typeMarkMats[type];
   }
 
   _buildIndicators() {
@@ -804,6 +825,9 @@ export class DefenseScene {
       root.append(n);
       return n;
     });
+    // Name tag over the hovered tower (towers are small at night zoom).
+    this.towerTag = el('div.df-towertag', { style: { display: 'none' } });
+    root.append(this.towerTag);
     // Boss entry marker: a pulsing arrow at the lane mouth while the boss walks in from off-screen.
     this.bossArrow = el('div.df-bossarrow', { style: { display: 'none' } }, '☠ ▶▶');
     root.append(this.bossArrow);
@@ -917,6 +941,10 @@ export class DefenseScene {
     else if (mode === 'tower') this._renderTower(t, head, body);
     else this._renderPreview(head, body);
     this._renderFoot(foot);
+    // A different panel (or another tower) starts at the top: the wave preview's THREAT block must not
+    // stay scrolled out of view from an earlier panel.
+    const sideKey = `${mode}|${this.selPad}|${this.phase}`;
+    if (sideKey !== this._sideKey) { this._sideKey = sideKey; body.scrollTop = 0; }
     this._sideMore();
   }
 
@@ -1048,7 +1076,7 @@ export class DefenseScene {
       const btn = button(el('span', {}, 'Upgrade ', costLine(cost, run.res)), () => this._upgrade(t), { disabled: !!reason, reason, hotkey: 'U', cls: 'primary df-wide' });
       body.append(btn);
       if (free) body.append(el('div.small.good', 'Free upgrade from tonight\'s boon.'));
-      else if (discount) body.append(el('div.small.good', 'Field Tuning: first upgrade tonight is 50% off Scrap.'));
+      else if (discount) body.append(el('div.small.good', `Field Tuning: first upgrade tonight is ${Math.round((1 - SKILLS.field_tuning.scrapMult) * 100)}% off Scrap.`));
       if (reason) body.append(el('div.small.bad', reason));
     }
 
@@ -1056,9 +1084,11 @@ export class DefenseScene {
     const v = run.sellValue(t.rec);
     const armed = this.sellArmed && this.sellArmed.pad === t.rec.pad;
     const sellReason = wave ? 'Not during a wave' : null;
-    body.append(el('h3', 'Sell'));
+    const refundNote = `Refunds ${Math.round(CONFIG.sellRefund * 100)}% of ${t.rec.spent.scrap || 0} Scrap spent (rounded down). Components aren't refunded.`;
+    // The refund rule sits in the heading row (short) and the button tooltip, so nothing is cut off below the button.
+    body.append(el('h3.df-sellhead', {}, 'Sell', el('span.small.muted', ` · ${Math.round(CONFIG.sellRefund * 100)}% of ${t.rec.spent.scrap || 0} Scrap`)));
     const sellBtn = button(el('span', {}, armed ? 'Confirm sell ' : 'Sell for ', resChip('scrap', v, { short: true })), () => this._sell(t), {
-      disabled: !!sellReason, reason: sellReason, hotkey: 'S', cls: armed ? 'danger df-wide df-sellarmed' : 'df-wide',
+      disabled: !!sellReason, reason: sellReason, hotkey: 'S', cls: armed ? 'danger df-wide df-sellarmed' : 'df-wide', title: refundNote,
     });
     if (armed) {
       // Shrinking bar: how long the confirm stays armed (continues across panel re-renders).
@@ -1070,7 +1100,6 @@ export class DefenseScene {
       body.append(el('div.small.bad', 'Click again (or press S) to confirm.'));
       requestAnimationFrame(() => sellBtn.scrollIntoView({ block: 'nearest' }));
     }
-    body.append(el('div.small.muted', `Refunds 70% of ${t.rec.spent.scrap || 0} Scrap spent (rounded down). Components aren't refunded.`));
   }
 
   _renderPreview(head, body) {
@@ -1208,7 +1237,9 @@ export class DefenseScene {
     if (prep) {
       foot.append(button(el('span', {}, '▶ Start Wave'), () => this.startWave(), { hotkey: 'Space', cls: 'primary big df-wide df-start' }));
     } else if (this.phase === 'wave') {
-      foot.append(el('div.small.muted', 'Building, upgrades and repairs are locked during the wave. Targeting can still be changed.'));
+      foot.append(el('div.small.muted', patchOn && DEFENSE.emergencyPatchInWave
+        ? 'Building, upgrades and Scrap repairs are locked during the wave. Targeting and the Emergency Patch still work.'
+        : 'Building, upgrades and repairs are locked during the wave. Targeting can still be changed.'));
     }
   }
 
@@ -1364,7 +1395,9 @@ export class DefenseScene {
         button('Resume', () => this.togglePause(false), { cls: 'primary', hotkey: 'Esc' }),
         button('Settings', () => {
           if (this.settingsOpen) return;
-          this.settingsOpen = openSettingsOverlay(this.game, { onClose: () => { this.settingsOpen = null; this._skipInput = true; } });
+          // Hide the pause dialog while Settings is open (it showed through the settings overlay).
+          if (this.pauseOv) this.pauseOv.style.display = 'none';
+          this.settingsOpen = openSettingsOverlay(this.game, { onClose: () => { this.settingsOpen = null; this._skipInput = true; if (this.pauseOv) this.pauseOv.style.display = ''; } });
         }),
         button('Quit to Title', () => this._confirmQuit(), { cls: 'danger' }),
       ]);
@@ -1612,7 +1645,7 @@ export class DefenseScene {
       const msg = {
         root: 'The Colossus roots itself — Crawlers will sprout!',
         charge: 'The Colossus is about to CHARGE along the red path!',
-        enrage: 'The Colossus is enraged! Faster charges, and Skitters sprout with its roots.',
+        enrage: 'The Colossus is enraged! Its bark hardens, it charges faster, and Skitters sprout with its roots.',
       }[kind];
       toast(this.game.ui, msg, 'bad', kind === 'enrage' ? 3.2 : 2.6);
     }
@@ -1717,6 +1750,14 @@ export class DefenseScene {
     this._handleInput();
     if (!this._alive) return;   // a key may have quit the scene
 
+    if (this.readyT > 0 && !this.paused && this.phase === 'wave') {
+      this.readyT -= dt;
+      const sub = this.readyEl?.querySelector('.df-ready-s');
+      if (sub) sub.textContent = `The wave restarts in ${Math.max(1, Math.ceil(this.readyT))}…`;
+      if (this.readyT <= 0) { this.readyEl?.remove(); this.readyEl = null; }
+      this._frameVisuals(dt);
+      return;
+    }
     if (!this.paused) {
       if (this.phase === 'wave') {
         // Fixed sub-steps: 2× speed runs the simulation twice per frame (keeps hits accurate).
@@ -1853,6 +1894,17 @@ export class DefenseScene {
       const ht = this._towerOn(this.hoverPad);
       if (ht && ht.stats) this._showRange(ht.pos.x, ht.pos.z, ht.stats, '#ead4aa', false);
     }
+
+    // Hovered tower: name + level tag above it.
+    const tagT = this._towerOn(this.hoverPad);
+    if (tagT && tagT !== selT) {
+      const txt = `${TOWERS[tagT.rec.type].name} · L${tagT.rec.level}`;
+      if (this.towerTag.textContent !== txt) this.towerTag.textContent = txt;
+      this.towerTag.style.setProperty('--c', TOWERS[tagT.rec.type].icon?.color || '#ead4aa');
+      const tp = game.project(new THREE.Vector3(tagT.pos.x, this.padBaseY + tagT.height + 0.55, tagT.pos.z), this.camera);
+      this.towerTag.style.transform = `translate(${Math.round(tp.x)}px, ${Math.round(tp.y)}px) translate(-50%, -100%)`;
+      this.towerTag.style.display = '';
+    } else if (this.towerTag.style.display !== 'none') this.towerTag.style.display = 'none';
 
     // Lane tags at the field entrance. While the boss walks in from off-screen its lane's tag and an
     // arrow at the lane mouth pulse red (until it is on the field or DEFENSE.bossEntry runs out).

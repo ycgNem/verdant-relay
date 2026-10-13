@@ -51,7 +51,7 @@ export const DEFENSE_ENEMIES = {
   },
   colossus: {
     name: 'Canopy Colossus', role: 'Boss', hp: 1020, speed: 0.55, coreDamage: 40, coreDamageMin: 15, bounty: 0, size: 2.2, boss: true,
-    note: 'Boss. Walks, roots itself to spawn Crawlers, then winds up and charges. At half health it roars and enrages (faster charges, Skitters sprout too). If it reaches the Relay it deals 15–40 damage: the more it is hurt, the less.', color: '#ff0044', gap: 1,
+    note: 'Boss. Walks, roots itself to spawn Crawlers, then winds up and charges. At 60% health it roars and enrages: its bark hardens (15% less damage taken), it charges faster and Skitters sprout too. If it reaches the Relay it deals 15–40 damage: the more it is hurt, the less.', color: '#ff0044', gap: 1,
     slowResist: 0.5, rootImmune: true,
     // Phase loop: approach -> rooted (telegraph, then spawns crawlers) -> charge (wind-up, then fast).
     // rootSpawn crawlers appear when it roots; the charge covers speed × chargeMult × charge tiles.
@@ -63,8 +63,11 @@ export const DEFENSE_ENEMIES = {
     // then turns red and loops faster: shorter approach, a longer, faster charge, and every root also
     // spawns a Skitter pack. `phases` override the normal loop values while enraged.
     enrage: {
-      at: 0.5, roar: 1.8, tint: '#ff8a7a', packType: 'skitter', packCount: 4,
-      phases: { approach: 4.5, rootSpawn: 3, chargeWindup: 1.2, charge: 2.6, chargeMult: 3.0 },
+      at: 0.6, roar: 1.8, tint: '#ff8a7a', packType: 'skitter', packCount: 3,
+      // Hardened bark: while enraged it takes damageTaken × damage (roarTaken during the roar), so the
+      // second act lasts ~15–25 s against a strong build and it usually gets close to the Relay.
+      damageTaken: 0.85, roarTaken: 0.3,
+      phases: { approach: 4.5, rootSpawn: 2, chargeWindup: 1.2, charge: 2.6, chargeMult: 3.0 },
     },
   },
 };

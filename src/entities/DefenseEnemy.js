@@ -177,11 +177,17 @@ export class DefenseEnemy {
   /** Apply damage after resistances. Returns the damage actually dealt. */
   hit(amount, type, opts = {}) {
     if (this.dead) return 0;
-    const mult = this.def.resist?.[type] ?? 1;
+    // Boss second act: the enraged Colossus hardens its bark (enrage.damageTaken; enrage.roarTaken while roaring).
+    const E = this.enraged ? this.def.enrage : null;
+    const mult = (this.def.resist?.[type] ?? 1) * (E ? (this.state === 'roar' ? E.roarTaken ?? E.damageTaken ?? 1 : E.damageTaken ?? 1) : 1);
     const dealt = Math.min(this.hp, amount * mult);
     this.hp -= amount * mult;
     if (!opts.silent) {
-      if (mult < 1) {
+      if (mult < 1 && E) {
+        // Hardened bark: amber chips instead of the shield's blue sparks.
+        flashVisual(this.visual, '#feae34', 0.08);
+        if (Math.random() < 0.3) this.scene.fx.burst({ x: this.pos.x, y: 0, z: this.pos.z }, { color: '#feae34', color2: '#8f563b', count: 3, speed: 2, up: 1.6, life: 0.25, size: 0.06, y: this.height * 0.5 });
+      } else if (mult < 1) {
         // Shield block: blue sparks on the shield side + a blue flash.
         flashVisual(this.visual, '#6fd3ff', 0.1);
         this.scene.fx.burst({ x: this.pos.x - 0.25, y: 0, z: this.pos.z }, { color: '#2ce8f5', color2: '#ffffff', count: 5, speed: 2.2, up: 1.6, life: 0.25, size: 0.05, y: this.height * 0.55 });

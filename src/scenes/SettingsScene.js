@@ -71,10 +71,30 @@ export function buildSettingsPanel(game, opts = {}) {
       save();
       game.applySettings();
       paintRes();
+      paintFit();
     }, { cls: 'seg-btn' });
     focusables.push(resBtns[k]);
   }
   paintRes();
+
+  // "Best fit" note: which resolution fills this window best with whole-number scaling.
+  const fitNote = el('div.set-fit.small.muted');
+  const paintFit = () => {
+    const W = window.innerWidth, H = window.innerHeight;
+    const opts2 = Object.entries(CONFIG.resolutions).map(([k, [w, h]]) => {
+      const n = Math.max(1, Math.floor(Math.min(W / w, H / h)));
+      return { k, w, h, n, fill: Math.min(1, (n * w) / W, (n * h) / H) };
+    });
+    const best = opts2.reduce((a, b) => (b.fill > a.fill + 0.01 ? b : a));
+    fitNote.textContent = '';
+    fitNote.append(`This window (${W}×${H}) with pixel-perfect scaling: `,
+      ...opts2.flatMap((o, i) => [i ? ' · ' : '', el(o === best ? 'b.good' : 'span', `${o.k === 'chunky' ? 'Chunky' : o.k === 'sharp' ? 'Sharp' : o.k} ×${o.n} fills ${Math.round(o.fill * 100)}%`)]),
+      best.k !== s().resolution && s().integerScale ? el('span.amber', ` — try ${best.k === 'chunky' ? 'Chunky' : 'Sharp'} for less border.`) : '');
+  };
+  paintFit();
+  const onResize = () => paintFit();
+  window.addEventListener('resize', onResize);
+  bag.add(() => window.removeEventListener('resize', onResize));
 
   const build = () => {
     focusables = [];
@@ -94,8 +114,9 @@ export function buildSettingsPanel(game, opts = {}) {
           return el('div.set-row', {}, el('div.set-label', {}, el('b', 'Resolution'), el('div.small.muted', 'Internal pixel size. Chunky is the intended look.')),
             el('div.set-ctrl.seg', {}, Object.values(resBtns)));
         })(),
-        toggle('Pixel-perfect scaling', 'Scale the picture by whole numbers only (every pixel the same size), with black borders.',
-          () => !!s().integerScale, (v) => { s().integerScale = v; game.fit(); })),
+        toggle('Pixel-perfect scaling', 'Scale the picture by whole numbers only (every pixel the same size), with black borders. The screen resizes when you switch.',
+          () => !!s().integerScale, (v) => { s().integerScale = v; game.fit(); paintFit(); }),
+        fitNote),
       sec('Tutorial',
         toggle('Tutorial hints', 'Short tips the first time you see each screen.', () => s().hints, (v) => { s().hints = v; }),
         (() => {

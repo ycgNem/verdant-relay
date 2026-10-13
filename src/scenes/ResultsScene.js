@@ -42,7 +42,11 @@ export class ResultsScene {
       return n;
     };
     this.countDelay = 0.75;
-    const tile = (label, value, sub) => el('div.stat-tile', {}, el('div.small.muted', label), el('div.stat-val', value), sub ? el('div.small.muted', sub) : null);
+    // Unique district names in visit order, repeats as "×2" (the full list rarely fits on one line).
+    const seen = new Map();
+    for (const d of r.districts || []) seen.set(d, (seen.get(d) || 0) + 1);
+    const districtList = [...seen].map(([d, k]) => (k > 1 ? `${d} ×${k}` : d)).join(', ');
+    const tile = (label, value, sub) => el('div.stat-tile', {}, el('div.small.muted', label), el('div.stat-val', value), sub ? el('div.small.muted', { title: typeof sub === 'string' ? sub : '' }, sub) : null);
 
     // Record line.
     const best = meta.best;
@@ -85,7 +89,7 @@ export class ResultsScene {
       el('div.stat-grid.res-grid', {},
         tile('Nights survived', el('span', {}, count(nights), `/${CONFIG.nights}`)),
         tile('Kills', count(r.kills || 0)),
-        tile('Districts visited', count((r.districts || []).length), (r.districts || []).join(', ') || '—'),
+        tile('Districts visited', count((r.districts || []).length), districtList || '—'),
         tile('Research earned', el('span', {}, '+', this._countChip(researchChip(r.research || 0, { noLabel: true }), r.research || 0)), r.debug ? 'debug run: not banked' : 'banked permanently'),
         tile('Total Research', this._countChip(researchChip(meta.research, { noLabel: true }), meta.research))),
       el('div.peak', {}, el('span.small.muted', 'Peak resources  '), resRow(r.peak || {})),

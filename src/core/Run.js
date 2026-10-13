@@ -223,7 +223,7 @@ export class Run {
     if (!up) return null;
     if (this.tonight.freeUpgrades > 0) return {};
     const c = { ...up.cost };
-    if (this.hasSkill('field_tuning') && !this.tonight.fieldTuningUsed) c.scrap = Math.floor(c.scrap * 0.5);
+    if (this.hasSkill('field_tuning') && !this.tonight.fieldTuningUsed) c.scrap = Math.floor(c.scrap * SKILLS.field_tuning.scrapMult);
     return c;
   }
 
@@ -348,7 +348,7 @@ export class Run {
     if (t.prepBonusGiven) return [];
     t.prepBonusGiven = true;
     const notes = [];
-    if (this.hasSkill('prepared_defenses')) { this.add({ scrap: 15 }); notes.push('Prepared Defenses: +15 Scrap'); }
+    if (this.hasSkill('prepared_defenses')) { this.add({ scrap: SKILLS.prepared_defenses.scrap }); notes.push(`Prepared Defenses: +${SKILLS.prepared_defenses.scrap} Scrap`); }
     if (t.freeRepair > 0) {
       const before = this.relayHp;
       this.relayHp = Math.min(this.relayMax, this.relayHp + t.freeRepair);
@@ -430,6 +430,8 @@ export class Run {
     if (b.bankScrap) {
       if (!extracted) return;
       this.add({ scrap: b.bankScrap });
+      // The summary's loot rows show it next to the carried Scrap, so "+carried +bonus = now" adds up.
+      if (summary) summary.bonusScrap = (summary.bonusScrap || 0) + b.bankScrap;
     }
     t.boons.push(b);
     summary?.boons.push(b.text);
