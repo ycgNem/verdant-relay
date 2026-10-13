@@ -11,6 +11,7 @@ import { Game } from './core/Game.js';
 import { Assets } from './core/Assets.js';
 import { Run } from './core/Run.js';
 import { loadRun } from './core/Save.js';
+import { Music } from './core/Music.js';
 import { DISTRICT_KEYS } from './data/districts.js';
 import { TitleScene } from './scenes/TitleScene.js';
 import { SettingsScene } from './scenes/SettingsScene.js';
@@ -29,6 +30,7 @@ async function boot() {
   await assets.load();
 
   const game = new Game({ stage, canvas: document.getElementById('view'), ui, flash: document.getElementById('flash'), assets });
+  game.music = new Music(game);
   game.register('title', TitleScene);
   game.register('settings', SettingsScene);
   game.register('collection', CollectionScene);

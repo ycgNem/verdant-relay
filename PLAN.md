@@ -85,7 +85,7 @@ verdant-relay/
 - [ ] District choice, all 5 districts, room-template generation with loops
 - [ ] Optional objectives and events, skill picks
 - [ ] All 6 towers, full enemy roster, Canopy Colossus
-- [ ] Research unlocks (Collection screen), run summaries, Continue
+- [x] Research unlocks (Collection screen), run summaries, Continue
 
 ### Stage 4: Art and polish
 - [ ] Detailed sprites for every key in `visuals.js` via `public/sprites/manifest.json`
