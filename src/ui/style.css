@@ -1,0 +1,47 @@
+:root {
+  --ink: #181425;
+  --panel: rgba(24, 20, 37, 0.88);
+  --text: #ead4aa;
+  --muted: #8b9bb4;
+  --accent: #2ce8f5;
+  --danger: #e43b44;
+  --good: #63c74d;
+  --amber: #feae34;
+  --font: 'Consolas', 'Courier New', monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #0b0a12;
+  color: var(--text);
+  font-family: var(--font);
+  overflow: hidden;
+  user-select: none;
+}
+
+body { display: flex; align-items: center; justify-content: center; }
+
+#stage { position: relative; }
+
+#view {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+#ui { position: absolute; inset: 0; pointer-events: none; }
+#ui .ui-block, #ui button { pointer-events: auto; }
+
+#flash { position: absolute; inset: 0; pointer-events: none; background: var(--danger); opacity: 0; transition: opacity 0.25s; }
+
+.boot {
+  position: absolute; left: 0; right: 0; top: 12%;
+  text-align: center; text-shadow: 2px 2px 0 var(--ink);
+}
+.boot h1 { margin: 0; font-size: clamp(28px, 6vw, 72px); letter-spacing: 0.12em; color: var(--good); }
+.boot p { margin: 0.4em 0; font-size: clamp(12px, 1.8vw, 22px); }
+.boot small { color: var(--muted); }

@@ -1,0 +1,125 @@
+// Hand-authored room interiors, 12 wide × 9 tall. The generator stamps one into each map cell,
+// then carves a plus-shaped corridor (row 4, columns 5–6) so every door always reaches the
+// room centre: templates can be dense without ever trapping the player.
+//
+//  .  floor           ,  alt floor (moss/grass/tile)   b  bush (decor, walkable)
+//  #  rubble block    T  tree       k  car wreck        l  lamp post       r  rubble pile
+//  w  water (blocks)  V  bramble (cut with the Pulse Cutter)   x  spore hazard (hurts)
+//  =  alarm laser (data center only: triggers reinforcements)
+//  c  container spot  e  enemy spot  o  feature spot (objective / optional / event)
+
+export const ROOM_TEMPLATES = [
+  { type: 'street', rows: [
+    'T..,....,..T',
+    '..k......l..',
+    '.....e......',
+    '..c.....r...',
+    '............',
+    '...r.....c..',
+    '.l....o...k.',
+    '..,..e....,.',
+    'T....,.....T',
+  ] },
+  { type: 'street', rows: [
+    '..T......T..',
+    '.r..,..,..r.',
+    '..c..e......',
+    '.k......k...',
+    '............',
+    '..b..o...b..',
+    '.......e..c.',
+    '.r........r.',
+    '..T..l...T..',
+  ] },
+  { type: 'shop', rows: [
+    '##.c....c.##',
+    '#..........#',
+    '.,##,..,##,.',
+    '..e......o..',
+    '............',
+    '.,##,..,##,.',
+    '..c...e...c.',
+    '#..........#',
+    '##........##',
+  ] },
+  { type: 'residential', rows: [
+    '###.c..c.###',
+    '#c.......e.#',
+    '#..##..##..#',
+    '.....,,.....',
+    '............',
+    '.....o......',
+    '#..##..##..#',
+    '#.e.....c..#',
+    '###......###',
+  ] },
+  { type: 'greenhouse', rows: [
+    'bT,,b..b,,Tb',
+    ',xx,....,,c,',
+    ',x,e..V..,,.',
+    'b,,..bbb..,b',
+    '............',
+    ',,c..,o,.xx,',
+    'b,.V..,..ex,',
+    ',,..,b,b..,,',
+    'Tb,,......bT',
+  ] },
+  { type: 'courtyard', rows: [
+    'TT..,..,..TT',
+    'T..b....b..T',
+    '..,...e..,..',
+    '.b..,..,..b.',
+    '............',
+    '.c..,o.,..c.',
+    '..,.....e,..',
+    'T..b....b..T',
+    'TT..,..,..TT',
+  ] },
+  { type: 'platform', rows: [
+    'wwwwwwwwwwww',
+    '............',
+    '.l..c..e..l.',
+    '#,,,,,,,,,,#',
+    '............',
+    '#,,,,o,,,,,#',
+    '.l..e...c.l.',
+    '............',
+    'wwwwwwwwwwww',
+  ] },
+  { type: 'flooded', rows: [
+    'ww..c...wwww',
+    'w.......e.ww',
+    '..ww..ww....',
+    '.www..www.c.',
+    '............',
+    '..ww.o..ww..',
+    '.e.ww..ww...',
+    'ww......c.ww',
+    'www......www',
+  ] },
+  { type: 'utility', rows: [
+    '#r.c..##..c#',
+    '#..........#',
+    '.##.e....##.',
+    '.##......##.',
+    '............',
+    '....o.......',
+    '.r.....e..r.',
+    '#..c.......#',
+    '##...##...##',
+  ] },
+  { type: 'security', rows: [
+    '#,,c,..,,c,#',
+    '#.........e#',
+    '.#=#....#=#.',
+    '............',
+    '............',
+    '.....o......',
+    '.#=#..e.#=#.',
+    '#..........#',
+    '#,,c,..,,,,#',
+  ] },
+];
+
+export const ROOM_W = 12;
+export const ROOM_H = 9;
