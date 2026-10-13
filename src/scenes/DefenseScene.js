@@ -1491,7 +1491,9 @@ export class DefenseScene {
     const last = this.result === 'victory';
     this._banner(last ? 'THE RELAY HOLDS' : `NIGHT ${night} SURVIVED`,
       last ? 'The Canopy Colossus is beaten. Dawn breaks over Verdant Relay.' : `Relay ${Math.ceil(run.relayHp)} / ${run.relayMax} · +10 Research · resources carry over`, 'good');
-    this.endTimer = DEFENSE.endBanner + (last ? 1 : 0);
+    // The banner waits for a click / Enter / Space (DEFENSE.bannerWait): an auto-advance could switch to the
+    // briefing just as the player clicks the banner, and that click then lands on a district card (critic G #12).
+    this.endTimer = DEFENSE.bannerWait ? Infinity : DEFENSE.endBanner + (last ? 1 : 0);
     this.sideDirty = true;
     this._refreshTop(true);
   }
@@ -1509,19 +1511,34 @@ export class DefenseScene {
     // Close the run now (clears the save) so quitting during the banner can't undo the loss.
     this.finalResult = this.run.finish(game, false);
     this._banner('THE RELAY HAS FALLEN', `Night ${this.night} · the run is over`, 'bad');
-    this.endTimer = DEFENSE.defeatBanner;
+    this.endTimer = DEFENSE.bannerWait ? Infinity : DEFENSE.defeatBanner;
     this.sideDirty = true;
     this._refreshTop(true);
   }
 
   _banner(title, sub, cls) {
     this.bannerEl?.remove();
-    // Dismiss on pointerdown (and swallow it): the scene switches on the next frame, and the next
-    // screen (the briefing) ignores the rest of this click — see BriefingScene._guardInput.
-    const dismiss = (e) => { e.stopPropagation(); e.preventDefault(); this.endTimer = Math.min(this.endTimer, 0.01); };
-    this.bannerEl = el(`div.df-banner.${cls}.ui-block`, { onpointerdown: dismiss },
-      el('div.df-bannertitle', title), el('div.df-bannersub', sub), el('div.small.muted', 'click to continue'));
+    // Any pointerdown while the banner is up is swallowed (window capture, so nothing under it reacts); after
+    // DEFENSE.bannerMinTime it dismisses. The scene switches on the next frame, and the next screen (the
+    // briefing) ignores the rest of this click — see BriefingScene._guardInput.
+    this.bannerT = 0;
+    if (!this._bannerHooked) {
+      this._bannerHooked = true;
+      this._listen(window, 'pointerdown', (e) => {
+        if (!this.bannerEl || (this.phase !== 'won' && this.phase !== 'lost')) return;
+        e.stopPropagation(); e.preventDefault();
+        this._dismissBanner();
+      }, true);
+    }
+    this.bannerEl = el(`div.df-banner.${cls}.ui-block`, {},
+      el('div.df-bannertitle', title), el('div.df-bannersub', sub), el('div.small.muted', 'click or press Enter to continue'));
     this.uiRoot.append(this.bannerEl);
+  }
+
+  /** Continue past the end banner (once it has shown for DEFENSE.bannerMinTime). */
+  _dismissBanner() {
+    if ((this.bannerT || 0) < (DEFENSE.bannerMinTime || 0)) return;
+    this.endTimer = Math.min(this.endTimer, 0.01);
   }
 
   _finishTransition() {
@@ -1543,6 +1560,9 @@ export class DefenseScene {
 
     if (this.phase === 'won' || this.phase === 'lost') {
       this.endTimer -= dt;
+      this.bannerT = (this.bannerT || 0) + dt;
+      const inp = game.input;
+      if (inp.wasPressed('Enter') || inp.wasPressed('NumpadEnter') || inp.wasPressed('Space')) this._dismissBanner();
       this._step(dt, false);
       this._frameVisuals(dt);
       if (this.endTimer <= 0) { this._finishTransition(); return; }

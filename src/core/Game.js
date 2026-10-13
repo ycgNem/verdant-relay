@@ -7,9 +7,10 @@
 //
 // Resolution (pixel-exact, STYLE/CLAUDE contract): the canvas is always shown at a WHOLE-NUMBER CSS
 // scale k (in device px), so every texel is k×k screen pixels. The base size from settings (480×270
-// "chunky" or 640×360 "sharp") is a target, not a fixed size: Game picks the k whose internal size
-// (window / k, 16:9, even) is closest to the target — 1280×720 chunky → 426×240 ×3, 1920×1080 chunky →
-// 480×270 ×4, sharp → 640×360 ×2 / ×3 — and letterboxes the few leftover pixels.
+// "chunky" or 640×360 "sharp") sets the field of view: the internal size it gets in a 1280×720 window
+// (chunky 426×240 ×3, sharp 640×360 ×2) is the reference, and every other window shows the same number of
+// tiles within ±CONFIG.ui.fovTolerance (1920×1080 chunky → 454×254 ×4, 1600×900 → 400×224 ×4, 2560×1440
+// → 426×240 ×6), letterboxing what's left — a bigger monitor never sees more jungle (critic G #12).
 // With Settings → "Pixel-perfect scaling" (meta.settings.integerScale) the internal size is exactly
 // the base size instead (whole-number multiple, larger black borders).
 // A scene may call `game.setResMult(m)` (target × m) or `game.setInternalRes(w, h)` for a fixed size
@@ -36,7 +37,7 @@ export class Game {
     this.flashEl = flash;
     this.assets = assets;
 
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, stencil: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
@@ -171,20 +172,41 @@ export class Game {
         k = Math.min(vw / w, vh / h);
       }
     } else {
-      // Adaptive: try every whole scale, keep the internal size nearest the target width (log ratio).
-      const TW = BW * this.resMult, ar = BW / BH;
-      let best = null;
-      for (let kk = 1; kk <= 12; kk++) {
-        let ww = Math.min(Math.floor(vw / kk), Math.floor((Math.floor(vh / kk)) * ar));
+      // Adaptive with a fixed field of view (critic G #12): the reference is the internal size this
+      // setting gets in a 1280×720 window (chunky 426×240); every window shows that many tiles within
+      // ±CONFIG.ui.fovTolerance — a whole-number scale k, the internal size clamped to the band and the
+      // rest letterboxed — so a bigger monitor never sees more jungle. Among scales inside the band the
+      // one filling the most of the window wins.
+      const ar = BW / BH;
+      const fit = (W, H, kk) => {
+        let ww = Math.min(Math.floor(W / kk), Math.floor((Math.floor(H / kk)) * ar));
         ww -= ww % 2;
-        let hh = Math.round(ww / ar);
-        hh -= hh % 2;
-        if (ww < 160 || hh < 90) break;
-        const err = Math.abs(Math.log(ww / TW));
-        if (!best || err < best.err - 1e-6) best = { err, ww, hh, kk };
+        return ww;
+      };
+      const nearest = (W, H, TW) => {
+        let b = null;
+        for (let kk = 1; kk <= 16; kk++) {
+          const ww = fit(W, H, kk);
+          if (ww < 160) break;
+          const err = Math.abs(Math.log(ww / TW));
+          if (!b || err < b.err - 1e-6) b = { err, ww, kk };
+        }
+        return b;
+      };
+      const ref = (nearest(1280, 720, BW)?.ww || BW) * this.resMult;
+      const tol = CONFIG.ui.fovTolerance ?? 0.07;
+      const lo = ref * (1 - tol), hi = Math.floor(ref * (1 + tol));
+      let best = null;
+      for (let kk = 1; kk <= 16; kk++) {
+        let ww = Math.min(fit(vw, vh, kk), hi - (hi % 2));
+        if (ww < 160) break;
+        if (ww < lo) continue;
+        const cover = ww * kk, err = Math.abs(Math.log(ww / ref));
+        if (!best || cover > best.cover + 1e-6 || (Math.abs(cover - best.cover) < 1e-6 && err < best.err)) best = { cover, err, ww, kk };
       }
-      if (!best) best = { ww: BW, hh: BH, kk: 1 };
-      w = best.ww; h = best.hh; k = best.kk;
+      if (!best) best = nearest(vw, vh, ref) || { ww: BW, kk: 1 };
+      w = best.ww; k = best.kk;
+      h = Math.round(w / ar); h -= h % 2;
     }
     this._layoutKey = key;
     this._layoutCache = { w, h, sw: (w * k) / dpr, sh: (h * k) / dpr, k };

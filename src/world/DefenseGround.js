@@ -7,7 +7,7 @@
 // so everything lines up with DefenseScene's coordinates.
 
 import * as THREE from 'three';
-import { DEFENSE_MAP } from '../data/defenseMap.js';
+import { DEFENSE_MAP, DEFENSE_VIEW } from '../data/defenseMap.js';
 import { LEVEL, BRUSH } from '../data/jungle.js';
 import { makeNoise, hash2 } from './noise.js';
 import { TerrainBaker } from './TerrainBaker.js';
@@ -137,22 +137,26 @@ export function buildDefenseGround(game, seed, laneTiles, tint) {
 
 // ------------------------------------------------------------------ build-pad plinths
 
-const PLINTH_W = 32, PLINTH_TOP = 26, PLINTH_FACE = 7, PLINTH_H = PLINTH_TOP + PLINTH_FACE + 1;
 
 /**
  * An in-world tower plinth for a night-map build pad (critic F #14/#15, replaces the metal pad with
  * hazard brackets): a weathered stone block, or a timber platform (`wood`), drawn texel by texel at 32 px
  * per tile — top face, lit north/west bevels, a shaded front face showing its height, moss and cracks.
  * Returns a flat Lambert mesh (lit by the night lights like the ground) centred on the tile, its front
- * face hanging south of it. `seed` varies the wear.
+ * face hanging south of it. `seed` varies the wear and (critic G #12) the shape: top size, face height
+ * and chipped corners (DEFENSE_VIEW.plinth), so a row of pads doesn't read as a grid of identical squares.
  */
 export function makePlinth(seed, wood = false) {
+  const r = (i) => hash2(seed * 13 + i, i * 7, 911);
+  const PS = DEFENSE_VIEW.plinth || { w: [30, 30], top: [26, 26], face: [7, 7], chips: [0, 0] };
+  const span = (a, i) => a[0] + Math.floor(r(i) * (a[1] - a[0] + 1));
+  const bw = span(PS.w, 1), tb = span(PS.top, 2), PLINTH_FACE = span(PS.face, 3);
+  const PLINTH_W = bw + 4, PLINTH_H = tb + PLINTH_FACE + 3;
   const c = document.createElement('canvas');
   c.width = PLINTH_W; c.height = PLINTH_H;
   const g = c.getContext('2d');
-  const r = (i) => hash2(seed * 13 + i, i * 7, 911);
   const px = (x, y, col) => { g.fillStyle = col; g.fillRect(x, y, 1, 1); };
-  const x0 = 2, x1 = PLINTH_W - 3, y0 = 1, y1 = PLINTH_TOP;   // top face (inclusive)
+  const x0 = 2, x1 = x0 + bw - 1, y0 = 1, y1 = y0 + tb - 1;   // top face (inclusive)
   const top = wood ? ['#3a2618', '#4a3220', '#5a3e28', '#6b4b30'] : ['#3f4442', '#4c524e', '#5a615b', '#687068'];
   const face = wood ? ['#22160e', '#2c1d12', '#382517'] : ['#262a29', '#2f3432', '#3a3f3c'];
   const moss = ['#24401f', '#2f5228', '#3e6631'];
@@ -172,8 +176,8 @@ export function makePlinth(seed, wood = false) {
         if ((y - y0) % 6 === 5) k = 0;                                    // gaps between planks
         else if ((x + ((y - y0) / 6 | 0) * 11) % 16 === 0) k = 0;          // plank ends
       } else {
-        const row = (y - y0) < 13 ? 0 : 1;
-        if (y - y0 === 13 || (x - x0 + row * 7) % 14 === 0) k = 0;        // slab joints
+        const half = tb >> 1, row = (y - y0) < half ? 0 : 1;
+        if (y - y0 === half || (x - x0 + row * 7 + seed) % 14 === 0) k = 0;   // slab joints
       }
       if (y === y0 || x === x0) k = Math.min(3, k + 2);                     // lit north / west bevel
       if (y === y1 || x === x1) k = Math.max(0, k - 1);
@@ -199,6 +203,16 @@ export function makePlinth(seed, wood = false) {
     const x = side < 0.5 ? x0 + Math.floor(r(k + 110) * 4) : x0 + Math.floor(r(k + 120) * (x1 - x0));
     const y = side < 0.5 ? y0 + Math.floor(r(k + 130) * (y1 - y0 + PLINTH_FACE)) : y1 - Math.floor(r(k + 140) * 3) + Math.floor(r(k + 150) * 4);
     px(x, y, moss[Math.floor(r(k + 160) * 3)]);
+  }
+  // Chipped corners: small stepped bites out of the top-face corners and the face's bottom corners.
+  const nChips = span(PS.chips, 4);
+  for (let k = 0; k < nChips; k++) {
+    const corner = Math.floor(r(k + 200) * 4), size = 2 + Math.floor(r(k + 210) * 3);
+    const right = corner & 1, bottom = corner >> 1;
+    const cx = right ? x1 : x0, cy = bottom ? y1 + PLINTH_FACE : y0;
+    for (let i = 0; i < size; i++) for (let j = 0; j < size - i; j++) {
+      g.clearRect(cx + (right ? -i : i), cy + (bottom ? -j : j), 1, 1);
+    }
   }
   // Dark 1-texel outline around the block (pixel-art separation from the ground).
   const d = g.getImageData(0, 0, PLINTH_W, PLINTH_H);

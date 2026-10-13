@@ -24,7 +24,7 @@ How the engine pieces fit together. `DESIGN.md` says what the game is; `PLAN.md`
 | `game.assets` | sprite/visual factory (below) |
 | `game.setResMult(m)` | render at base×m (resets on scene switch) |
 | `game.setInternalRes(w, h)` | render at a fixed internal size until the next scene switch (night: `DEFENSE_VIEW.res` = 1280×720) |
-| `game.fit()` | size the stage: always a whole-number CSS scale (device px). Default: adaptive internal size nearest the base res (1280×720 chunky → 426×240 ×3, 1920×1080 → 480×270 ×4); `meta.settings.integerScale` = exact base res, bigger borders. A fixed `setInternalRes` is integer-scaled when that fills ≥ `CONFIG.ui.minIntegerFill`, else stretched |
+| `game.fit()` | size the stage: always a whole-number CSS scale (device px). Default: fixed field of view — the internal size the base res gets at 1280×720 (chunky 426×240 ×3) is the reference, other windows stay within ±`CONFIG.ui.fovTolerance` of it in tiles (1920×1080 → 454×254 ×4, letterboxed); `meta.settings.integerScale` = exact base res, bigger borders. A fixed `setInternalRes` is integer-scaled when that fills ≥ `CONFIG.ui.minIntegerFill`, else stretched |
 | `game.width/height` | current internal resolution — changes with the window, so size per frame (PostFx) or rely on `_applyRes` re-sizing the scene's PixelCamera |
 | `game.shake(amp, time)` | screen shake (respects the settings toggle) |
 | `game.flash(color, opacity)` | full-screen flash |
@@ -49,7 +49,13 @@ Module functions (import from `../core/Assets.js`):
   a solid 1-texel outline + dithered fill in a flat colour wherever foliage/trees/ruins/props cover them (`ATMOS.silhouette`).
   `opts.silhouette` sets/overrides the colour (`false`/null = none); `setSilhouette(root, color|null)`; enemies switch dim → bright
   when the scene sets `root.userData.alert` (JungleScene does, from `enemy.alerted`).
-- `game.assets.spentVariant(key, 'dark'|'open'|'gutted')` → a derived sprite key (glow off / hollowed top / dimmed);
+- Sprite outline + card mask: `makeVisual(key, {outline: color})` (default for `player`; night towers use their type colour)
+  draws a flat 1-texel outline around the sprite in-shader, and a hidden child writes stencil `CARD_MASK_REF` over the body +
+  outline before the cards draw — the foliage/trunk/ruin card shader skips those pixels, so cards never cover that sprite
+  (the x-ray dither only lands around it). `setOutline(root, color)`; the jungle switches the player's outline
+  `ATMOS.playerOutline.open` ↔ `.cover` via `JungleWorld.coveredAt(x, z)`. Renderer + PostFx target have stencil buffers for this.
+- `game.assets.spentVariant(key, 'dark'|'open'|'gutted')` → a derived sprite key (glow off / hollowed top / dimmed); the
+  hollow interior follows the sprite's top-face polygon from `OPENED_TOP` (jungle.js) when listed;
   `openedVariant(type, closedKey)` picks per `OPENED_LOOK`. `game.assets.pylonGlow` → the activated-pylon light pool (`PYLON_GLOW`, `src/core/PixelGlow.js`).
 - `root.userData.vis.height` — visual height in world units (for HP bars / labels).
 - `game.assets.spriteInfo(key)` → `{tex, def}` for tiles; `game.assets.iconStyle(key, px)` → CSS string for DOM icons.
@@ -72,7 +78,10 @@ Module functions (import from `../core/Assets.js`):
 - `FloraAtlas(assets)`: one atlas of every static world sprite, grouped in `FAMILIES` (regex on manifest keys); `pick(fam, a, b)`.
   Brush families are colour-graded in the atlas (`BRUSH_LOOK`): low pale ferns, dark tall thickets, red-brown brambles.
 - The card shader's see-through window (`ATMOS.xray*`) is a round 8×8-Bayer fade around the player (no hard rim).
-- `DefenseGround.makePlinth(seed, wood)` → a texel-drawn stone / timber build-pad plinth (flat Lambert mesh, `userData.zOffset`).
+- `DefenseGround.makePlinth(seed, wood)` → a texel-drawn stone / timber build-pad plinth (flat Lambert mesh, `userData.zOffset`);
+  size, face height and chipped corners vary per seed (`DEFENSE_VIEW.plinth`). Pads sit off the tile grid (`DEFENSE_MAP.pads` are fractional).
+- Ruin paving with PixelLab art is sampled per slab (`PAVING.slab`): staggered rows, random flip/rotation, the star motif on only some slabs.
+- Creatures keep apart from the player and each other (`CROWD`, `ExploreEnemy._separate`, skipped mid-attack).
 - `Ambience(scene3d, world).update(dt, cx, cz, dusk)`: pollen, falling leaves, fireflies, light shafts.
 - `DefenseGround.buildDefenseGround(game, seed, laneTiles, tint)` → `{ group, update(dt), dispose() }`.
 - Persistent state: `run.world` (`run.worldState(size, cell)` decodes it, `run.storeWorld(state)` stores it; bitsets in base64).
@@ -131,7 +140,7 @@ Fields: `seed night phase relayHp relayMax playerHp meds weapon res{scrap,circui
   draw to put sprites (`isSprite`) and flat decals (`userData.pxSnap`) on whole pixels; `userData.noSnap` opts out.
   Sprites are upright cards: a sprite `h` tiles tall on screen is `h × CARD_SCALE` (tan 55° ≈ 1.43) world units tall, which is what
   `vis.height` reports; a world height `y` shows as `y / CARD_SCALE` tiles on screen. Sprite scales must be whole numbers (makeVisual rounds).
-  Day renders at the adaptive base res (~426–512 px wide, 13–16 tiles across); night renders at 1280×720 with the field at 32 px/tile
+  Day renders at a near-fixed field of view (chunky: 400–454 px wide, 12.5–14 tiles across, whatever the window); night renders at 1280×720 with the field at 32 px/tile
   (whole-number scale at 720p/1440p/2160p; at 1080p it is stretched ×1.5 — a pixel-exact night zoom would need a panning camera).
 - Lighting: hemisphere + directional, Lambert materials. Day warm; night blue with a cyan point light at the core.
 

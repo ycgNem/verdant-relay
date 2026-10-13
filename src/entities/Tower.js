@@ -12,7 +12,7 @@
 
 import * as THREE from 'three';
 import { TOWERS } from '../data/towers.js';
-import { DEFENSE_MAP } from '../data/defenseMap.js';
+import { DEFENSE_MAP, DEFENSE_VIEW } from '../data/defenseMap.js';
 import { setAnim, setFacing, updateVisual } from '../core/Assets.js';
 import { JUICE } from '../data/config.js';
 import { CARD_SCALE } from '../core/PixelView.js';
@@ -65,14 +65,16 @@ export class Tower {
     this.pips = [];
     this.level = this.rec.level;
     const key = this.level > 1 ? `${this.rec.type}_${this.level}` : this.rec.type;
-    this.visual = scene.game.assets.makeVisual(key);
+    // 1-texel outline in a dark shade of the type colour (critic G #12: towers read off the plinths).
+    const oc = new THREE.Color(this.def.icon?.color || '#ead4aa').lerp(new THREE.Color('#06050a'), DEFENSE_VIEW.towerOutlineMix ?? 0.55);
+    this.visual = scene.game.assets.makeVisual(key, { outline: `#${oc.getHexString()}` });
     const vis = this.visual.userData.vis;
     // Placeholder models grow a little per level; real sprites have their own level art.
     if (vis.kind === 'model' && !scene.game.assets.hasSprite(key)) vis.body.scale.setScalar(1 + 0.1 * (this.level - 1));
     this.visual.position.y = scene.padBaseY;
     this.obj.add(this.visual);
     // Pad brackets in the tower's type colour (see DefenseScene.typeMarkMat).
-    if (!this.typeMark && scene.typeMarkMat && scene.markerGeom) {
+    if (DEFENSE_VIEW.typeBrackets && !this.typeMark && scene.typeMarkMat && scene.markerGeom) {
       this.typeMark = new THREE.Mesh(scene.markerGeom, scene.typeMarkMat(this.rec.type));
       this.typeMark.rotation.x = -Math.PI / 2;
       this.typeMark.position.y = scene.padBaseY + 0.03;

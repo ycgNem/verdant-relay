@@ -1075,7 +1075,10 @@ export class JungleScene {
     this.later(1.2, () => {
       this.timeScale = 1;
       const salv = this._salvage();
-      const lost = RESOURCE_KEYS.filter((k) => this.carried[k] - (salv[k] || 0) > 0).map((k) => resChip(k, this.carried[k] - (salv[k] || 0)));
+      // Lost = carried minus the drone's share of it (the Scrap floor can top the salvage up past that share).
+      const share = nightTune('deathSalvage', this.game.run.night);
+      const lostOf = (k) => this.carried[k] - Math.min(this.carried[k], Math.round(this.carried[k] * share));
+      const lost = RESOURCE_KEYS.filter((k) => lostOf(k) > 0).map((k) => resChip(k, lostOf(k)));
       const kept = RESOURCE_KEYS.filter((k) => salv[k] > 0).map((k) => resChip(k, salv[k]));
       const meds = Math.min(CONFIG.player.maxMeds, this.player.meds | 0);
       if (meds > 0) lost.push(el('span.res', { style: { '--c': '#e43b44' }, html: `${resIconHtml('pick_med')} <b>${meds}</b> <span class="lbl">${meds === 1 ? 'Med kit' : 'Med kits'}</span>` }));
@@ -1104,10 +1107,14 @@ export class JungleScene {
     this.later(1.4, () => this._finish('extracted'));
   }
 
+  /** What the drone recovers when you go down: a share of the carried loot, and on early nights at least a floor of Scrap. */
   _salvage() {
-    const share = nightTune('deathSalvage', this.game.run.night);
+    const night = this.game.run.night;
+    const share = nightTune('deathSalvage', night);
     const out = {};
     if (share > 0) for (const k of RESOURCE_KEYS) { const n = Math.round(this.carried[k] * share); if (n > 0) out[k] = n; }
+    const floor = this.dayT >= (X().deathFloorAfter || 0) ? (nightTune('deathScrapFloor', night) || 0) : 0;
+    if (floor > (out.scrap || 0)) out.scrap = floor;
     return out;
   }
 
@@ -1180,9 +1187,12 @@ export class JungleScene {
   _confirmAbandon() {
     this.confirmModal?.remove();
     const share = nightTune('deathSalvage', this.game.run.night);
+    const salv = this._salvage().scrap || 0;
     const body = el('div.col', {},
       el('p', 'Abandoning counts as not making it back:'),
-      el('p.bad', share > 0 ? `Most carried loot is lost (the drone salvages ${Math.round(share * 100)}%) and you return at low HP.` : 'All carried loot is lost and you return at low HP.'),
+      el('p.bad', share > 0 || salv > 0
+        ? `Most carried loot is lost (the drone salvages ${Math.round(share * 100)}%${salv > 0 ? `, at least ${salv} Scrap` : ''}) and you return at low HP.`
+        : 'All carried loot is lost and you return at low HP.'),
       this.objectiveDone ? el('p.muted.small', 'Your objective still counts.') : null);
     this.confirmModal = modal(this.game.ui, 'Abandon expedition?', body, [
       button('Keep going', () => { this.confirmModal.remove(); this.confirmModal = null; }, { cls: 'primary' }),
@@ -1349,7 +1359,14 @@ export class JungleScene {
     const ax = this.player.aimPoint.x - p.x, az = this.player.aimPoint.z - p.z;
     const al = Math.hypot(ax, az);
     const k = al > 0.01 ? (Math.min(1, al / 7) * 1.6) / al : 0;
-    const tx = p.x + ax * k, tz = p.z - 0.6 + az * k * 0.8;
+    let tx = p.x + ax * k, tz = p.z - 0.6 + az * k * 0.8;
+    // Arrival at the Relay (critic G #10): frame the Relay + player (clear of the arrival toast) until
+    // the player walks off or DAY.spawnFrame.time passes.
+    const SF = DAY.spawnFrame, R = this.relayPos;
+    if (SF && !this.startPylon && (this.time || 0) < SF.time
+      && Math.hypot(p.x - R.x - DAY.startOffset[0], p.z - R.z - DAY.startOffset[1]) < SF.leave) {
+      tx = (p.x + R.x) / 2; tz = R.z + SF.z;
+    }
     if (snap) this.camFocus.set(tx, 0, tz);
     else {
       const f = 1 - Math.exp(-7 * dt);
@@ -1375,7 +1392,7 @@ export class JungleScene {
     U.uHurt.value = Math.max(0, U.uHurt.value - dt * 2);
     // X-ray window for foliage in front of the player (GL pixel coordinates: y up).
     const body = cam.toPixel(new THREE.Vector3(this.player.pos.x, 0.75, this.player.pos.z));
-    this.world.setPlayer(body.x, this.game.height - body.y, this.player.pos.z);
+    this.world.setPlayer(body.x, this.game.height - body.y, this.player.pos.z, this.player.pos.x, this.player.vis);
     // Occlusion silhouettes (Assets.js): enemies show bright once alerted, dim while unaware.
     for (const e of this.enemies) if (e.vis) e.vis.userData.alert = !!e.alerted;
   }
@@ -1764,7 +1781,28 @@ export class JungleScene {
       teleport: (x, z) => { this.player.pos.set(x, 0, z); this._placeCamera(0, true); },
       completeObjective: () => this.completeObjective(),
       giveLoot: () => { for (const k of RESOURCE_KEYS) this.carried[k] += 20; },
-      killAll: () => { for (const e of this.enemies) if (!e.dead) e.hit(9999, 1, 0); },
+      // Kills every live creature (including ones still emerging) and clears the wildlife not yet streamed in
+      // around the player (chunks within POP.spawnRadius), so nothing pops in right after. Returns the counts.
+      killAll: () => {
+        let killed = 0, cleared = 0;
+        for (const e of [...this.enemies]) {
+          if (e.dead) continue;
+          try {
+            if (e.state === 'spawn') e.state = 'chase';
+            e.hit(99999, 1, 0);
+            if (!e.dead) e.die();
+          } catch (err) { console.warn('killAll', err); e.dead = true; }
+          killed++;
+        }
+        const C = JUNGLE.chunk, n = this.data.size / C, R = POP.spawnRadius;
+        const pcx = Math.floor(this.player.pos.x / C), pcz = Math.floor(this.player.pos.z / C);
+        for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
+          const cx = pcx + dx, cz = pcz + dz;
+          if (cx < 0 || cz < 0 || cx >= n || cz >= n) continue;
+          for (const s of this._chunkPop(cx, cz)) if (!this.killed.has(s.id) && !this.spawned.has(s.id)) { this.killed.add(s.id); cleared++; }
+        }
+        return { killed, cleared };
+      },
       timeLeft: (s) => { this.dayT = DAY.length - s; },
       extract: () => this._extract(),
       die: () => this.player.hurt(9999),

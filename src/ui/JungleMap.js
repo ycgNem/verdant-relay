@@ -22,6 +22,7 @@ const ORDER = ['container', 'pylon_off', 'optional', 'pylon_on', 'relay', 'objec
 // Markers that stick to the minimap rim when they are outside it.
 const RIM = new Set(['objective', 'relay', 'pylon_on']);
 const INK = '#0b0a12';
+const OUTSIDE = '#050409';   // big map: beyond the world's edge
 
 const LEVEL_COL = ['#1c4a4a', '#3b2c1f', '#6b5136', '#25301c', '#2c4a25'];
 
@@ -276,15 +277,13 @@ export class JungleMap {
     const w = canvas.width, h = canvas.height;
     const g = canvas.getContext('2d');
     g.imageSmoothingEnabled = false;
-    g.fillStyle = INK;
+    // Beyond the jungle is a shade darker than unexplored jungle, so the world's edge reads as a tone
+    // change (critic G #10: a 1 px frame line here looked like a seam splitting the panel).
+    g.fillStyle = OUTSIDE;
     g.fillRect(0, 0, w, h);
     const ppt = view.ppt;
     const ox = Math.round(w / 2 - view.cx * ppt), oz = Math.round(h / 2 - view.cz * ppt);
     g.drawImage(this.fog, ox, oz, this.W * ppt, this.W * ppt);
-    // Faint frame around the whole jungle so its edge reads when zoomed out.
-    g.strokeStyle = '#262b44';
-    g.lineWidth = 1;
-    g.strokeRect(ox - 0.5, oz - 0.5, this.W * ppt + 1, this.W * ppt + 1);
     const unit = Math.max(4, Math.min(9, Math.round(ppt * 1.4)), Math.round(Math.min(w, h) / 90));
     const e = unit * 1.5;
     this._markers(g, markers, (mx, mz) => [ox + mx * ppt, oz + mz * ppt], unit, time, { box: [e, e, w - e, h - e] });

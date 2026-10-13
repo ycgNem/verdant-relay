@@ -88,7 +88,7 @@ export class SummaryScene {
     const sub = extracted
       ? 'Everything you carried is banked at the Relay.'
       : salvaged
-        ? 'Most of what you carried is lost, but the drone salvaged a share. Towers, banked resources and research are safe.'
+        ? 'Most of what you carried is lost, but the drone salvaged some Scrap. Towers, banked resources and research are safe.'
         : 'Everything you carried this expedition is lost. Towers, banked resources and research are safe.';
 
     const head = el(`div.scr-head.panel.ui-block.sum-head${extracted ? '.ok' : '.fail'}`, {},
@@ -114,7 +114,7 @@ export class SummaryScene {
     const loot = el('div.panel.ui-block.sum-col', {},
       el('h3', extracted ? 'Loot banked' : salvaged ? 'Loot lost (some salvaged)' : 'Loot lost'),
       lootRows,
-      !anyLoot ? el('div.small.muted', 'You came back empty-handed.') : null,
+      !anyLoot && !salvaged ? el('div.small.muted', 'You came back empty-handed.') : null,
       el('div.small.muted.sum-note', { title: RESOURCES.intel.desc }, 'Intel: spend it in night prep to Decrypt (+Research Data) or Sabotage the wave.'));
 
     // Outcomes column.

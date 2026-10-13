@@ -18,7 +18,9 @@ export const CONFIG = {
   // (a click that dismissed the last screen must not land on a button of the next one).
   // minIntegerFill: a scene's fixed internal size (night map 1280×720) is shown at a whole-number scale
   // only if that fills at least this share of the window's area; otherwise it is stretched (Game._layout).
-  ui: { fontGrid: 8, sceneClickGuard: 0.3, minIntegerFill: 0.9 },
+  // fovTolerance: how far (±share) the day view's width in tiles may drift from the 1280×720 view on other
+  // window sizes; beyond it the view is letterboxed instead of showing more jungle (Game._layout).
+  ui: { fontGrid: 8, sceneClickGuard: 0.3, minIntegerFill: 0.9, fovTolerance: 0.07 },
 
   player: {
     hp: 100,
@@ -48,6 +50,7 @@ export const CONFIG = {
     extractRadius: 1.8,
     interactRadius: 1.4,
     deathReturnHp: 35,       // player HP after a failed expedition
+    deathFloorAfter: 15,     // seconds into the day before the salvage Scrap floor applies (abandoning at once earns nothing)
     nightlyHeal: 25,         // player HP recovered each night
     maxSkillPoints: 2,       // skill points one expedition can earn (primary + bonus optionals)
     quickExtraction: 0.75,   // hold-time multiplier with the Quick Extraction skill
@@ -94,7 +97,8 @@ export const CONFIG = {
       holdSpawns:   [2, 3, 3, 4, 4, 5],                 // max enemies summoned during an objective / event hold
       eliteHp:      [1.8, 2.0, 2.1, 2.2, 2.4, 2.6],     // elite HP multiplier (× the night's enemyHp)
       eliteSupport: [1, 1, 1, 2, 2, 2],                 // light enemies (Crawlers / Skitters) beside the elite
-      deathSalvage: [0.3, 0.2, 0, 0, 0, 0],             // share of carried loot the drone recovers when you go down
+      deathSalvage: [0.35, 0.3, 0.1, 0, 0, 0],          // share of carried loot the drone recovers when you go down…
+      deathScrapFloor: [20, 20, 12, 0, 0, 0],           // …but always at least this much Scrap (one early death shouldn't decide a run)
       exploreRooms: [[4, 6], [5, 7], [6, 9]],           // [min, max] exploration rooms (nights 1–2 smaller)
       optionalRooms: [[1, 2], [2, 3], [2, 3]],          // [min, max] optional rooms
       containerScrap: [1.2, 1.1, 1, 1, 1, 1],           // container Scrap multiplier (smaller early maps pay a bit more)
@@ -116,6 +120,13 @@ export const CONFIG = {
     elite: { scale: 1.3, ringColor: '#feae34', damageMult: 1.2, windupMult: 1.35, tint: '#ffb3a0', supportTypes: { crawler: 2, skitter: 1 } },
     nest: { spawnEvery: 7, maxAlive: 3, radius: 9, types: { crawler: 2, skitter: 1 } },
     holdSpawnMinDist: 6,       // enemies summoned by a hold (terminal, workshop…) appear at least this far
+    // Attack tokens (critic G: small packs took 60 HP in ~6 s). Melee / charge attackers need a token to wind up:
+    //   max: tokens per night (index = night - 1, last repeats) · gap: seconds between two token grants
+    //   afterHit: no new token for this long after a melee hit lands on the player (breathing room; spacing
+    //   attacks alone would only stop the post-hit i-frames from soaking simultaneous hits)
+    //   release: seconds a token stays taken after the attacker's recovery · holdDist / circleSpeed: enemies
+    //   waiting for a token circle the player at about this distance (tiles) and speed (× their own).
+    attackers: { max: [2, 2, 2, 2, 3, 3], gap: 0.2, afterHit: 1.0, release: 0.3, holdDist: 2.4, circleSpeed: 0.55 },
     camera: { dist: 12.4, lookAhead: 2.2, follow: 7 },   // pitch / scale: CONFIG.pixel
     light: { hemi: 2.4, sun: 2.0 },
   },
@@ -266,6 +277,11 @@ export const JUICE = {
     glint: 0.14, ringFrames: 6,
     lob: { radius: 0.62, minFlight: 0.5, maxFlight: 0.95, apex: 0.28, apexMin: 0.8, puddle: 2.5 },
     laneDust: 0.35,          // dust puffs per second per tile of a Razorback's charge lane while it winds up
+    // Razorback lane (Fx.chargeLane): grows over this share of the wind-up, then chevrons sweep toward the charge
+    // pulseRate times a second (×3 by the commit) while the edges glow up to +pulseGlow; dust = scuffed band density;
+    // xray = flat colours [band, chevrons] drawn where foliage covers the lane; hole = [rx, ry] internal px ellipse
+    // around the player (centred holeY world units up) where the x-ray is never drawn.
+    lane: { grow: 0.35, pulseRate: 2.2, pulseGlow: 0.45, chevronGap: 16, pulseLength: 48, dust: 0.34, xray: ['#a22633', '#ffb070'], hole: [22, 40], holeY: 0.85 },
   },
 };
 

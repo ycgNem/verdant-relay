@@ -52,5 +52,25 @@
 | 48 | anim grp 308d48d6 (razorback paw) e | animate_character v3 custom 6f | razorback windup test (paw ground) east | 1 | 100 |
 | 49 | anim grp 1d30df78 (player hurt) 5 dirs | animate_character template taking-punch | player hurt | 5 | 105 |
 | 50 | anim grp 308d48d6 (razorback paw) s,se,ne,n | animate_character v3 custom 6f | razorback windup (paw ground) remaining dirs | 4 | 109 |
+| 51 | anim grp 386b1cec (player roll2) e | animate_character v3 custom 6f | player somersault roll test, east (task: real dodge roll) | 1 | 110 |
+| 52 | char e03fb9dd-37e0-412e-a875-a1b526838a5f | create_character standard quadruped dog 48 (68 canvas) | bramble crawler redesign base (thorn/bark beast) | 1 | 111 |
+| 53 | anim grp 509473f1 (player crouch) s,se,ne,n | animate_character template crouching | tuck poses for the hand-rotated roll (roll2 east test stayed upright: crouch only, no tumble) | 4 | 115 |
+| 54 | anim grp 6a34958b (crawler2 walk) 5 dirs | animate_character template walk-6-frames | bramble crawler v2 walk | 5 | 120 |
+| 55 | anim grp a2315df3 (crawler2 attack) e | animate_character v3 custom 6f | bramble crawler v2 lunge bite, east test | 1 | 121 |
+| 56 | anim grp a2315df3 (crawler2 attack) s,se,ne,n | animate_character v3 custom 6f | bramble crawler v2 lunge bite remaining dirs | 4 | 125 |
 
-**Total: 109 / 120 generations.** (Failed/rejected calls not charged: v3 quadruped without reference, one truncated base64 call.)
+**Total: 125 generations** (this task's budget: 25 starting at 109). (Failed/rejected calls not charged: v3 quadruped without reference, one truncated base64 call.)
+
+### Critic G art pass (2026-10-13): roll + Bramble Crawler redesign, 16 generations (109 -> 125)
+- **Player roll** (`make_roll.py` -> `raw/player/zip/Idle/animations/roll3`): the v3 "somersault" test (#51) came back as an
+  upright crouch again, so the tumble is hand-built: crouch poses from the `crouching` template (#53, s/se/ne/n) and the
+  roll2 east test, turned in exact 90 degree steps (transposes, no resampling) and set on the feet line.
+  Side rows spin clockwise; s/n rows flip about the screen x axis (mid-tumble shows the opposite facing upside down).
+  7 frames: tuck, 3 tumble, land, rise x2. Downloads of the new player groups live in `raw/player_new/` (the old
+  `raw/player/zip` was kept so `hurt_mix` survives).
+- **Bramble Crawler v2** (char e03fb9dd, `raw/crawler2`): standard quadruped dog with a thorn/bark description (#52),
+  template walk (#54), v3 lunge bite (#55-56). `make_crawler2.py` hand-finishes every frame: red thorn tips (tip, mid red,
+  dark red walking back along each exposed spine), the mane's mid-browns shifted to a red-purple bramble-cane ramp
+  (head around the eyes kept bark), walk rows ground-aligned to the rotation (template lifted the body 0-3 texels),
+  idle = rotation pose + 1-texel breathing bob, windup = attack frames 0-2, attack = 3-6 (hit 1).
+  The old dog crawler (char 9823d64a) is no longer used by the sheet.

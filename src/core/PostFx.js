@@ -16,6 +16,7 @@ export class PostFx {
     this.game = game;
     this.target = new THREE.WebGLRenderTarget(4, 4, {
       type: THREE.HalfFloatType, magFilter: THREE.NearestFilter, minFilter: THREE.NearestFilter, depthBuffer: true,
+      stencilBuffer: true,   // the player's card mask (Assets.js addOutline)
     });
     this.uniforms = {
       tScene: { value: this.target.texture },

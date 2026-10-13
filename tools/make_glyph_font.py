@@ -33,6 +33,17 @@ GLYPHS = {
               '....']),
 }
 
+# src/ui/fonts/vr-clock.ttf (critic G #10): the HUD clock is Silkscreen Bold, whose "4" is a filled block
+# (.####/.####/.#####/...##/...##) that reads as a broken glyph. Same 8-unit em and baseline as Silkscreen,
+# 2-texel stems like its bold "0" (.##.##), 7-unit advance with the 1-unit left bearing in the bitmap.
+CLOCK_GLYPHS = {
+    '4': (7, ['.##.##',
+              '.##.##',
+              '.#####',
+              '....##',
+              '....##']),
+}
+
 
 def rects(rows):
     """Horizontal runs of ink → rectangles (x0, y0, x1, y1) in font units (y up, baseline 0)."""
@@ -81,14 +92,14 @@ def checksum(b):
     return sum(struct.unpack('>%dI' % (len(b) // 4), b)) & 0xFFFFFFFF
 
 
-def build(path):
-    order = ['.notdef'] + sorted(GLYPHS)          # glyph ids
+def build(path, glyphs=GLYPHS, family='VR Glyphs'):
+    order = ['.notdef'] + sorted(glyphs)          # glyph ids
     glyf, loca, hmtx = b'', [0], b''
     maxp_pts = maxp_cnt = 0
     gx0 = gy0 = 10 ** 6; gx1 = gy1 = -10 ** 6
     adv_max = 0
     for name in order:
-        adv, rows = (4, []) if name == '.notdef' else GLYPHS[name]
+        adv, rows = (4, []) if name == '.notdef' else glyphs[name]
         d, bb, npts, ncnt = glyph_data(rects(rows))
         glyf += d
         loca.append(len(glyf))
@@ -112,7 +123,7 @@ def build(path):
     os2 += struct.pack('>II', 1, 0)                          # code page ranges (Latin 1)
     os2 += struct.pack('>hhHHH', 4 * PX, 5 * PX, 0, 0x20, 0)  # xHeight, capHeight, default/break char, maxContext
     # cmap format 4: one segment per code point + the 0xFFFF terminator.
-    codes = sorted((ord(c), order.index(c)) for c in GLYPHS)
+    codes = sorted((ord(c), order.index(c)) for c in glyphs)
     segs = codes + [(0xFFFF, 0)]
     sc = len(segs)
     ends = b''.join(struct.pack('>H', c) for c, _ in segs)
@@ -125,7 +136,8 @@ def build(path):
     sub = sub[:2] + struct.pack('>H', len(sub)) + sub[4:]
     cmap = struct.pack('>HHHHI', 0, 1, 3, 1, 12) + sub
     loca_b = b''.join(struct.pack('>I', o) for o in loca)
-    names = {1: 'VR Glyphs', 2: 'Regular', 3: 'VR Glyphs Regular 1.0', 4: 'VR Glyphs Regular', 5: 'Version 1.0', 6: 'VRGlyphs-Regular'}
+    ps = family.replace(' ', '')
+    names = {1: family, 2: 'Regular', 3: f'{family} Regular 1.0', 4: f'{family} Regular', 5: 'Version 1.0', 6: f'{ps}-Regular'}
     strs, recs = b'', b''
     for nid, txt in names.items():
         e = txt.encode('utf-16-be')
@@ -156,4 +168,6 @@ def build(path):
 
 
 if __name__ == '__main__':
-    build(os.path.join(os.path.dirname(__file__), '..', 'src', 'ui', 'fonts', 'vr-glyphs.ttf'))
+    fonts = os.path.join(os.path.dirname(__file__), '..', 'src', 'ui', 'fonts')
+    build(os.path.join(fonts, 'vr-glyphs.ttf'))
+    build(os.path.join(fonts, 'vr-clock.ttf'), CLOCK_GLYPHS, 'VR Clock')

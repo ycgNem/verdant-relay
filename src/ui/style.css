@@ -28,6 +28,14 @@
   unicode-range: U+0038, U+007E;
   font-display: block;
 }
+/* The HUD clock is Silkscreen Bold, whose "4" is a filled block (critic G #10): a 2-stem "4" on its grid. */
+@font-face {
+  font-family: 'VR Clock';
+  src: url('./fonts/vr-clock.ttf') format('truetype');
+  unicode-range: U+0034;
+  font-weight: 100 900;
+  font-display: block;
+}
 
 * { box-sizing: border-box; }
 
@@ -192,6 +200,7 @@ body { display: flex; align-items: center; justify-content: center; }
 /* ---------------------------------------------------------------- pixel typography */
 /* Headings and the logo use the display face; small uppercase labels use Silkscreen (built for tiny caps). */
 .title-logo, .logo-big, .headline, .res-headline, .df-bannertitle, .x-banner-t, .x-time { font-family: var(--font-display); }
+.x-time { font-family: 'VR Clock', var(--font-display); }
 .x-title, .df-lbl, .df-phase, .df-tag, .dc-k, .skill-branch, .df-role, .df-new, .badge { font-family: var(--font-label); letter-spacing: round(0.02em, var(--fpx)); font-weight: 400; }
 /* Tiny5 ships one weight: a synthesized bold smears every stem ~1 px and fills the counters of 8, 6, C, %
    ('80' reads as '$0', '6' as '€'). Never synthesize; emphasis in Tiny5 text is brightness/colour instead

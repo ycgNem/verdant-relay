@@ -27,6 +27,7 @@ import { flashVisual, setOpacity, updateVisual } from './Assets.js';
 const MAX_PARTICLES = 700;
 const LIGHTS = 3;
 const TEXEL = 1 / 32;
+const _laneV = new THREE.Vector3();
 
 // ------------------------------------------------------------------ procedural pixel textures
 
@@ -408,12 +409,17 @@ function ringSheet(rPx, color, color2, K) {
 }
 
 /**
- * A Razorback's charge lane as ground damage: dashed red edges, scuffed dust and a jagged central
- * crack with ember pixels, drawn for the exact direction (no texture rotation). Alpha carries the
- * reveal order (near → far, Bayer-dithered front): lowering the material's alphaTest grows the lane.
- * Returns { canvas, ox, oz (texel offset of the canvas corner from the lane origin), W, H }.
+ * A Razorback's charge lane as ground damage, drawn for the exact direction (no texture rotation).
+ * Two layers (critic G: the old dotted lines vanished over leaf litter and brush):
+ *   base  — a dark 1-texel outline, a solid 2-texel bright red edge, a dithered red inner rim, a wide
+ *           dithered dust band and the jagged central crack. Alpha carries the reveal order (near → far,
+ *           Bayer-dithered front): lowering the material's alphaTest grows the lane.
+ *   chev  — chevrons pointing along the charge plus a bright end bar. Alpha carries the phase along the
+ *           lane, so sweeping the alphaTest makes the chevrons light up toward the charge direction (pulse).
+ * Returns { canvas, chev, ox, oz (texel offset of the canvas corner from the lane origin), W, H }.
  */
 function laneCanvas(dir, Lpx, Wpx, seed) {
+  const L = JUICE.tele?.lane || {};
   const d = { x: dir.x, z: dir.z };
   const nrm = { x: -d.z, z: d.x };
   const hw = Wpx / 2;
@@ -421,16 +427,17 @@ function laneCanvas(dir, Lpx, Wpx, seed) {
   for (const [a, b] of [[0, -hw], [0, hw], [Lpx, -hw], [Lpx, hw]]) { xs.push(d.x * a + nrm.x * b); zs.push(d.z * a + nrm.z * b); }
   const ox = Math.floor(Math.min(...xs)) - 1, oz = Math.floor(Math.min(...zs)) - 1;
   const W = Math.ceil(Math.max(...xs)) + 1 - ox, H = Math.ceil(Math.max(...zs)) + 1 - oz;
-  const c = document.createElement('canvas');
-  c.width = W; c.height = H;
-  const g = c.getContext('2d');
-  const img = g.createImageData(W, H);
+  const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d'); return { c, g, img: g.createImageData(W, H) }; };
+  const base = mk(), chev = mk();
   const rnd = seeded(seed);
   const ph1 = rnd() * 6.28, ph2 = rnd() * 6.28;
   const crack = (u) => Math.sin(u * 0.33 + ph1) * 1.6 + Math.sin(u * 0.9 + ph2) * 0.7;
   // short side cracks branching off the main one
   const branches = [];
   for (let u = 6 + rnd() * 6; u < Lpx - 6; u += 7 + rnd() * 9) branches.push({ u, s: rnd() < 0.5 ? -1 : 1, len: 3 + rnd() * 4 });
+  const P = L.chevronGap ?? 16;          // texels between chevrons
+  const wave = L.pulseLength ?? 48;      // texels of lane one pulse sweep covers
+  const dust = L.dust ?? 0.4;            // share of the band filled with dithered dust
   for (let j = 0; j < H; j++) {
     for (let i = 0; i < W; i++) {
       const x = ox + i + 0.5, z = oz + j + 0.5;
@@ -439,32 +446,47 @@ function laneCanvas(dir, Lpx, Wpx, seed) {
       const av = Math.abs(v);
       let col = null;
       const cv = v - crack(u);
-      if (av > hw - 1) col = Math.floor(u / 3) % 3 !== 2 ? '#e43b44' : null;               // dashed edge
-      else if (av > hw - 2) col = (i + j) & 1 ? null : '#a22633';                           // dithered inner edge
-      else if (Math.abs(cv) < 0.75) col = Math.floor(u) % 7 === 3 ? '#e43b44' : '#3e2731';  // the crack, with embers
-      else if (Math.abs(cv) < 1.6 && Math.abs(cv) >= 0.75) col = cv > 0 ? '#8f563b' : null;  // lit lower lip (light from top-left)
+      if (av > hw - 1) col = '#2b0f14';                                                     // dark outline: reads on bright litter
+      else if (av > hw - 3) col = av > hw - 2 ? '#ff3b3b' : '#ff7a5c';                       // solid bright edge (lit inner texel)
+      else if (av > hw - 5) col = (i + j) & 1 ? '#a22633' : null;                            // dithered inner rim
+      else if (Math.abs(cv) < 0.75) col = Math.floor(u) % 7 === 3 ? '#ff3b3b' : '#3e2731';  // the crack, with embers
+      else if (Math.abs(cv) < 1.6) col = cv > 0 ? '#8f563b' : null;                          // lit lower lip (light from top-left)
       else {
         for (const b of branches) {
           const du = u - b.u;
           if (du >= 0 && du < b.len && Math.abs(cv - b.s * du * 0.9) < 0.6) { col = '#3e2731'; break; }
         }
         if (!col) {
-          // scattered scuffs and grit (hashed, so no regular dot lattice), heavier where it paws
-          const h = hash2(i + seed, j);
-          const near = u < 24 ? 0.16 : 0.055 * (1 + Math.sin(u * 0.21 + ph2) * 0.6);
-          if (h < near * 0.35) col = '#e4a672';
-          else if (h < near) col = '#b86f50';
-          else if (h > 0.985 && av < hw - 3) col = '#5a4430';
+          // wide scuffed dust band (hashed grit, no dot lattice), heavier where it paws
+          const near = u < 24 ? 1.35 : 1;
+          const t = hash2(i + seed, j);
+          if (t < dust * near * 0.35) col = '#e4a672';
+          else if (t < dust * near) col = '#b86f50';
+          else if (t > 0.97) col = '#5a4430';
         }
       }
-      if (!col) continue;
-      const k = Math.min(1, (u / Lpx) * 0.9 + bayer(i + 1, j + 2) * 0.1);
-      px(img, W, i, j, col);
-      img.data[(j * W + i) * 4 + 3] = Math.round(255 - k * 127);
+      if (u > Lpx - 2 && av <= hw - 1) col = '#ff3b3b';                                     // end bar: where it stops
+      if (col) {
+        const k = Math.min(1, (u / Lpx) * 0.9 + bayer(i + 1, j + 2) * 0.1);
+        px(base.img, W, i, j, col);
+        base.img.data[(j * W + i) * 4 + 3] = Math.round(255 - k * 127);
+      }
+      // chevrons ">" along the charge: two arms meeting at the lane centre, 2 texels thick
+      if (av < hw - 5) {
+        const uc = ((u % P) + P) % P;
+        const arm = uc - (P * 0.5 - av * 0.75);
+        if (arm >= 0 && arm < 2.2 && u > 4 && u < Lpx - 3) {
+          px(chev.img, W, i, j, arm < 1.1 ? '#fff1c4' : '#feae34');
+          // phase along the lane: the alphaTest sweep reveals each pulse from the beast outward
+          const ph = ((u % wave) + wave) % wave / wave;
+          chev.img.data[(j * W + i) * 4 + 3] = Math.max(2, Math.round(255 - ph * 250));
+        }
+      }
     }
   }
-  g.putImageData(img, 0, 0);
-  return { canvas: c, ox, oz, W, H };
+  base.g.putImageData(base.img, 0, 0);
+  chev.g.putImageData(chev.img, 0, 0);
+  return { canvas: base.c, chev: chev.c, ox, oz, W, H };
 }
 
 /** 40×40 ground crack (heavy chop impact): jagged dark fissures radiating from a small crater, lit lips. */
@@ -951,32 +973,63 @@ export class Fx {
   }
 
   /**
-   * Razorback charge lane: ground cracks and scuffed dust that grow from the beast along its path over
-   * `time`, then flash when it commits. o: { dir, length, width, time, fade }.
+   * Razorback charge lane: a bold dust band with bright edges that grows from the beast along its path
+   * (the first JUICE.tele.lane.grow of `time`), then chevrons pulse toward the charge, faster as the
+   * commit nears, and the whole lane flashes when it commits. o: { dir, length, width, time, fade }.
    * Returns { cancel(), setDir(dir, length), group }.
    */
   chargeLane(pos, o = {}) {
     const time = o.time ?? 0.8;
-    const item = { obj: null, t: 0, life: time + (o.fade ?? 0.12), fillTime: time, kind: 'lane', tex: null, shared: true, flashed: false };
+    const item = { obj: null, t: 0, life: time + (o.fade ?? 0.12), fillTime: time, kind: 'lane', tex: null, chevTex: null, shared: true, flashed: false };
     const seed = 1 + Math.floor(Math.random() * 9999);
     const Wpx = Math.max(8, Math.round((o.width ?? 1.2) * 32));
     const build = (dir, len) => {
       const dl = Math.hypot(dir.x, dir.z) || 1;
       const d = { x: dir.x / dl, z: dir.z / dl };
       const lc = laneCanvas(d, Math.max(8, Math.round(len * 32)), Wpx, seed);
-      const tex = canvasTex(lc.canvas);
+      const tex = canvasTex(lc.canvas), chevTex = canvasTex(lc.chev);
       const cx = pos.x + (lc.ox + lc.W / 2) * TEXEL, cz = pos.z + (lc.oz + lc.H / 2) * TEXEL;
       if (!item.obj) {
-        item.obj = this._flatQuad(tex, cx, 0.03, cz, lc.W, lc.H, 2);
-        item.obj.material.alphaTest = 0.99;
+        const baseM = this._flatQuad(tex, cx, 0.03, cz, lc.W, lc.H, 2);
+        baseM.material.alphaTest = 0.99;
+        const chevM = this._flatQuad(chevTex, cx, 0.034, cz, lc.W, lc.H, 3);
+        chevM.material.alphaTest = 1;
+        // X-ray chevrons: the same chevrons drawn only where foliage / props cover the lane (depthFunc
+        // GREATER, after every opaque card), in a flat hot colour, so the lane reads through brush.
+        // o.hole (a {x, z} like the player's position): no x-ray over that body, so the lane never hides the
+        // player standing in it (an ellipse around its sprite, JUICE.tele.lane.hole = [rx, ry] internal px).
+        const hole = this._laneHole ||= { value: new THREE.Vector4(-1e5, -1e5, 1, 1) };
+        const xray = (src, map, color, order) => {
+          const m = src.clone();
+          m.material = new THREE.MeshBasicMaterial({ map, color, alphaTest: 1, transparent: true,
+            blending: THREE.NoBlending, depthWrite: false, depthFunc: THREE.GreaterDepth, side: THREE.DoubleSide });
+          m.material.onBeforeCompile = (sh) => {
+            sh.uniforms.uHole = hole;
+            sh.fragmentShader = sh.fragmentShader.replace('void main() {',
+              'uniform vec4 uHole;\nvoid main() {\n  vec2 hd = (gl_FragCoord.xy - uHole.xy) / uHole.zw;\n  if (dot(hd, hd) < 1.0) discard;\n');
+          };
+          m.material.customProgramCacheKey = () => 'vr-lane-xray';
+          m.renderOrder = order;
+          return m;
+        };
+        item.hole = o.hole || null;
+        const XC = JUICE.tele?.lane?.xray || ['#a22633', '#ffb070'];
+        const xrBase = xray(baseM, tex, XC[0], 38), xr = xray(chevM, chevTex, XC[1], 39);
+        // one group so Fx disposes every layer together
+        const g = new THREE.Group();
+        this.scene.add(g);
+        g.attach(baseM); g.attach(chevM); g.add(xrBase); g.add(xr);
+        item.obj = g; item.base = baseM; item.chev = chevM; item.xray = xr; item.xrayBase = xrBase;
       } else {
-        item.tex?.dispose();
-        item.obj.material.map = tex;
-        item.obj.material.needsUpdate = true;
-        item.obj.scale.set(lc.W * TEXEL, lc.H * TEXEL, 1);
-        item.obj.position.set(cx, 0.03, cz);
+        item.tex?.dispose(); item.chevTex?.dispose();
+        for (const [m, t] of [[item.base, tex], [item.chev, chevTex], [item.xrayBase, tex], [item.xray, chevTex]]) {
+          m.material.map = t;
+          m.material.needsUpdate = true;
+          m.scale.set(lc.W * TEXEL, lc.H * TEXEL, 1);
+          m.position.set(cx, m.position.y, cz);
+        }
       }
-      item.tex = tex;
+      item.tex = tex; item.chevTex = chevTex;
       item.dir = d; item.len = len;
     };
     build(o.dir ?? { x: 1, z: 0 }, o.length ?? 3);
@@ -1168,11 +1221,33 @@ export class Fx {
         const f = it.t / it.fillTime;
         it.tex.offset.x = (f >= 1 ? it.K : Math.min(it.K - 1, Math.floor(f * it.K))) / it.n;
       } else if (it.kind === 'lane') {
+        const LN = JUICE.tele.lane || {};
+        if (it.hole && this._laneHole) {
+          // the body's centre in render-target pixels (gl_FragCoord: origin bottom-left)
+          const v = _laneV.set(it.hole.x, LN.holeY ?? 0.85, it.hole.z).project(this.camera);
+          const R = LN.hole || [20, 36];
+          this._laneHole.value.set((v.x * 0.5 + 0.5) * this.game.width, (v.y * 0.5 + 0.5) * this.game.height, R[0], R[1]);
+        }
         const f = Math.min(1, it.t / it.fillTime);
-        // grows from the beast outward; on commit the whole lane flashes bright
-        it.obj.material.alphaTest = Math.max(0.01, (255 - f * 127) / 255 - 0.002);
-        if (f >= 1 && !it.flashed) { it.flashed = true; it.obj.material.color.setRGB(2.2, 2.2, 2.2); }
-        else if (it.flashed && it.t - it.fillTime > 0.06) it.obj.material.color.setRGB(1, 1, 1);
+        // grows from the beast outward over the first part of the wind-up, then holds
+        const g = Math.min(1, it.t / Math.max(0.05, it.fillTime * (LN.grow ?? 0.35)));
+        it.base.material.alphaTest = Math.max(0.01, (255 - g * 127) / 255 - 0.002);
+        it.xrayBase.material.alphaTest = it.base.material.alphaTest;
+        if (f >= 1) {
+          // commit: the whole lane flashes bright, chevrons stay lit while it charges
+          if (!it.flashed) { it.flashed = true; it.base.material.color.setRGB(2.2, 2.2, 2.2); it.chev.material.color.setRGB(2, 2, 2); }
+          else if (it.t - it.fillTime > 0.06) { it.base.material.color.setRGB(1, 1, 1); it.chev.material.color.setRGB(1, 1, 1); }
+          it.chev.material.alphaTest = 0.005;
+          it.xray.material.alphaTest = 0.005;
+        } else if (g >= 1) {
+          // chevrons sweep toward the charge, faster as the commit nears; the edges pulse brighter
+          it.ph = (it.ph || 0) + dt * (LN.pulseRate ?? 2.2) * (1 + 2 * f);
+          const sweep = it.ph % 1;
+          it.chev.material.alphaTest = Math.max(0.005, 1 - sweep);
+          it.xray.material.alphaTest = it.chev.material.alphaTest;
+          const b = 1 + (LN.pulseGlow ?? 0.45) * (0.5 + 0.5 * Math.sin(it.ph * Math.PI * 2));
+          it.base.material.color.setRGB(b, b, b);
+        }
       } else if (it.kind === 'teleDash') {
         const f = Math.min(1, it.t / it.fillTime);
         it.inner.scale.setScalar(Math.max(0.05, it.r * (1 - f)));
@@ -1194,6 +1269,7 @@ export class Fx {
       if (it.t >= it.life) {
         this._disposeObj(it.obj, it.shared);
         it.tex?.dispose();
+        it.chevTex?.dispose();
         this.items.splice(i, 1);
         if (it.kind === 'decal') { const j = this.decals.indexOf(it); if (j >= 0) this.decals.splice(j, 1); }
       }

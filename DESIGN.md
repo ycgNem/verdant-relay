@@ -89,14 +89,20 @@ three slashes). Skitters and Crawlers slip through undergrowth, Razorbacks bulld
    objective's skill point and boon only count if it was done.
 - **Daylight** lasts 300 s. At **sunset** the light shrinks around you over 70 s of dusk and **hunters** come in
   packs (every 18 s → 9 s at full dark, +1 per pack from night 4). There is no hard fail: the jungle just gets worse.
-- **Death:** carried loot (and carried med kits) is lost — nights 1–2 a drone salvages 30% / 20% — and you return
-  with 35 HP. Cut trails, pylons, towers, banked resources and research are kept.
+- **Death:** carried loot (and carried med kits) is lost, but on nights 1–3 a drone salvages 35% / 30% / 10% of it and
+  always at least 20 / 20 / 12 Scrap (the floor applies once you are 15 s into the day, so abandoning at once earns
+  nothing; `deathSalvage`, `deathScrapFloor`). You return with 35 HP. Cut trails, pylons, towers, banked resources and
+  research are kept. (Critic G: one early death used to decide whole runs.)
 
 **Wildlife** (`POP`): rolled per 16 × 16 chunk per day, denser further from the Relay and in today's district,
 scaled by night. It appears ≥ 11 tiles away, despawns far behind you, and stays dead for the day once killed.
 Feral camps hold 2–4 Feral Scavengers. **Enemies:** Bramble Crawler (lunge), Skitter (fast), Feral Scavenger (spear
-thrust), Spitter (rooted, lobs sap over the brush), Razorback (wind-up, charge, crashes through brush). Every big
-attack is telegraphed. Kills sometimes drop 1–3 Scrap (a top-up, not income).
+thrust), Spitter (rooted, lobs sap over the brush: its sight ignores undergrowth, only walls, trees and ruins block it),
+Razorback (wind-up, charge, crashes through brush; its lane is drawn as wide as the hit and shows through foliage).
+Every big attack is telegraphed. Kills sometimes drop 1–3 Scrap (a top-up, not income).
+**Attack tokens** (`CONFIG.expedition.attackers`): at most 2 melee/charge attackers wind up on you at once (3 from
+night 5), no new wind-up starts for 1 s after a melee hit lands, and the rest circle ~2.4 tiles out. With the 0.6 s
+post-hit i-frames a pack can't chain hits: a Feral + 2 Crawlers on night 2 deals ~30 HP in 6 s to a player standing still.
 
 **Spore pods** (`SPORES`, `src/entities/SporePods.js`): the hazard, 28 in the Canopy Greenhouse and 5 in each other
 district, beside trails and clearings; they regrow every day. Walk within ~1.3 tiles and a pod swells (0.7 s ring
@@ -176,8 +182,8 @@ and the Relay HP it began with (the build can't be changed), after a 3-second "G
 **Waves** (`src/data/waves.js`):
 - N1: Crawlers + Skitters. N2: first Razorback. N3: Spitters. N4: Burrowers + Seed Carriers.
 - N5: Ruin Guards. N6: Colossus + a thinner support wave (28 enemies), so the night is a boss fight rather than a swarm.
-- Enemy HP ×0.9 / 1.9 / 2.3 / 2.05 / 2.4 / 2.5 for N1–N6. Total wave HP is about 355 / 1750 / 4080 / 5540 / 6570 / 6550
-  (N6 includes the boss). District threats (extra groups) are half size on night 1 and ¾ on night 2.
+- Enemy HP ×1.0 / 1.4 / 2.3 / 2.05 / 2.4 / 2.5 for N1–N6. Total wave HP is about 410 / 1180 / 4080 / 5540 / 6570 / 6550
+  (N6 includes the boss). District threats (extra groups) are half size on night 1 and 60% on night 2.
 - Tuned by full-run simulation of the real defense code (balance round 4) with budgets that accumulate over the nights
   (~70 / 90 / 100 / 100 / 100 / 105 Scrap per expedition plus bounties, objective boons). A well-played run (towers funnelled
   around the Relay, six or seven defensive skills, Mortar and Beacon) loses ~0–15 Relay HP on N2, ~12–27 on N3, ~24–40 on N4,
@@ -185,7 +191,9 @@ and the Relay HP it began with (the build can't be changed), after a 3-second "G
   Relay (sometimes reaching it with a sliver of health). A typical run with three defensive skills plays out about the same;
   without unlocks the boss usually reaches the Relay but the night holds. A run without skills falls on N5; level-1 turret
   spam falls on N4; a build spread mid-map bleeds ~45–95 a night from N4 and usually falls on N6.
-  On night 1 (13 enemies after the critic-F pass) one turret costs ~27–35 HP, two towers ~0–5 and no towers ~70. Most Relay damage comes from tanks
+  On night 1 (14 enemies after the critic-G pass) one turret costs ~30–37 HP, two towers ~0–14 and no towers ~70.
+  Night 2 (critic G pass: 19 enemies + the threat, HP ×1.4, smaller threat groups; it used to break a 2-tower Relay) with a
+  district threat: two towers end at ~15 Relay HP, three ~40–60, five ~90. Most Relay damage comes from tanks
   (Razorbacks, Ruin Guards) reaching the core.
 - Wave-size boons (and Intel Sabotage) scale the whole wave and remove enemies from the largest groups, so −10% always removes some.
   Together they are capped at −20%.
@@ -240,5 +248,7 @@ and don't overwrite the real run save (add `&save=1` to test Continue).
 - Pixel fonts are never synthesized bold (Tiny5 has one weight; a fake bold turns 8 into $ and 6 into €): emphasis in body
   text is brightness or colour, headings use Silkscreen's real bold.
 - Clicks are ignored for 0.3 s after a screen change, so the click that dismissed one screen can't press a button on the next.
+  The "Night survived" / "Relay has fallen" banner waits for a click, Enter or Space (it no longer auto-advances under
+  the player's click), and the briefing ignores pointer input for its first 0.7 s.
 - On the night map each occupied pad's corner brackets take the tower's type colour, and hovering a tower shows its name
   and level. The briefing's wave row labels the boss and tags new enemy types (names on hover).

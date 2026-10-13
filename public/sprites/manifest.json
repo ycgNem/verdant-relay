@@ -233,11 +233,11 @@
   "crawler": {
     "file": "v2_crawler.png",
     "ppu": 32,
-    "fw": 65,
-    "fh": 48,
+    "fw": 64,
+    "fh": 53,
     "anchor": [
-      30,
-      43
+      34,
+      49
     ],
     "dirs": [
       "s",
@@ -249,8 +249,8 @@
     "anims": {
       "idle": {
         "row": 0,
-        "frames": 8,
-        "fps": 6
+        "frames": 4,
+        "fps": 4
       },
       "walk": {
         "row": 5,

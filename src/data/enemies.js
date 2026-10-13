@@ -80,11 +80,12 @@ export const DEFENSE_ENEMIES = {
 //   size: collision radius ≈ size × 0.45 · drop: chance of a small loot drop · burst: death particle colours
 // brush: 'through' = slips through undergrowth (ambushes from the thickets) · 'crash' = bulldozes it
 // (clears the tiles it charges/walks through) · absent = needs open ground or cut paths, like you.
+// lobOverBrush: its line of sight ignores undergrowth (only walls, trees and ruins block it): the Spitter's sap arcs over.
 export const EXPLORE_ENEMIES = {
   feral: { name: 'Feral Scavenger', hp: 42, speed: 2.7, detect: 8, attack: 'melee', damage: 12, windup: 0.6, cooldown: 1.3, reach: 1.7, lunge: 2.3, lungeTime: 0.2, size: 0.8, drop: 0.55, burst: ['#a22633', '#3a4466'] },
   crawler: { name: 'Bramble Crawler', brush: 'through', hp: 30, speed: 2.4, detect: 7, attack: 'melee', damage: 10, windup: 0.5, cooldown: 1.2, reach: 1.3, lunge: 2.0, lungeTime: 0.2, size: 0.7, drop: 0.25, burst: ['#3e8948', '#63c74d'] },
   skitter: { name: 'Skitter', brush: 'through', hp: 16, speed: 4.2, detect: 8, attack: 'melee', damage: 6, windup: 0.35, cooldown: 0.9, reach: 1.1, lunge: 1.7, lungeTime: 0.16, size: 0.5, drop: 0.15, burst: ['#b55088', '#68386c'] },
   scav: { name: 'Rival Scavenger', hp: 36, speed: 2.2, detect: 9, attack: 'ranged', damage: 10, windup: 0.7, cooldown: 2.0, range: 7, shotSpeed: 9, shot: 'bolt', size: 0.8, drop: 0.5, keepAway: 4, burst: ['#a22633', '#3a4466'] },
-  spitter: { name: 'Spitter', hp: 34, speed: 0, detect: 8, attack: 'ranged', damage: 9, windup: 0.8, cooldown: 2.2, range: 7.5, shotSpeed: 6.5, shot: 'glob', size: 0.75, drop: 0.3, burst: ['#b55088', '#ff0044'] },
+  spitter: { name: 'Spitter', hp: 34, speed: 0, detect: 8, attack: 'ranged', damage: 9, windup: 0.8, cooldown: 2.2, range: 7.5, shotSpeed: 6.5, shot: 'glob', lobOverBrush: true, size: 0.75, drop: 0.3, burst: ['#b55088', '#ff0044'] },
   razorback: { name: 'Razorback', brush: 'crash', hp: 90, speed: 1.6, detect: 7, attack: 'charge', damage: 20, windup: 0.8, cooldown: 2.4, chargeSpeed: 9, chargeTime: 0.6, chargeRange: 6, stun: 0.9, size: 1.0, drop: 0.6, burst: ['#b86f50', '#e4a672'] },
 };

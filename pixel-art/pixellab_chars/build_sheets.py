@@ -27,7 +27,7 @@ BG = (24, 44, 30, 255)
 # "src" may be a dict {direction: folder} to mix groups per direction.
 # Per-direction source overrides: the first crawler lunge turned to face the camera in the north row (re-rolled
 # as attack_n); both feral stab rolls pointed the spear west in the south-east row, so SE borrows the east row.
-CRAWLER_ATK = {"south": "attack", "south-east": "attack", "east": "attack", "north-east": "attack", "north": "attack_n"}
+# Crawler v2 (bramble beast, char e03fb9dd) lives in raw/crawler2; its *_c folders are hand-finished by make_crawler2.py.
 FERAL_ATK = {"south": "attack2", "south-east": "attack2:east", "east": "attack2", "north-east": "attack2", "north": "attack2"}
 
 CHARS = {
@@ -37,17 +37,19 @@ CHARS = {
             {"name": "walk", "src": "walk2", "fps": 10},
             {"name": "slash", "src": "slash", "fps": 16, "loop": False, "hit": 4},
             {"name": "chop", "src": "chop", "fps": 13, "loop": False, "hit": 5},
-            {"name": "roll", "src": "roll", "fps": 14, "loop": False},
+            # roll3 = tuck -> tumble -> recover, built by make_roll.py (the PixelLab "roll" rows stayed upright)
+            {"name": "roll", "src": "roll3", "fps": 14, "loop": False},
             {"name": "hurt", "src": "hurt_mix", "fps": 10, "loop": False, "optional": True},
         ],
     },
     "crawler": {
         "quadruped": True,
+        "raw": "crawler2",
         "anims": [
-            {"name": "idle", "src": "idle", "fps": 6},
-            {"name": "walk", "src": "walk", "fps": 10},
-            {"name": "windup", "src": CRAWLER_ATK, "frames": [0, 1, 2], "fps": 6, "loop": False},
-            {"name": "attack", "src": CRAWLER_ATK, "frames": [3, 4, 5, 6], "fps": 12, "loop": False, "hit": 1},
+            {"name": "idle", "src": "idle_c", "fps": 4},
+            {"name": "walk", "src": "walk_c", "fps": 10},
+            {"name": "windup", "src": "attack_c", "frames": [0, 1, 2], "fps": 6, "loop": False},
+            {"name": "attack", "src": "attack_c", "frames": [3, 4, 5, 6], "fps": 12, "loop": False, "hit": 1},
         ],
     },
     "razorback": {
@@ -123,7 +125,7 @@ def contact(sheet, fw, fh, out, scale=2):
 
 
 def build_char(key, cfg):
-    base = HERE / "raw" / key / "zip" / "Idle" / "animations"
+    base = HERE / "raw" / cfg.get("raw", key) / "zip" / "Idle" / "animations"
     rows = []  # (anim cfg, dir, [frames])
     anims_used = []
     for a in cfg["anims"]:
@@ -231,7 +233,10 @@ def main(keys):
     frag = json.loads(FRAG.read_text(encoding="utf8")) if FRAG.exists() else {}
     for k in keys or list(CHARS) + list(STRIPS):
         try:
-            frag[k] = build_char(k, CHARS[k]) if k in CHARS else build_strip(k, STRIPS[k])
+            e = build_char(k, CHARS[k]) if k in CHARS else build_strip(k, STRIPS[k])
+            if "shadow" in frag.get(k, {}):
+                e["shadow"] = frag[k]["shadow"]   # hand-tuned, not derived from the frames
+            frag[k] = e
         except SystemExit as e:
             print("skip", e)
     FRAG.write_text(json.dumps(frag, indent=2) + "\n", encoding="utf8")

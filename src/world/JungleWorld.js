@@ -17,6 +17,7 @@
 import * as THREE from 'three';
 import { JUNGLE, LEVEL, BRUSH, ATMOS } from '../data/jungle.js';
 import { CARD_SCALE } from '../core/PixelView.js';
+import { CARD_MASK_REF, setOutline } from '../core/Assets.js';
 import { TerrainBaker } from './TerrainBaker.js';
 import { FloraAtlas } from './FloraAtlas.js';
 import { hash2 } from './noise.js';
@@ -44,6 +45,12 @@ const BAYER_GLSL = 'float bayer2(vec2 a){ a = floor(a); return fract(dot(a, vec2
 
 export function makeCardMaterial(tex) {
   return new THREE.ShaderMaterial({
+    // Never over the player's own texels + outline: its card mask (Assets.js addOutline) wrote stencil
+    // CARD_MASK_REF there just before the cards draw. Read-only stencil test; no stencil = always passes.
+    stencilWrite: true,
+    stencilWriteMask: 0x00,
+    stencilRef: CARD_MASK_REF,
+    stencilFunc: THREE.NotEqualStencilFunc,
     uniforms: {
       map: { value: tex },
       uTime: { value: 0 },
@@ -464,9 +471,26 @@ export class JungleWorld {
   }
 
   /** Player position for the x-ray window (internal pixels, GL convention y up). */
-  setPlayer(px, py, z) {
+  setPlayer(px, py, z, x, vis) {
     this.cardMat.uniforms.uPlayerPx.value.set(px, py);
     this.cardMat.uniforms.uPlayerZ.value = z;
+    // Player outline (critic G #1): pale while brush or a tall object is around / in front of the player.
+    if (vis && x !== undefined) setOutline(vis, this.coveredAt(x, z) ? ATMOS.playerOutline.cover : ATMOS.playerOutline.open);
+  }
+
+  /** Is anything that draws as an upright card (uncut brush, a collider object) around or just in front of (x, z)? */
+  coveredAt(x, z) {
+    const O = ATMOS.playerOutline;
+    const tx = Math.floor(x), tz = Math.floor(z);
+    for (let dz = -1; dz <= O.coverAhead; dz++) {
+      for (let dx = -O.coverRadius; dx <= O.coverRadius; dx++) {
+        const ax = tx + dx, az = tz + dz;
+        if (!this.inBounds(ax, az)) continue;
+        if (this.brushAt(ax, az) > 0 && (dz >= 0 || dx === 0)) return true;
+        if (dz > 0 && this.objGrid[az * this.size + ax]) return true;
+      }
+    }
+    return false;
   }
 
   dispose() {

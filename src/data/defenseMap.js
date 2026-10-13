@@ -13,9 +13,12 @@ export const DEFENSE_MAP = {
     { name: 'North lane', short: 'North', points: [[-3, 3], [8, 3], [8, 7], [16, 7], [16, 4], [23, 4], [23, 8], [26, 8]] },
     { name: 'South lane', short: 'South', points: [[-3, 13], [6, 13], [6, 10], [13, 10], [13, 14], [20, 14], [20, 9], [26, 9]] },
   ],
+  // Build pads (tile coords of the pad's top-left). Nudged off the tile grid by 1/8–1/4 tile (multiples
+  // of 4 px, so still pixel-exact) so the plinths don't read as a TD grid (critic G #12); every footprint
+  // (tile + the plinth's front face) stays clear of lane tiles. Save files store pad indices, not coords.
   pads: [
-    [4, 5], [10, 5], [6, 7], [10, 8], [14, 8], [18, 6], [19, 2], [21, 6], [25, 6],
-    [4, 11], [9, 12], [11, 12], [16, 12], [18, 10], [22, 11], [25, 11],
+    [3.75, 4.75], [10.25, 5.125], [5.875, 6.75], [9.75, 8.25], [14.125, 8.25], [18, 6.25], [18.875, 1.875], [21.25, 5.75], [25.25, 5.75],
+    [4, 11.25], [9.125, 12.125], [11.125, 11.875], [16.25, 11.875], [17.75, 10.25], [21.875, 11.125], [25.125, 11.25],
   ],
   // Decorative scenery (tile coords). Kept off lanes and pads, and placed so tall sprites don't
   // hide a lane tile behind them (billboards cover ~0.7 × height of ground behind their base).
@@ -43,6 +46,15 @@ export const DEFENSE_VIEW = {
   view: { x0: 0, y0: 49, x1: 721, y1: 457 },
   spriteTint: '#9fb4e8',
   woodPlinths: [2, 6, 9, 13],        // build pads drawn as timber platforms (the rest are stone plinths)
+  // Plinth shape variety (DefenseGround.makePlinth, per pad seed): top-face width / depth and front-face
+  // height ranges in texels, and how many corners get chipped off.
+  plinth: { w: [27, 33], top: [21, 27], face: [5, 8], chips: [1, 3] },
+  // Towers draw a 1-texel outline (Assets outline) in their type colour so they separate from the plinth
+  // and the dark ground and say "Arc" vs "Snare" at a glance; `towerOutlineMix` darkens that colour toward
+  // black (0 = type colour, 1 = black). typeBrackets: also the dashed type-coloured square on the pad
+  // (off: a grid of squares read as a TD board, critic G #12).
+  towerOutlineMix: 0.3,
+  typeBrackets: false,
   background: '#0a0d1a',
   light: {
     hemiSky: '#6f84c8', hemiGround: '#1b1a2e', hemi: 1.6,

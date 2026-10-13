@@ -151,6 +151,12 @@ export class TerrainBaker {
     }
     this.decals = this._collectDecals();
     this.paveNoise = makeNoise((world.seed ^ 0x2c1b3c6d) >>> 0);
+    // Ruin slabs (critic G #9): with PixelLab paving art, stone is sampled per slab in world space —
+    // staggered rows, a random flip/rotation per slab, only some slabs keep the star motif, and a
+    // per-slab + large-scale colour shift — instead of one 32-px tile repeating in a grid.
+    const pa = terrainArt?.paving;
+    this.slabs = pa && pa.w === 32 && pa.h === 32 ? makeSlabs(pa) : null;
+    this._slabMemo = new Map();
     // Per-pixel blend noise: a 256 × 256 tileable field mixing two frequencies (edges wander at the
     // tile scale, with small bites at the 3–4 texel scale).
     const n1 = periodicNoise(world.seed ^ 0x1234, 16), n2 = periodicNoise(world.seed ^ 0x9876, 64);
@@ -261,6 +267,7 @@ export class TerrainBaker {
               const mt = this.tex.moss, mi = ((wy % mt.h) * mt.w + (wx % mt.w)) * 4;
               r = mt.data[mi]; gg = mt.data[mi + 1]; b = mt.data[mi + 2];
             } else {
+              if (this.slabs) { const sl = this._slab(wx, wy); r = sl[0]; gg = sl[1]; b = sl[2]; }
               // Stains: low-frequency discolouration in 2 dithered steps (crosses slab borders).
               const ax = x >> 2, ay = y >> 2;
               const st = pf.stain[ay * AOW + ax];
@@ -293,6 +300,36 @@ export class TerrainBaker {
     this._scatter(g, cx, cz, lv, B);
     this._ruinDetail(g, cx, cz, lv, B, paveAt);
     return c;
+  }
+
+  /** Stone colour of world texel (wx, wy) from the slab bank (PAVING.slab): [r, g, b]. */
+  _slab(wx, wy) {
+    const S = PAVING.slab, seed = this.world.seed;
+    const row = wy >> 5;
+    const sx = wx + (S.stagger ? Math.floor(hash2(row, 7, seed + 10) * 32) : 0);
+    const col = sx >> 5;
+    const key = col * 8192 + row;
+    let m = this._slabMemo.get(key);
+    if (!m) {
+      if (this._slabMemo.size > 4096) this._slabMemo.clear();
+      // Large-scale drift (a few slabs wide) + per-slab jitter; warm ↔ cool on the same axis.
+      const big = this.paveNoise.fbm(col * S.tintScale + 311.7, row * S.tintScale - 52.3, 2) - 0.5;
+      const k = 1 + (hash2(col, row, seed + 11) - 0.5) * 2 * S.jitter + big * S.drift;
+      const w = big * S.warm * 2;
+      m = {
+        data: this.slabs[hash2(col, row, seed + 12) < S.star ? 0 : 1],
+        tf: Math.floor(hash2(col, row, seed + 13) * 8),
+        kr: k * (1 + w), kg: k, kb: k * (1 - w),
+      };
+      this._slabMemo.set(key, m);
+    }
+    let lx = sx & 31, ly = wy & 31;
+    if (m.tf & 1) lx = 31 - lx;
+    if (m.tf & 2) ly = 31 - ly;
+    if (m.tf & 4) { const t = lx; lx = ly; ly = t; }
+    const i = (ly * 32 + lx) * 4, D = m.data, o = this._slabOut || (this._slabOut = [0, 0, 0]);
+    o[0] = D[i] * m.kr; o[1] = D[i + 1] * m.kg; o[2] = D[i + 2] * m.kb;
+    return o;
   }
 
   /** Low-frequency fields for broken paving at 4 texels per cell: { hole, moss, stain } (0..1). */
@@ -415,6 +452,35 @@ export class TerrainBaker {
 }
 
 /** Repeat a PixelLab base tile into a TEX-sized texture with mirrored quadrants so it doesn't grid. */
+/**
+ * The slab bank from the 32 × 32 PixelLab paving tile: [with its star/diamond stain, plain]. The plain
+ * slab replaces the darker motif (PAVING.slab.starBox, texels darker than starLum × the median stone)
+ * with stone texels picked (deterministically) from elsewhere on the same slab.
+ */
+function makeSlabs(art) {
+  const S = PAVING.slab, D = art.data;
+  const lum = (i) => 0.3 * D[i] + 0.59 * D[i + 1] + 0.11 * D[i + 2];
+  const all = [];
+  for (let i = 0; i < 32 * 32; i++) all.push(lum(i * 4));
+  const med = [...all].sort((a, b) => a - b)[all.length >> 1];
+  const [bx0, by0, bx1, by1] = S.starBox;
+  const inBox = (x, y) => x >= bx0 && x <= bx1 && y >= by0 && y <= by1;
+  const donors = [];
+  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+    if (!inBox(x, y) && all[y * 32 + x] >= med * 0.92 && all[y * 32 + x] <= med * 1.12) donors.push((y * 32 + x) * 4);
+  }
+  const star = new Uint8ClampedArray(D);
+  const plain = new Uint8ClampedArray(D);
+  if (donors.length) {
+    for (let y = by0; y <= by1; y++) for (let x = bx0; x <= bx1; x++) {
+      if (all[y * 32 + x] >= med * S.starLum) continue;
+      const i = (y * 32 + x) * 4, d = donors[Math.floor(hash2(x, y, 913) * donors.length)];
+      plain[i] = D[d]; plain[i + 1] = D[d + 1]; plain[i + 2] = D[d + 2];
+    }
+  }
+  return [star, plain];
+}
+
 function tileArt(art) {
   const out = new Uint8ClampedArray(TEX * TEX * 4);
   for (let y = 0; y < TEX; y++) for (let x = 0; x < TEX; x++) {

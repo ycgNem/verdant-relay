@@ -14,11 +14,31 @@ export const BRUSH = { none: 0, fern: 1, thicket: 2, bramble: 3 };
 // Ruin paving break-up (src/world/TerrainBaker.js): world-space noise fields (scale = per tile) that
 // cross slab borders. hole/moss = fBm thresholds (higher = rarer), edgeNoise jitters their outlines,
 // stain = brightness swing of the stains, cracks/rubble = how many per chunk (on paved texels only).
-export const PAVING = { scale: 0.42, hole: 0.65, moss: 0.58, edgeNoise: 0.18, mossDither: 0.1, stain: 0.16, cracks: 16, rubble: 26 };
+export const PAVING = {
+  scale: 0.42, hole: 0.65, moss: 0.58, edgeNoise: 0.18, mossDither: 0.1, stain: 0.16, cracks: 16, rubble: 26,
+  // Slab bank (critic G #9, PixelLab paving only): star = share of slabs that keep the star motif;
+  // stagger = random row offsets (running bond); every slab gets a random flip/rotation; jitter = per-slab
+  // brightness ±; drift/warm = large-scale brightness and warm↔cool shift over tintScale (per slab).
+  // starBox/starLum locate the motif on the 32 × 32 tile (x0, y0, x1, y1; darker than starLum × median).
+  slab: { star: 0.22, stagger: true, jitter: 0.06, drift: 0.22, warm: 0.07, tintScale: 0.35, starBox: [14, 4, 30, 20], starLum: 0.9 },
+};
 
 // What an opened container looks like (Assets.spentVariant on its own sprite; null = the shared
 // opened-crate sprite). 'open' chest, 'gutted' cache, 'dark' terminal.
 export const OPENED_LOOK = { crate: null, chest: 'open', cache: 'gutted', intel_terminal: 'dark' };
+
+// Where an opened container's interior goes on its closed sprite (Assets.spentVariant 'open'/'gutted',
+// critic G #10): the top-face polygon in sprite texels (left, back, right, front corner), the rim kept
+// around it, inner-wall depth, floor shadow width, and the interior colours (sRGB 0–255).
+const INTERIOR = {
+  wallDarkTop: [58, 36, 26], wallDark: [44, 27, 20], wallLitTop: [104, 66, 42], wallLit: [80, 50, 33],
+  floor: [31, 20, 15], deep: [17, 11, 10],
+};
+export const OPENED_TOP = {
+  prop_tool_chest: { poly: [[4, 12], [28, 1], [40, 9], [15, 18]], rim: 2, wall: 3, shade: 3, colors: INTERIOR },
+  prop_rare_cache: { poly: [[5, 10], [26, 1], [42, 9], [21, 17]], rim: 2, wall: 3, shade: 3,
+    colors: { ...INTERIOR, wallDarkTop: [52, 34, 52], wallDark: [38, 25, 40], wallLitTop: [92, 62, 96], wallLit: [70, 46, 74] } },
+};
 
 // Ground light pool under an activated pylon (src/core/PixelGlow.js): size in tiles (texel-exact at
 // 32 px/tile), brightness steps, falloff power, colour and additive strength.
@@ -128,7 +148,10 @@ export const DAY = {
   interactPointBlankLead: 0.6,
   pylonHold: 2.5,
   pylonReveal: 22,           // activating a pylon maps this radius around it
-  startOffset: [0, 3.2],     // where the day starts relative to the Relay Core
+  startOffset: [2.4, 1.4],   // where the day starts relative to the Relay Core
+  // Arrival framing (JungleScene._placeCamera): the camera centres `z` tiles from the Relay (whole Relay +
+  // player on screen, below the arrival toast) until the player walks `leave` tiles off or `time` s pass.
+  spawnFrame: { z: -1.1, leave: 1.5, time: 6 },
   // The drone drops you at an online pylon instead of the Relay only if the trek from it to the
   // objective (start → every step, straight-line metres) is still ≥ minTrek and it saves ≥ pylonSaving.
   minTrek: 50,
@@ -198,6 +221,12 @@ export const REGION_LOOK = {
   },
 };
 
+// Body separation (critic G #6, src/entities/ExploreEnemy.js _separate): creatures don't stand on the player
+// or stack on each other. Gaps are fractions of the summed radii; push = max correction speed (tiles/s).
+// Skipped mid-attack, so lunges and charges still connect.
+// frontGap: extra tiles kept when the creature stands in front of (south of) the player.
+export const CROWD = { playerGap: 0.95, frontGap: 0.3, enemyGap: 0.8, push: 7 };
+
 // Lighting/atmosphere (src/core/PostFx.js + the ground/foliage shaders).
 export const ATMOS = {
   ambientLight: 1,           // THREE.AmbientLight for Lambert materials in the jungle (decals, placeholders)
@@ -208,11 +237,17 @@ export const ATMOS = {
   wind: 0.16,                // dapple drift speed (tiles/s)
   vignette: 0.55,
   lightRadius: [9, 5.5],     // the player's visible radius in tiles: midday → dusk (darkness beyond)
-  xrayRadius: 1.55,          // foliage in front of the player turns see-through within this (tiles)
+  xrayRadius: 1.55,          // foliage in front of the player turns see-through within this (tiles) — a dithered
+                             // halo around the player; the player's own texels are always fully clear (playerOutline)
   xrayMax: 1,                // share of foliage texels removed at the centre of the window (fades to 0 at the rim)
   xrayInner: 0.4,            // fraction of the radius that stays at xrayMax before the dithered fade starts
   // Occlusion silhouettes (src/core/Assets.js): where brush/trees/ruins cover a creature, its outline
   // is drawn solid and its body as a dither of `fill` density, in these flat colours.
-  silhouette: { player: '#d8fdff', enemy: '#ff5a2e', enemyDim: '#c0603e', fill: 0.2, inner: 0.75 },
+  // playerFill: the player's own dither density where a sprite (an enemy, a crate) stands in front of it.
+  silhouette: { player: '#d8fdff', enemy: '#ff5a2e', enemyDim: '#c0603e', fill: 0.2, playerFill: 0.45, inner: 0.75 },
+  // Player readability (critic G #1): foliage/trunk/ruin cards never cover the player's own texels or its
+  // 1-texel outline (stencil mask, Assets.js), so the player is always drawn whole. The outline is dark on
+  // open ground and turns `cover` while brush or a tall object is right around / in front of the player.
+  playerOutline: { open: '#141019', cover: '#d8fdff', coverRadius: 1, coverAhead: 2 },
   sway: 1,                   // foliage sway amplitude (texels)
 };

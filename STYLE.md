@@ -27,8 +27,11 @@ Two generations of art live side by side:
   checker (player `#d8fdff`, enemies `#c0603e` → `#ff5a2e` once alerted). Brush types read by height and colour:
   ferns (walk through) are the low plants graded pale yellow-green, thickets (one slash) the tall ones graded dark
   blue-green, brambles (heavy chop) red-brown (`BRUSH_LOOK`, applied in the flora atlas — the PNGs stay untouched).
-- UI font: Tiny5, with "~", "8" and "4" overridden by `src/ui/fonts/vr-glyphs.ttf` (built by `tools/make_glyph_font.py`
-  on Tiny5's 8-unit grid; edit the bitmaps there and re-run).
+- **The player always reads** (critic G): cards never cover the player's own texels (stencil card mask), and the player
+  has a 1-texel outline — near-black on open ground, `#d8fdff` in brush or behind tall objects (`ATMOS.playerOutline`).
+  Night towers get the same outline in their type colour.
+- UI font: Tiny5, with "~" and "8" overridden by `src/ui/fonts/vr-glyphs.ttf`, and the HUD clock's Silkscreen Bold "4"
+  by `src/ui/fonts/vr-clock.ttf` (both built by `tools/make_glyph_font.py` on the 8-unit grid; edit the bitmaps there and re-run).
 
 ## V2 file formats (what the engine reads)
 

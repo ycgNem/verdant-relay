@@ -20,6 +20,7 @@ import { setAnim, setFacing, updateVisual, flashVisual, setBaseColor, animLength
 import { shade } from '../core/Fx.js';
 import { rayLength, castRay } from '../world/collide.js';
 import { nightTune } from '../data/config.js';
+import { CROWD } from '../data/jungle.js';
 
 let barTex = null;
 function barMaterial(color) {
@@ -165,6 +166,7 @@ export class ExploreEnemy {
   die() {
     if (this.dead) return;
     this.dead = true;
+    this._dropToken();
     this.tele?.cancel();
     const fx = this.scene.fx;
     const [c1, c2] = this.def.burst || ['#e43b44', '#733e39'];
@@ -211,9 +213,12 @@ export class ExploreEnemy {
     this.senseT -= dt;
     if (this.senseT <= 0) {
       this.senseT = 0.15;
-      this.los = dist < 22 && sc.world.lineOfSight(this.x, this.z, p.pos.x, p.pos.z);
+      // Lobbers (Spitters) arc over the undergrowth: only walls, trees and ruins block them.
+      this.los = dist < 22 && (d.lobOverBrush ? this._losOverBrush(p.pos.x, p.pos.z) : sc.world.lineOfSight(this.x, this.z, p.pos.x, p.pos.z));
     }
     const playerTarget = !p.dead && !sc.ending;
+    // An attack token is kept through the attack and its recovery, then for a short release beat.
+    if (this.token && this.state !== 'windup' && this.state !== 'attack' && this.state !== 'recover' && this._now() >= (this.tokenUntil || 0)) this._dropToken();
 
     switch (this.state) {
       case 'spawn': {
@@ -246,8 +251,10 @@ export class ExploreEnemy {
         if (!playerTarget) { this.state = 'idle'; this.alerted = false; this.home = { x: this.x, z: this.z }; break; }
         this.face = toP;
         if (d.attack === 'melee') {
-          if (this.los && dist <= d.reach && this.cd <= 0) { this._startWindup(toP, dist); break; }
-          move = this._pathTo(p.pos.x, p.pos.z);
+          if (this.los && dist <= d.reach && this.cd <= 0 && this._takeToken()) { this._startWindup(toP, dist); break; }
+          // No free attack token: circle the player at a short distance instead of piling in.
+          if (!this.token && dist < CONFIG.expedition.attackers.holdDist + 1.2 && !this._tokenFree()) { move = this._circle(toP, dist, dt); speed = d.speed * CONFIG.expedition.attackers.circleSpeed; }
+          else move = this._pathTo(p.pos.x, p.pos.z);
         } else if (d.attack === 'ranged') {
           if (this.los && dist <= d.range && this.cd <= 0) { this._startWindup(toP, dist); break; }
           if (d.speed > 0) {
@@ -258,8 +265,9 @@ export class ExploreEnemy {
             else { move = { x: -toP.z * this.strafeSign, z: toP.x * this.strafeSign }; speed = d.speed * 0.6; }
           }
         } else if (d.attack === 'charge') {
-          if (this.los && dist <= d.chargeRange && this.cd <= 0) { this._startWindup(toP, dist); break; }
-          move = this._pathTo(p.pos.x, p.pos.z);
+          if (this.los && dist <= d.chargeRange && this.cd <= 0 && this._takeToken()) { this._startWindup(toP, dist); break; }
+          if (!this.token && dist < CONFIG.expedition.attackers.holdDist + 1.2 && !this._tokenFree()) { move = this._circle(toP, dist, dt); speed = d.speed * CONFIG.expedition.attackers.circleSpeed; }
+          else move = this._pathTo(p.pos.x, p.pos.z);
         }
         break;
       }
@@ -338,7 +346,31 @@ export class ExploreEnemy {
       if (move && this.state !== 'windup') this.face = Math.hypot(this.vel.x, this.vel.z) > 0.3 && this.state === 'idle' ? { x: this.vel.x, z: this.vel.z } : this.face;
     }
     this.moving = Math.hypot(this.vel.x, this.vel.z) > 0.4 && this.state !== 'attack';
+    if (this.state !== 'attack') this._separate(dt);
     this._syncVisual(dt);
+  }
+
+  /** Soft push out of the player and other creatures (CROWD), so bodies never hide the player. */
+  _separate(dt) {
+    const sc = this.scene, p = sc.player;
+    const max = CROWD.push * dt;
+    let px = 0, pz = 0;
+    const away = (ox, oz, gap, share) => {
+      const dx = this.x - ox, dz = this.z - oz;
+      const d = Math.hypot(dx, dz);
+      if (d >= gap) return;
+      if (d < 1e-3) { px += max * share; return; }
+      const k = Math.min(max, (gap - d) * share) / d;
+      px += dx * k; pz += dz * k;
+    };
+    if (!p.dead) {
+      // A creature in front of the player (south, drawn over it) keeps a little further off.
+      const dz = this.z - p.pos.z, front = Math.max(0, dz / Math.max(1e-3, Math.hypot(this.x - p.pos.x, dz)));
+      away(p.pos.x, p.pos.z, (this.radius + (p.r || 0.3)) * CROWD.playerGap + CROWD.frontGap * front, 1);
+    }
+    // Both creatures of a pair push, so each takes half of the overlap.
+    for (const o of sc.enemies) if (o !== this && !o.dead) away(o.x, o.z, (this.radius + o.radius) * CROWD.enemyGap, 0.5);
+    if (px || pz) sc.world.moveBody(this, px, pz, this.radius, this.moveOpts);
   }
 
   /** Direction toward (tx, tz): straight if the walk is clear, otherwise down the flow field. */
@@ -357,6 +389,65 @@ export class ExploreEnemy {
       return { x: dx / dist, z: dz / dist };
     }
     return sc.flowDir(this.x, this.z, through) || { x: dx / dist, z: dz / dist };
+  }
+
+  // ---------------------------------------------------------------- attack tokens
+
+  /** Sim clock for token timing (the day timer stops with hit-stop, pause and the map). */
+  _now() { return this.scene.dayT ?? this.game.time; }
+
+  _pool() { return (this.scene._attackPool ||= { holders: new Set(), last: -1e9 }); }
+
+  /** Could a token be taken right now (fewer than max holders, the grant gap and the post-hit pause have passed)? */
+  _tokenFree() {
+    const P = this._pool();
+    const A = CONFIG.expedition.attackers;
+    for (const e of P.holders) if (e.dead || !e.token) P.holders.delete(e);
+    const max = A.max[Math.max(0, Math.min(A.max.length - 1, (this.game.run?.night || 1) - 1))];
+    const now = this._now();
+    return P.holders.size < max && now - P.last >= A.gap && now - (P.hitAt ?? -1e9) >= A.afterHit;
+  }
+
+  _takeToken() {
+    if (this.token) return true;
+    if (!this._tokenFree()) return false;
+    const P = this._pool();
+    P.holders.add(this);
+    P.last = this._now();
+    this.token = true;
+    this.tokenUntil = 0;
+    return true;
+  }
+
+  _dropToken() {
+    if (!this.token) return;
+    this.token = false;
+    this.scene._attackPool?.holders.delete(this);
+  }
+
+  /** Waiting for a token: strafe around the player, easing to about holdDist away. */
+  _circle(toP, dist, dt) {
+    this.strafeT -= dt;
+    if (this.strafeT <= 0) { this.strafeT = 1.2 + Math.random() * 1.6; this.strafeSign *= -1; }
+    const hold = CONFIG.expedition.attackers.holdDist;
+    const radial = dist < hold - 0.3 ? -1 : dist > hold + 0.4 ? 0.8 : 0;
+    const mx = -toP.z * this.strafeSign + toP.x * radial, mz = toP.x * this.strafeSign + toP.z * radial;
+    const l = Math.hypot(mx, mz) || 1;
+    return { x: mx / l, z: mz / l };
+  }
+
+  /** Line of sight that only walls, trees and ruins block (undergrowth doesn't): for lobbed attacks. */
+  _losOverBrush(tx, tz) {
+    const w = this.scene.world;
+    const ax = this.x, az = this.z;
+    const len = Math.hypot(tx - ax, tz - az);
+    if (len < 1e-4) return true;
+    const n = Math.ceil(len * 3);
+    for (let i = 1; i < n; i++) {
+      const x = Math.floor(ax + ((tx - ax) * i) / n), z = Math.floor(az + ((tz - az) * i) / n);
+      if (!w.inBounds(x, z) || w.opaqueGrid?.[z * w.size + x] === 1) return false;
+    }
+    return true;
   }
 
   _startWindup(toP, dist) {
@@ -395,7 +486,9 @@ export class ExploreEnemy {
     } else if (d.attack === 'charge') {
       const len = this._laneLength(toP);
       // Cracked, dusty ground along the lane; it stays under the beast while it charges.
-      this.tele = sc.fx.chargeLane({ x: this.x, z: this.z }, { dir: toP, length: len, width: this.radius * 2 + 0.3, time: this.windup, fade: d.chargeTime + 0.15 });
+      // Drawn as wide as the real hit band (_contact: the player's centre within radius + r + 0.2 of the beast's path).
+      const hitW = 2 * (this.radius + (sc.player.r || CONFIG.player.radius) + 0.2);
+      this.tele = sc.fx.chargeLane({ x: this.x, z: this.z }, { dir: toP, length: len, width: hitW, time: this.windup, fade: d.chargeTime + 0.15, hole: sc.player.pos });
       this.teleLen = this.curLen = len;
     }
     this.game.sfx.play(d.attack === 'charge' ? 'snort' : 'glint');
@@ -420,7 +513,9 @@ export class ExploreEnemy {
   _laneLength(dir) {
     const d = this.def;
     const sc = this.scene;
-    return Math.max(0.6, rayLength(sc.world, this.x, this.z, dir.x, dir.z, d.chargeSpeed * d.chargeTime, (x, y) => sc.world.solidAt(x, y)));
+    // The charge bulldozes undergrowth and stops at trees / ruins / the map edge, so the lane does too.
+    const block = this.moveOpts.onBrush || this.moveOpts.throughBrush ? (x, y) => sc.world.blockedAt(x, y, true) : (x, y) => sc.world.blockedAt(x, y);
+    return Math.max(0.6, rayLength(sc.world, this.x, this.z, dir.x, dir.z, d.chargeSpeed * d.chargeTime, block));
   }
 
   /** While a tracking telegraph rotates, keep its length matching the wall it now points at. */
@@ -484,7 +579,7 @@ export class ExploreEnemy {
     if (this.hitDone) return;
     const p = this.scene.player;
     if (dist < this.radius + p.r + 0.2) {
-      if (p.hurt(this.damage, this.aimDir.x, this.aimDir.z, this.def.name)) this.hitDone = true;
+      if (p.hurt(this.damage, this.aimDir.x, this.aimDir.z, this.def.name)) { this.hitDone = true; this._pool().hitAt = this._now(); }
       else if (p.dodging) this.hitDone = true;
     }
   }
@@ -492,6 +587,7 @@ export class ExploreEnemy {
   _recover(cd) {
     this.state = 'recover';
     this.stateT = 0.35;
+    if (this.token) this.tokenUntil = this._now() + this.stateT + CONFIG.expedition.attackers.release;
     this.cd = cd * (0.85 + Math.random() * 0.3);
   }
 
@@ -541,6 +637,7 @@ export class ExploreEnemy {
   }
 
   dispose() {
+    this._dropToken();
     this.tele?.cancel();
     if (this.vis) this.game.assets.disposeVisual(this.vis);
     for (const s of [this.barBg, this.barFill]) { s.removeFromParent(); s.material.dispose(); }

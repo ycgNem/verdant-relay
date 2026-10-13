@@ -1,6 +1,6 @@
 // Night waves. Each group: { at: seconds after wave start, lane: 0|1, type, count, gap: seconds between spawns }.
 // Scaling: enemy health × HEALTH_MULT[night − 1]; counts are authored per night.
-// Total wave HP (no district threat): N1 ≈355, N2 ≈1750, N3 ≈4080, N4 ≈5540, N5 ≈6570, N6 ≈6550
+// Total wave HP (no district threat): N1 ≈410, N2 ≈1180, N3 ≈4080, N4 ≈5540, N5 ≈6570, N6 ≈6550
 // (N6 includes the 2550-HP boss, which also hardens when enraged).
 // Balance round 4 (final pass) retuned with full-run sims of the real DefenseScene (stepped in a browser,
 // budgets accumulating over the nights: ~70 / 90 / 100 / 100 / 100 / 105 Scrap per expedition + bounties):
@@ -10,11 +10,14 @@
 //   typical (3 defensive skills + scavenger picks): similar, N4 ~25–40; without unlocks the boss usually
 //     reaches the Relay (−15–20) but the night is held. No skills falls on N5; L1-turret spam on N4;
 //     a build spread mid-map loses ~45–95 a night from N4 and usually falls on N6.
-//   N1 (critic F pass: HP ×0.9, +3 Skitters): one turret ~35–40, two towers ~0–6 near the Relay, nothing ~70.
+//   N1 (critic G pass: HP ×1.0, 4 Skitters in the last group): one turret ~30–37 lost, two towers ~0–14 near the Relay.
+//   N2 (critic G pass: one day death decided whole runs; 27 enemies broke a 2-tower Relay): HP ×1.9 → 1.4, Skitter
+//     groups 5 → 4, second Crawler group 5 → 4, threat groups ×0.75 → 0.6. Scripted waves with a district threat
+//     (Relay HP left, before → after): 2 towers 0 (fell) → ~15; 3 towers ~17–20 → ~45–60; 5 towers → ~90.
 // Most Relay damage comes from tanks reaching the core (Razorbacks 12, Ruin Guards 15), so counts of those
 // matter more than HP. District threats and objective boons modify these at runtime.
 
-export const HEALTH_MULT = [0.9, 1.9, 2.3, 2.05, 2.4, 2.5];
+export const HEALTH_MULT = [1.0, 1.4, 2.3, 2.05, 2.4, 2.5];
 
 // Defense-mode tuning that isn't per tower or per enemy.
 export const DEFENSE = {
@@ -23,12 +26,16 @@ export const DEFENSE = {
   extraGroupFrom: 0.3,
   extraGroupTo: 0.75,
   // District-threat group sizes × this per night (an 8-Skitter pack is most of a night-1 wave otherwise).
-  threatScale: [0.5, 0.75, 1, 1, 1, 1],
+  threatScale: [0.5, 0.6, 1, 1, 1, 1],
   rapidResponse: { mult: 0.7, time: 8 },   // skill: enemies 30% slower for the first 8 s
   speeds: [1, 2],                          // game speed options in the HUD
   maxSubstep: 1 / 30,                      // sim step cap at high speed (keeps projectiles accurate)
   bossSlowMin: 0.5,                        // slows never take a boss below this speed multiplier
-  endBanner: 2.6,                          // seconds the "Night survived" banner shows
+  // End-of-night banner: with bannerWait it stays until a click / Enter / Space (accepted after bannerMinTime s);
+  // without, it auto-advances after endBanner / defeatBanner seconds.
+  bannerWait: true,
+  bannerMinTime: 0.45,
+  endBanner: 2.6,                          // seconds the "Night survived" banner shows (bannerWait off)
   defeatBanner: 2.8,
   emergencyPatchInWave: true,              // Emergency Patch skill usable mid-wave (repairs are not)
   damageNumbersMin: 6,                     // hits below this don't show a number (keeps rapid towers readable)
@@ -40,21 +47,21 @@ export const DEFENSE = {
 };
 
 export const WAVES = [
-  // Night 1: Crawlers and Skitters (13) — gentle, but two towers should still take a scratch; district threats add on top (at half size)
+  // Night 1: Crawlers and Skitters (14) — gentle, but two towers should still take a scratch; district threats add on top (at half size)
   [
     { at: 0, lane: 0, type: 'crawler', count: 3, gap: 1.8 },
     { at: 6, lane: 1, type: 'crawler', count: 3, gap: 1.8 },
     { at: 16, lane: 0, type: 'skitter', count: 2, gap: 1.2 },
     { at: 24, lane: 1, type: 'crawler', count: 2, gap: 1.6 },
-    { at: 30, lane: 1, type: 'skitter', count: 3, gap: 0.8 },
+    { at: 30, lane: 1, type: 'skitter', count: 4, gap: 0.6 },
   ],
-  // Night 2: first Razorbacks (22)
+  // Night 2: first Razorbacks (19; softened in the critic G pass so one bad day can't end the run)
   [
     { at: 0, lane: 0, type: 'crawler', count: 5, gap: 1.3 },
-    { at: 4, lane: 1, type: 'skitter', count: 5, gap: 0.6 },
-    { at: 13, lane: 1, type: 'crawler', count: 5, gap: 1.2 },
+    { at: 4, lane: 1, type: 'skitter', count: 4, gap: 0.7 },
+    { at: 13, lane: 1, type: 'crawler', count: 4, gap: 1.3 },
     { at: 18, lane: 0, type: 'razorback', count: 2, gap: 6 },
-    { at: 27, lane: 0, type: 'skitter', count: 5, gap: 0.55 },
+    { at: 27, lane: 0, type: 'skitter', count: 4, gap: 0.65 },
   ],
   // Night 3: Spitters and larger mixed groups (33)
   [

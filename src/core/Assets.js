@@ -28,7 +28,7 @@
 import * as THREE from 'three';
 import { VISUALS } from '../data/visuals.js';
 import { CARD_SCALE, SPRITE_CARD } from './PixelView.js';
-import { TERRAIN_ART, ATMOS, OPENED_LOOK, PYLON_GLOW } from '../data/jungle.js';
+import { TERRAIN_ART, ATMOS, OPENED_LOOK, OPENED_TOP, PYLON_GLOW } from '../data/jungle.js';
 import { radialGlowTexture } from './PixelGlow.js';
 
 const GEOMS = {
@@ -129,11 +129,11 @@ function makeRing(r, color) {
 // Pixel-exact: hard alpha, Bayer dither on screen pixels, no blending. Texels below the anchor (under
 // the ground plane) are skipped. Colours: ATMOS.silhouette (src/data/jungle.js).
 class SilhouetteMaterial extends THREE.SpriteMaterial {
-  constructor(params, texel) {
+  constructor(params, texel, fill = ATMOS.silhouette.fill) {
     super(params);
     this.isSilhouetteMaterial = true;
     this.uTexel = { value: texel };
-    this.uFill = { value: ATMOS.silhouette.fill };
+    this.uFill = { value: fill };
     this.uInner = { value: ATMOS.silhouette.inner };
   }
   onBeforeCompile(shader) {
@@ -169,11 +169,11 @@ const float SIL_BAYER[16] = float[16](0.03125,0.53125,0.15625,0.65625,0.78125,0.
 }
 
 /** Attach an occlusion silhouette to a sprite visual (see SilhouetteMaterial). */
-function addSilhouette(vis, color) {
+function addSilhouette(vis, color, fill) {
   const body = vis.body;
   const G = vis.geom;
   const mat = new SilhouetteMaterial({ map: vis.tex, color, transparent: true, depthWrite: false, depthFunc: THREE.GreaterDepth, fog: false },
-    new THREE.Vector2(1 / G.iw, 1 / G.ih));
+    new THREE.Vector2(1 / G.iw, 1 / G.ih), fill);
   // Same depth as the body's own visible texels must NOT count as "in front": bias toward the camera.
   mat.polygonOffset = true;
   mat.polygonOffsetFactor = 0;
@@ -186,6 +186,90 @@ function addSilhouette(vis, color) {
   body.add(spr);
   vis.sil = spr;
   vis.silColor = color;
+}
+
+// Outlined sprite (critic G #1, the player): the body draws a flat 1-texel outline on the transparent
+// texels that touch its opaque ones (inside the frame, above the anchor), in `uOutline` — dark on open
+// ground, pale in brush (setOutline). A second, invisible copy (the "card mask") runs first and writes
+// stencil 1 over the body + outline; the foliage/trunk/ruin card shader (JungleWorld.makeCardMaterial)
+// skips stencil-1 pixels, so cards never cover the player's own texels and the x-ray window's dither
+// only ever lands around it. Sprites in front (enemies, props) still cover it — the silhouette shows there.
+class OutlineSpriteMaterial extends THREE.SpriteMaterial {
+  constructor(params, G, color) {
+    super(params);
+    this.isOutlineSpriteMaterial = true;
+    this.uTexel = { value: new THREE.Vector2(1 / G.iw, 1 / G.ih) };
+    this.uQuad = { value: new THREE.Vector2(1 / G.fw, 1 / G.fh) };
+    this.uOutline = { value: new THREE.Color(color) };
+  }
+  onBeforeCompile(shader) {
+    shader.uniforms.spriteCard = SPRITE_CARD;
+    shader.uniforms.uTexel = this.uTexel;
+    shader.uniforms.uQuad = this.uQuad;
+    shader.uniforms.uOutline = this.uOutline;
+    shader.vertexShader = shader.vertexShader
+      .replace('uniform float rotation;', 'uniform float rotation; uniform vec2 spriteCard; varying float vAboveAnchor; varying vec2 vQuad;')
+      .replace('vec2 rotatedPosition;', 'vAboveAnchor = alignedPosition.y; vQuad = uv; vec2 rotatedPosition;')
+      .replace('mvPosition.xy += rotatedPosition;', 'mvPosition.x += rotatedPosition.x; mvPosition.yz += rotatedPosition.y * spriteCard;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('uniform float opacity;', `uniform float opacity;
+uniform vec2 uTexel, uQuad;
+uniform vec3 uOutline;
+varying float vAboveAnchor;
+varying vec2 vQuad;`)
+      .replace('#include <map_fragment>', `
+	if (vAboveAnchor < 0.0) discard;   // under the ground plane (hidden there anyway; keeps the mask off cards in front)
+	vec4 sampledDiffuseColor = texture2D(map, vMapUv);
+	if (sampledDiffuseColor.a < 0.5) {
+		float n = 0.0;
+		if (vQuad.x > uQuad.x && vQuad.x < 1.0 - uQuad.x) {
+			n += step(0.5, texture2D(map, vMapUv + vec2(uTexel.x, 0.0)).a);
+			n += step(0.5, texture2D(map, vMapUv - vec2(uTexel.x, 0.0)).a);
+		}
+		if (vQuad.y > uQuad.y && vQuad.y < 1.0 - uQuad.y) {
+			n += step(0.5, texture2D(map, vMapUv + vec2(0.0, uTexel.y)).a);
+			n += step(0.5, texture2D(map, vMapUv - vec2(0.0, uTexel.y)).a);
+		}
+		if (n < 0.5) discard;
+		diffuseColor = vec4(uOutline, diffuseColor.a);
+	} else diffuseColor *= sampledDiffuseColor;`);
+  }
+  customProgramCacheKey() { return 'vr-outline-sprite'; }
+}
+
+/** Swap a sprite visual's body to an outlined one + its stencil card mask (see OutlineSpriteMaterial). */
+function addOutline(vis, color) {
+  const body = vis.body;
+  const G = vis.geom;
+  const old = body.material;
+  const mat = new OutlineSpriteMaterial({ map: vis.tex, transparent: true, alphaTest: 0.5 }, G, color);
+  body.material = mat;
+  vis.mats[vis.mats.indexOf(old)] = mat;
+  old.dispose();
+  const mask = new OutlineSpriteMaterial({
+    map: vis.tex, transparent: false, alphaTest: 0.5, colorWrite: false, depthWrite: false, depthTest: false, fog: false,
+    stencilWrite: true, stencilRef: CARD_MASK_REF, stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp,
+  }, G, color);
+  mask.uTexel = mat.uTexel; mask.uQuad = mat.uQuad;
+  const spr = new THREE.Sprite(mask);
+  spr.center.copy(body.center);
+  spr.renderOrder = -9;          // opaque pass, after the ground (-10), before every card
+  spr.userData.noSnap = true;    // follows the body's pixel snap
+  spr.name = 'cardMask';
+  body.add(spr);
+  vis.outline = mat;
+  vis.outlineColor = color;
+}
+
+/** Stencil value the player's card mask writes; the card shader skips these pixels. */
+export const CARD_MASK_REF = 1;
+
+/** Recolour a visual's sprite outline (made with makeVisual(key, {outline})). */
+export function setOutline(root, color) {
+  const vis = root?.userData.vis;
+  if (!vis?.outline || color === vis.outlineColor) return;
+  vis.outlineColor = color;
+  vis.outline.uOutline.value.set(color);
 }
 
 /** Recolour (or hide with null) a visual's occlusion silhouette. */
@@ -359,7 +443,7 @@ export class Assets {
     const g = c.getContext('2d', { willReadFrequently: true });
     g.drawImage(img, 0, 0);
     const d = g.getImageData(0, 0, c.width, c.height);
-    spendPixels(d.data, c.width, c.height, mode);
+    spendPixels(d.data, c.width, c.height, mode, OPENED_TOP[k]);
     g.putImageData(d, 0, 0);
     const tex = new THREE.CanvasTexture(c);
     tex.magFilter = THREE.NearestFilter;
@@ -462,7 +546,10 @@ export class Assets {
       if (opts.ring) root.add(makeRing(Math.max(0.3, shadowR), opts.ring));   // hostile marker (enemies)
       // Occlusion silhouette for creatures: the player, and anything with a hostile ring.
       const silColor = opts.silhouette ?? (key === 'player' ? ATMOS.silhouette.player : opts.ring ? ATMOS.silhouette.enemyDim : null);
-      if (silColor && vis.kind === 'sprite') addSilhouette(vis, silColor);
+      if (silColor && vis.kind === 'sprite') addSilhouette(vis, silColor, key === 'player' ? ATMOS.silhouette.playerFill : undefined);
+      // 1-texel outline + card mask (the player by default; opts.outline = colour or false).
+      const outline = opts.outline ?? (key === 'player' ? ATMOS.playerOutline.open : null);
+      if (outline && vis.kind === 'sprite') addOutline(vis, outline);
       setFrame(vis, 0);
     } else {
       const parts = VISUALS[key] || VISUALS[key.replace(/_\d+$/, '')];
@@ -515,7 +602,7 @@ export class Assets {
 }
 
 /** Recolour RGBA bytes in place for spentVariant (see there). */
-function spendPixels(D, W, H, mode) {
+function spendPixels(D, W, H, mode, face) {
   const fw = W;   // single-frame props
   let top = H, bot = 0, left = W, right = 0;
   for (let y = 0; y < H; y++) for (let x = 0; x < fw; x++) if (D[(y * W + x) * 4 + 3] > 127) { top = Math.min(top, y); bot = Math.max(bot, y); left = Math.min(left, x); right = Math.max(right, x); }
@@ -535,9 +622,14 @@ function spendPixels(D, W, H, mode) {
       const glow = (v > 0.8 && s > 0.45) || (s > 0.45 && v > 0.5 && ((h > 165 && h < 200) || (h > 255 && h < 320)));
       // A lit amber/green screen face around the glyphs (terminals).
       const screen = mode === 'dark' && s > 0.55 && v > 0.35 && h > 25 && h < 60;
-      if (glow) { r = 30; g = 34; b = 36; }
+      if (glow && mode === 'open' && h > 20 && h < 70) { r *= 0.55; g *= 0.48; b *= 0.4; }   // a brass latch, not a light: just dulled
+      else if (glow) { r = 30; g = 34; b = 36; }
       else if (screen) { r *= 0.3; g *= 0.3; b *= 0.32; }
-      if (mode !== 'dark') {
+      if (mode !== 'dark' && face) {
+        const c = openInterior(face, x, y);
+        if (c) { r = c[0]; g = c[1]; b = c[2]; }
+        if (mode === 'gutted') { r *= 0.72; g *= 0.7; b *= 0.74; }
+      } else if (mode !== 'dark') {
         // Hollow top face: the upper part of the body seen from above becomes a dark interior with a
         // lit far rim (light from the top-left) and a 1-texel shadow line under the near rim.
         const fy = (y - top) / Math.max(1, bot - top), fx = (x - left) / Math.max(1, right - left);
@@ -552,6 +644,30 @@ function spendPixels(D, W, H, mode) {
       D[i] = r; D[i + 1] = g; D[i + 2] = b;
     }
   }
+}
+
+// Open-container interior (critic G #10) inside a sprite's top face, OPENED_TOP: the face polygon
+// (convex, clockwise on screen: left, back, right, front corner) inset by `rim` texels is hollowed out.
+// The two far inner walls are `wall` texels deep (back-left in shade, back-right catching the top-left
+// light); the floor is dark, darkest (dithered) in the near walls' shadow. Returns [r, g, b] or null.
+const BAYER4P = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((v) => (v + 0.5) / 16);
+function openInterior(top, x, y) {
+  const P = top.poly, n = P.length, px = x + 0.5, py = y + 0.5;
+  const dist = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const [ax, ay] = P[i], [bx, by] = P[(i + 1) % n];
+    const ex = bx - ax, ey = by - ay;
+    dist[i] = ((px - ax) * ey - (py - ay) * ex) / -Math.hypot(ex, ey);   // > 0 inside
+  }
+  const rim = top.rim ?? 2;
+  if (Math.min(...dist) < rim) return null;
+  const C = top.colors;
+  const dBL = dist[0] - rim, dBR = dist[1] - rim, dNear = Math.min(dist[2], dist[3]) - rim;
+  const wall = top.wall ?? 4;
+  if (dBL < wall && dBL <= dBR) return dBL < 1 ? C.wallDarkTop : C.wallDark;
+  if (dBR < wall) return dBR < 1 ? C.wallLitTop : C.wallLit;
+  const t = Math.min(1, dNear / (top.shade ?? 3)) + (BAYER4P[(y & 3) * 4 + (x & 3)] - 0.5) * 0.5;
+  return t < 0.5 ? C.deep : C.floor;
 }
 
 function makeShadow(r) {
