@@ -2,6 +2,8 @@
 
 Scavenge by day. Hold the line by night. A 3D pixel-rendered roguelite built with Three.js.
 
+**Play it in your browser: https://ycgnem.github.io/verdant-relay/** (desktop, keyboard + mouse)
+
 ## Run it
 
 Double-click `Play.bat`, or:
@@ -12,6 +14,8 @@ npm run dev
 ```
 
 Then open http://localhost:5190. `npm run playtest` builds and serves a frozen copy on port 5191 (no hot reload).
+
+Every push to `main` rebuilds and redeploys the live site through GitHub Actions (`.github/workflows/deploy.yml`).
 
 ## How to play
 

@@ -27,38 +27,43 @@ Read `DESIGN.md` for what the game is. This file covers how it's built and in wh
 
 ```
 verdant-relay/
-  DESIGN.md  PLAN.md  README.md  Play.bat  package.json  vite.config.js  index.html
-  public/sprites/            art drop-in (manifest.json + PNGs)
+  DESIGN.md PLAN.md ARCH.md STYLE.md README.md   docs (game, build plan, engine API, art contract)
+  Play.bat  package.json  vite.config.js  index.html
+  .github/workflows/deploy.yml   builds and publishes to GitHub Pages on every push to main
+  critique/                  playtest reports from the critic rounds (A–E)
+  pixel-art/                 sprite build scripts (pixel-art-studio) + manifest fragments, merge_manifest.py
+  public/sprites/            exported sprites + manifest.json (85 keys)
   src/
-    main.js                  boot: creates Game, starts at the title  [minimal boot exists]
+    main.js                  boot: loads sprites, registers scenes, debug URLs, starts at the title
     core/
-      rng.js                 seeded RNG (mulberry32) + subSeed           [done]
-      Input.js               keys/mouse, held vs pressed, NDC mouse      [done]
-      Save.js                versioned localStorage meta + run           [done]
-      Sfx.js                 synthesized blips, optional                 [done]
-      Game.js                renderer, letterbox resize, loop (dt clamp), scene switching, pause
-      Run.js                 run state: new/continue, resources, costs w/ skills, flags, research awards
-      Assets.js              loads manifest sprites; makeVisual(key) → billboard or placeholder group
-    data/                    ALL tuning lives here                       [done: first pass]
-      config.js towers.js enemies.js districts.js objectives.js waves.js
-      skills.js unlocks.js rooms.js defenseMap.js visuals.js
+      Game.js                renderer, internal res, letterbox/integer scaling, loop (dt clamp), deferred scene switching, shake/flash
+      PixelView.js           PixelCamera (ortho, 55°, 32 px/tile), upright-card sprite shader, per-draw pixel snapping
+      Assets.js              manifest sprites; makeVisual(key) → billboard / flat decal / placeholder; anims, facing, flashes, icons
+      Fx.js                  particles, rings, bolts, telegraphs, corpses/splats, muzzle flashes, hit-stop, floating text
+      Run.js                 run state: districts, resources, costs w/ skills, towers, boons, Intel, research, saves
+      Save.js                versioned localStorage meta + run (strict validation)
+      Music.js               procedural WebAudio music (title/day/night/boss/results/defeat)
+      Sfx.js  Input.js  rng.js
+    data/                    ALL tuning lives here
+      config.js (player, expedition byNight, relay, intel, pixel, JUICE, ui) towers.js enemies.js waves.js
+      districts.js objectives.js skills.js unlocks.js rooms.js defenseMap.js visuals.js music.js
     world/
-      ExploreGen.js          room grid → tile map, doors, loops, carve corridors, place loot/enemies/objectives
-      TileWorld.js           floor canvas-texture + instanced wall boxes from a tile grid
-      collide.js             circle-vs-tile movement, line-of-sight
+      ExploreGen.js          seeded room grid → tile map, loops, roles, templates, loot/enemies/objectives, reachability check
+      TileWorld.js           floor canvas texture from tiles, instanced walls, pixel canopy
+      collide.js             circle-vs-tile movement (substeps), ray-cast, line of sight
     entities/
-      Player.js              move, aim, carbine, cutter, dodge, hurt/i-frames, meds
-      ExploreEnemy.js        idle/chase/windup/attack state machine (melee, ranged, charge)
-      DefenseEnemy.js        waypoint follower, slow/root, burrow, spit, seed burst, boss phases
-      Tower.js               stats from data + level, targeting rules, kinds: bullet/chain/mortar/snare/support
-      Projectiles.js         pooled shots, mortar shells, effects (chain lines, rings, floating text)
+      Player.js              move, aim, carbine/scattergun, cutter, dodge, hurt/i-frames, meds
+      ExploreEnemy.js        spawn/idle/chase/windup/attack/recover/stunned state machine, flow-field pathing
+      ExploreShots.js        pooled bullets, bolts, sap globs, cutter sweep
+      DefenseEnemy.js        waypoint follower, slow/root, burrow, spit, seed burst, Colossus phases + enrage
+      Tower.js               stats from Run.towerStats, targeting (Lead/Nearest/Toughest), bullet/chain/mortar/snare/support
+      Projectiles.js         pooled shots and mortar shells
     scenes/
-      TitleScene.js BriefingScene.js ExploreScene.js SummaryScene.js
-      DefenseScene.js (prep + wave phases) ResultsScene.js CollectionScene.js SettingsScene.js
+      TitleScene SettingsScene CollectionScene BriefingScene ExploreScene SummaryScene DefenseScene ResultsScene
+      MenuBackdrop.js        living pixel diorama behind the menus
     ui/
-      style.css              overlay styling                             [base exists]
-      ui.js                  DOM helpers: el(), button(), panel(), resource chips, bars
-      Minimap.js             2D canvas minimap / Tab map
+      ui.js screensKit.js hints.js Minimap.js     DOM helpers, menu kit, one-time hints, minimap/Tab map
+      style.css screens.css explore.css defense.css
 ```
 
 ## Rules
@@ -70,6 +75,11 @@ verdant-relay/
 - Clamp delta time to ≤ 1/20 s. All movement is speed × dt.
 - Generation is seeded from `run.seed` via `subSeed(seed, night, districtKey)`, so a run can be reproduced.
 - Comment the non-obvious generation and wave logic.
+
+## Deployment
+
+Pushing to `main` runs `.github/workflows/deploy.yml`, which builds with Vite and publishes `dist/` to GitHub Pages
+(`vite.config.js` uses `base: './'`, so the game works from any sub-path). `npm run playtest` serves a frozen local build on port 5191.
 
 ## Stages
 
