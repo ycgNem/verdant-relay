@@ -1,6 +1,7 @@
 // Defense-mode enemies. They walk lane waypoints toward the Relay Core.
 // speed is tiles/sec. bounty is a small scrap drop; exploration stays the main income.
-// coreDamage is dealt once when the enemy reaches the core (it is then removed).
+// coreDamage is dealt once when the enemy reaches the core (it is then removed). With coreDamageMin
+// (boss) the damage scales from coreDamageMin at 0 health left to coreDamage at full health.
 // note: one line shown in the wave preview / first-sighting toast. color: icon colour in the UI.
 // gap: default seconds between spawns when the enemy arrives as an extra (district threat) group.
 // slowResist: fraction of every slow that is ignored. rootImmune: snare roots don't apply.
@@ -47,8 +48,8 @@ export const DEFENSE_ENEMIES = {
     resist: { kinetic: 0.5 },   // shield halves kinetic damage
   },
   colossus: {
-    name: 'Canopy Colossus', role: 'Boss', hp: 1050, speed: 0.55, coreDamage: 60, bounty: 0, size: 2.2, boss: true,
-    note: 'Boss. Walks, roots itself to spawn Crawlers, then winds up and charges.', color: '#ff0044', gap: 1,
+    name: 'Canopy Colossus', role: 'Boss', hp: 1000, speed: 0.55, coreDamage: 40, coreDamageMin: 15, bounty: 0, size: 2.2, boss: true,
+    note: 'Boss. Walks, roots itself to spawn Crawlers, then winds up and charges. If it reaches the Relay it deals 15–40 damage: the more it is hurt, the less.', color: '#ff0044', gap: 1,
     slowResist: 0.5, rootImmune: true,
     // Phase loop: approach -> rooted (telegraph, then spawns crawlers) -> charge (wind-up, then fast).
     // rootSpawn crawlers appear when it roots; the charge covers speed × chargeMult × charge tiles.

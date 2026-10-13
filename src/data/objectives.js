@@ -3,6 +3,7 @@
 // Each primary objective is a list of steps. A step places one or more marked props:
 //   pickup   walk over it (or press E) to collect
 //   activate hold E for `hold` seconds; `spawnDuring` enemies arrive while you hold
+//            (capped per night by CONFIG.expedition.byNight.holdSpawns; `guards` by byNight.guards)
 //   kill     destroy the marked enemy / prop
 // Finishing every step completes the objective: extraction opens, +1 skill point, and the
 // `boon` applies to tonight's defense.
@@ -63,7 +64,7 @@ export const OPTIONAL = {
     reward: { intel: 2 }, research: 5,
   },
   locked_cache: {
-    name: 'Open the locked cache', prop: 'locked_cache', type: 'activate', hold: 3.5,
+    name: 'Open the locked cache', prop: 'locked_cache', type: 'activate', hold: 2,
     reward: { scrap: 20, circuits: 2, biofiber: 1 },
   },
 };

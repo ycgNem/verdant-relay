@@ -18,6 +18,7 @@ import { CONFIG } from '../data/config.js';
 import { EXPLORE_ENEMIES } from '../data/enemies.js';
 import { setAnim, setFacing, updateVisual, flashVisual, setBaseColor } from '../core/Assets.js';
 import { moveCircle, lineOfSight, rayLength, castRay } from '../world/collide.js';
+import { nightTune } from '../world/ExploreGen.js';
 
 let barTex = null;
 function barMaterial(color) {
@@ -46,9 +47,11 @@ export class ExploreEnemy {
     const night = this.game.run.night;
     const scale = this.elite ? X.elite.scale : 1;
     this.scale = scale;
-    this.maxHp = Math.round(this.def.hp * (1 + X.enemyHpPerNight * (night - 1)) * (this.elite ? X.elite.hpMult : 1));
+    this.maxHp = Math.round(this.def.hp * nightTune('enemyHp', night) * (this.elite ? nightTune('eliteHp', night) : 1));
     this.hp = this.maxHp;
-    this.damage = this.def.damage * (this.elite ? X.elite.damageMult : 1);
+    this.damage = Math.round(this.def.damage * nightTune('enemyDamage', night) * (this.elite ? X.elite.damageMult : 1));
+    // Elites telegraph longer, so their big attacks are always readable.
+    this.windup = this.def.windup * (this.elite ? X.elite.windupMult : 1);
     this.radius = Math.max(0.22, this.def.size * 0.45 * scale);
     this.x = x; this.z = z;
     this.home = { x, z };
@@ -210,7 +213,7 @@ export class ExploreEnemy {
       case 'windup': {
         // Ranged aim and charge direction track the player for the first part of the wind-up, then lock.
         const lockAt = d.attack === 'ranged' ? 0.55 : 0.7;
-        if (d.attack !== 'melee' && this.stateT > d.windup * lockAt && playerTarget) {
+        if (d.attack !== 'melee' && this.stateT > this.windup * lockAt && playerTarget) {
           this.face = toP;
           this.aimDir = { ...toP };
           if (this.tele) this.tele.group.rotation.y = Math.atan2(-toP.x, -toP.z);
@@ -292,7 +295,7 @@ export class ExploreEnemy {
     const d = this.def;
     const sc = this.scene;
     this.state = 'windup';
-    this.stateT = d.windup;
+    this.stateT = this.windup;
     this.aimDir = { ...toP };
     this.face = toP;
     this.hitDone = false;
@@ -304,14 +307,14 @@ export class ExploreEnemy {
       const solidLen = rayLength(sc.world, this.x, this.z, toP.x, toP.z, travel, (x, y) => sc.world.solidAt(x, y));
       const reach = Math.max(0.3, Math.min(travel, solidLen - this.radius));
       this.lungeTarget = { x: this.x + toP.x * reach, z: this.z + toP.z * reach };
-      this.tele = sc.fx.telegraph(this.lungeTarget, { radius: this.radius + 0.55, color: '#e43b44', time: d.windup, fade: 0.12 });
+      this.tele = sc.fx.telegraph(this.lungeTarget, { radius: this.radius + 0.55, color: '#e43b44', time: this.windup, fade: 0.12 });
     } else if (d.attack === 'ranged') {
       const len = rayLength(sc.world, this.x, this.z, toP.x, toP.z, d.range);
-      this.tele = sc.fx.telegraph({ x: this.x, z: this.z }, { dir: toP, length: Math.max(0.5, len), width: 0.22, color: d.shot === 'glob' ? '#ff4d8d' : '#ff7a3c', time: d.windup, fade: 0.08 });
+      this.tele = sc.fx.telegraph({ x: this.x, z: this.z }, { dir: toP, length: Math.max(0.5, len), width: 0.22, color: d.shot === 'glob' ? '#ff4d8d' : '#ff7a3c', time: this.windup, fade: 0.08 });
       this.teleLen = this.curLen = len;
     } else if (d.attack === 'charge') {
       const len = this._laneLength(toP);
-      this.tele = sc.fx.telegraph({ x: this.x, z: this.z }, { dir: toP, length: len, width: this.radius * 2 + 0.3, color: '#e43b44', time: d.windup, fade: 0.1 });
+      this.tele = sc.fx.telegraph({ x: this.x, z: this.z }, { dir: toP, length: len, width: this.radius * 2 + 0.3, color: '#e43b44', time: this.windup, fade: 0.1 });
       this.teleLen = this.curLen = len;
     }
     this.game.sfx.play(d.attack === 'charge' ? 'alarm' : 'zap');

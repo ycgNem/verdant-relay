@@ -13,6 +13,13 @@ const COL = {
   bramble: '#be4a2f', spore: '#b55088', alarm: '#ff0044', fog: '#262b44', fogEdge: '#3a4466',
 };
 
+// Tile colours that need explaining on the big map's legend (district: only shown where it exists).
+export const TILE_LEGEND = [
+  { color: COL.bramble, label: 'Brambles (cut with RMB)' },
+  { color: COL.spore, label: 'Spores (hurt)' },
+  { color: COL.alarm, label: 'Alarm laser', district: 'alarms' },
+];
+
 export const MARKER_STYLE = {
   objective: { color: '#feae34', label: 'Objective' },
   optional: { color: '#c47bff', label: 'Optional' },

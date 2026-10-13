@@ -19,13 +19,13 @@ import { EXPLORE_ENEMIES } from '../data/enemies.js';
 import { Run } from '../core/Run.js';
 import { Fx } from '../core/Fx.js';
 import { setAnim, setFacing, updateVisual, setStatus, setOpacity, flashVisual } from '../core/Assets.js';
-import { generateExpedition, FLAG, CELL_W, CELL_H } from '../world/ExploreGen.js';
+import { generateExpedition, FLAG, CELL_W, CELL_H, nightTune, enemyRole } from '../world/ExploreGen.js';
 import { TileWorld } from '../world/TileWorld.js';
 import { moveCircle, lineOfSight } from '../world/collide.js';
 import { Player } from '../entities/Player.js';
 import { ExploreEnemy } from '../entities/ExploreEnemy.js';
 import { Shots } from '../entities/ExploreShots.js';
-import { Minimap, MARKER_STYLE } from '../ui/Minimap.js';
+import { Minimap, MARKER_STYLE, TILE_LEGEND } from '../ui/Minimap.js';
 import { el, button, bar, toast, modal, fmtTime, resChip } from '../ui/ui.js';
 import { showHint } from '../ui/hints.js';
 import { ROOM_W, ROOM_H } from '../data/rooms.js';
@@ -136,8 +136,12 @@ export class ExploreScene {
     game.music?.play('day');
 
     this._hintQueue = [];
-    this.later(0.6, () => this._hint('explore_move', '<b>WASD</b> move · <b>mouse</b> aim · <b>LMB</b> fire · <b>Space</b> dodge (i-frames) · <b>E</b> interact · <b>Q</b> med kit · <b>Tab</b> map · <b>Esc</b> pause', 'bottom-left', 11));
+    // Controls first: queued right away, so a bramble or loot hint triggered on frame one can't jump ahead.
+    this._hint('explore_move', '<b>WASD</b> move · <b>mouse</b> aim · <b>LMB</b> fire · <b>RMB</b> Pulse Cutter · <b>Space</b> dodge (i-frames) · <b>E</b> interact · <b>Q</b> med kit · <b>Tab</b> map · <b>Esc</b> pause', 'bottom-left', 11);
     this.later(4, () => this._hint('explore_objective', `Your <b>objective</b> is on the right and marked <span style="color:#feae34">◆</span> on the map. Finish it to open <b>extraction</b>. Loot you carry is only kept if you extract.`, 'bottom-left', 11));
+    if (this.map.things.some((t) => t.kind === 'med' && t.startKit)) {
+      this.later(4.5, () => this._hint('explore_medkit', 'A <span style="color:#e43b44">✚ med kit</span> lies in this room: walk over it to carry it, press <b>Q</b> to heal 25 HP. Ranged enemies hurt: fight from cover and <b>dodge</b> when you see an aim line.', 'bottom-left', 11));
+    }
 
     this.debug = this._makeDebug();
     toast(game.ui, `${this.D.name} — ${this.objDef.name}`, 'amber', 3);
@@ -234,7 +238,7 @@ export class ExploreScene {
     this._addInteractable({
       kind: 'container', key: t.key, x: t.x, z: t.z, tx: t.tx, ty: t.ty, room: t.room, vis: v, solid: true,
       hold: def.hold || 0, loot: t.loot, ambush: t.ambush, scavenger: true,
-      label: () => `${def.hold ? 'Hold' : 'Press'} <span class="key">E</span> ${t.key === 'intel_terminal' ? 'Download' : 'Open'} ${CONTAINER_NAMES[t.key]}`,
+      verb: `${t.key === 'intel_terminal' ? 'Download' : 'Open'} ${CONTAINER_NAMES[t.key]}`,
       onComplete: (it) => this._openContainer(it),
     });
   }
@@ -246,7 +250,7 @@ export class ExploreScene {
       setAnim(v, 'idle');
       const it = this._addInteractable({
         kind: 'primary', key: 'fuse', x: t.x, z: t.z, room: t.room, vis: v, step: t.step, walkOver: true,
-        label: () => 'Press <span class="key">E</span> Take the fuse',
+        verb: 'Take the fuse',
         onComplete: (it2) => {
           this._removeVis(it2);
           this.hasFuse = true;
@@ -262,13 +266,14 @@ export class ExploreScene {
     const v = this._makeProp(t.key, t);
     setStatus(v, '#e43b44');
     const hold = step.hold || 1.5;
+    const spawnDuring = Math.min(step.spawnDuring || 0, nightTune('holdSpawns', this.game.run.night));
     const it = this._addInteractable({
       kind: 'primary', key: t.key, x: t.x, z: t.z, tx: t.tx, ty: t.ty, room: t.room, vis: v, solid: true, step: t.step,
-      hold, spawnDuring: step.spawnDuring || 0, spawned: 0, objectiveHold: true,
+      hold, spawnDuring, spawned: 0, objectiveHold: true,
       enabled: () => this.objStep === t.step,
       reason: t.key === 'power_box' ? 'Needs a fuse — find it first (◆ on the map)' : 'Not yet',
-      label: () => `Hold <span class="key">E</span> ${PROP_VERBS[t.key] || 'Activate'}`,
-      card: step.spawnDuring ? { title: this.objDef.name, lines: [`<span class="bad">Risk:</span> ${step.spawnDuring} enemies arrive while you hold`, `<span class="muted">${hold}s hold · progress is kept if you let go</span>`] } : null,
+      verb: PROP_VERBS[t.key] || 'Activate',
+      card: spawnDuring ? { title: this.objDef.name, lines: [`<span class="bad">Risk:</span> ${spawnDuring} enemies arrive while you hold`, `<span class="muted">${hold}s hold · progress is kept if you let go · you can shoot while holding</span>`] } : null,
       onComplete: (it2) => {
         setAnim(v, 'on');
         setStatus(v, '#63c74d');
@@ -302,7 +307,7 @@ export class ExploreScene {
     const it = this._addInteractable({
       kind: 'optional', key: t.key, x: t.x, z: t.z, tx: t.tx, ty: t.ty, room: t.room, vis: v, solid: t.solid,
       hold: def.type === 'activate' ? def.hold : 0, walkOver: def.type === 'pickup', objectiveHold: true,
-      label: () => `${def.type === 'activate' ? 'Hold' : 'Press'} <span class="key">E</span> ${def.name}`,
+      verb: def.name,
       card: { title: `Optional: ${def.name}`, lines: [`<span class="good">Reward:</span> ${reward}`] },
       onComplete: (it2) => this._completeOptional(it2, def),
     });
@@ -313,13 +318,16 @@ export class ExploreScene {
     const def = EVENTS[t.key];
     const v = this._makeProp(def.prop, t);
     if (t.key === 'power_surge') setStatus(v, '#fee761');
+    const night = this.game.run.night;
+    const spawnDuring = Math.min(def.spawnDuring || 0, nightTune('holdSpawns', night));
+    const guards = Math.min(def.guards || 0, nightTune('guards', night));
     const risk = [];
-    if (def.spawnDuring) risk.push(`${def.spawnDuring} enemies arrive while you work`);
-    if (def.guards) risk.push(`${def.guards} hidden guards burst out`);
+    if (spawnDuring) risk.push(`${spawnDuring} enemies arrive while you work`);
+    if (guards) risk.push(`${guards} hidden guards burst out`);
     const it = this._addInteractable({
       kind: 'event', key: t.key, x: t.x, z: t.z, tx: t.tx, ty: t.ty, room: t.room, vis: v, solid: true,
-      hold: def.hold, spawnDuring: def.spawnDuring || 0, spawned: 0, guards: def.guards || 0, objectiveHold: true,
-      label: () => `Hold <span class="key">E</span> ${def.prompt}`,
+      hold: def.hold, spawnDuring, spawned: 0, guards, objectiveHold: true,
+      verb: def.prompt,
       card: {
         title: `Event: ${def.name}`,
         lines: [
@@ -350,7 +358,7 @@ export class ExploreScene {
       kind: 'extract', x: ex.x, z: ex.z, room: ex.room, radius: X().extractRadius, hold: X().extractHold, keepProgress: false, objectiveHold: true,
       enabled: () => this.objectiveDone,
       reason: 'Extraction locked — complete the objective first',
-      label: () => 'Hold <span class="key">E</span> Extract',
+      verb: 'Extract',
       onComplete: () => this._extract(),
     });
   }
@@ -532,7 +540,7 @@ export class ExploreScene {
     this._spill(it.loot, it.x, it.z, true);
     if (!this.warned.loot) {
       this.warned.loot = true;
-      this._hint('explore_loot', 'Loot is <b>carried</b> (top-left) until you <b>extract</b>. If you go down, everything carried this expedition is lost.', 'bottom-left', 9);
+      this._hint('explore_loot', 'Loot is <b>carried</b> (top-left) until you <b>extract</b>. If you go down, what you carry is lost, and a lean expedition means fewer towers tonight. Extract when you\'re hurt.', 'bottom-left', 10);
     }
     if (it.ambush) this._ambush(it);
   }
@@ -667,7 +675,16 @@ export class ExploreScene {
   }
 
   _pickEnemy() {
-    const keys = Object.keys(this.D.enemies).filter((k) => EXPLORE_ENEMIES[k]);
+    // Runtime spawns (reinforcements, guards, ambushes) skip ranged / charging enemies when the
+    // player already faces as many of them nearby as tonight's room cap allows.
+    const night = this.game.run.night;
+    const near = { ranged: 0, charger: 0, melee: 0 };
+    const pl = this.player.pos;
+    for (const e of this.enemies) if (!e.dead && Math.hypot(e.x - pl.x, e.z - pl.z) < 14) near[enemyRole(e.key)]++;
+    const cap = { ranged: nightTune('rangedCap', night), charger: nightTune('chargerCap', night), melee: Infinity };
+    let keys = Object.keys(this.D.enemies).filter((k) => EXPLORE_ENEMIES[k]);
+    const capped = keys.filter((k) => near[enemyRole(k)] < cap[enemyRole(k)]);
+    if (capped.length) keys = capped;
     const w = {};
     for (const k of keys) w[k] = this.D.enemies[k];
     let total = 0;
@@ -945,10 +962,13 @@ export class ExploreScene {
     this.fx.burst(this.player.pos, { color: '#e43b44', color2: '#3e8948', count: 30, speed: 3, up: 3, life: 0.8 });
     this.later(1.2, () => {
       this.timeScale = 1;
-      const lost = RESOURCE_KEYS.filter((k) => this.carried[k] > 0).map((k) => resChip(k, this.carried[k]));
+      const salv = this._salvage();
+      const lost = RESOURCE_KEYS.filter((k) => this.carried[k] - (salv[k] || 0) > 0).map((k) => resChip(k, this.carried[k] - (salv[k] || 0)));
+      const kept = RESOURCE_KEYS.filter((k) => salv[k] > 0).map((k) => resChip(k, salv[k]));
       const body = el('div.col', {},
         el('p', 'You collapse, and a passing Relay drone drags you home.'),
         lost.length ? el('div', {}, el('p.bad', 'Carried loot lost:'), el('div.resrow', {}, lost)) : el('p.muted', 'You weren\'t carrying anything.'),
+        kept.length ? el('div', {}, el('p.good', 'The drone salvaged:'), el('div.resrow', {}, kept)) : null,
         this.objectiveDone ? el('p.good', 'Objective progress still counts.') : null,
         el('p.muted.small', `You return with ${CONFIG.expedition.deathReturnHp} HP. Towers, banked resources and research are safe.`));
       modal(this.game.ui, 'You went down', body, [button('Return to the Relay', () => this._finish('died'), { cls: 'primary' })]);
@@ -969,17 +989,27 @@ export class ExploreScene {
     this.later(1.4, () => this._finish('extracted'));
   }
 
+  /** Early nights: the share of carried loot the drone recovers if the expedition fails. */
+  _salvage() {
+    const share = nightTune('deathSalvage', this.game.run.night);
+    const out = {};
+    if (share > 0) for (const k of RESOURCE_KEYS) { const n = Math.round(this.carried[k] * share); if (n > 0) out[k] = n; }
+    return out;
+  }
+
   _finish(kind) {
     if (this.finished) return;
     this.finished = true;
     const run = this.game.run;
     const extracted = kind === 'extracted';
+    const salvaged = extracted ? null : this._salvage();
     const result = {
       district: this.district,
       extracted,
       died: kind === 'died',
       abandoned: kind === 'abandoned',
       carried: { ...this.carried },
+      salvaged: salvaged && Object.keys(salvaged).length ? salvaged : null,
       objectiveDone: this.objectiveDone,
       objective: this.objKey,
       objectiveName: this.objDef.name,
@@ -1033,7 +1063,9 @@ export class ExploreScene {
     this.confirmModal?.remove();
     const body = el('div.col', {},
       el('p', 'Abandoning counts as failing to extract:'),
-      el('p.bad', 'All carried loot is lost and you return at low HP.'),
+      el('p.bad', nightTune('deathSalvage', this.game.run.night) > 0
+        ? `Most carried loot is lost (the drone salvages ${Math.round(nightTune('deathSalvage', this.game.run.night) * 100)}%) and you return at low HP.`
+        : 'All carried loot is lost and you return at low HP.'),
       this.objectiveDone ? el('p.muted.small', 'Your objective still counts.') : null);
     this.confirmModal = modal(this.game.ui, 'Abandon expedition?', body, [
       button('Keep going', () => { this.confirmModal.remove(); this.confirmModal = null; }, { cls: 'primary' }),
@@ -1166,6 +1198,16 @@ export class ExploreScene {
       // Walk-over pickups (fuse, data log) are taken just by touching them.
       if (it.walkOver && d < 0.6) { this._complete(it); continue; }
       if (d <= it.radius && d < bd) { bd = d; best = it; }
+    }
+    // A hold in progress survives a little drift (being knocked back by a hit doesn't cancel it).
+    const ht = this.holdTarget;
+    if (ht && !ht.done && input.isDown('KeyE') && Math.hypot(ht.x - pl.pos.x, ht.z - pl.pos.z) <= ht.radius + X().holdGrace) best = ht;
+    // Nothing to interact with, but brambles in reach: say how to clear them.
+    this.cutPrompt = false;
+    if (!best && this.brambles.size) {
+      for (const b of this.brambles.values()) {
+        if (Math.hypot(b.tx + 0.5 - pl.pos.x, b.ty + 0.5 - pl.pos.z) < 2.4) { this.cutPrompt = true; break; }
+      }
     }
     // Stop holding when the target changes; extraction progress resets, others keep theirs.
     if (this.holdTarget && this.holdTarget !== best) {
@@ -1304,7 +1346,7 @@ export class ExploreScene {
     this.beacon = { vis: v, zone };
     this.beaconIt = this._addInteractable({
       kind: 'extract', beacon: true, x: s.x, z: s.z, room: s.room, radius: X().extractRadius, hold: X().extractHold, keepProgress: false, objectiveHold: true,
-      label: () => 'Hold <span class="key">E</span> Emergency extract',
+      verb: 'Emergency extract',
       onComplete: () => this._extract(),
     });
     this.game.sfx.play('done');
@@ -1388,7 +1430,7 @@ export class ExploreScene {
     const lootRow = el('div.x-lootrow', {}, RESOURCE_KEYS.map((k) => {
       const r = RESOURCES[k];
       const n = el('b', '0');
-      const chip = el(`span.x-res`, { style: { '--c': r.color }, title: r.label }, el('span.glyph', r.glyph), n, el('span.lbl', r.short));
+      const chip = el(`span.x-res`, { style: { '--c': r.color }, title: `${r.label}: ${r.desc}` }, el('span.glyph', r.glyph), n, el('span.lbl', r.short));
       h.loot[k] = { n, chip, v: -1 };
       return chip;
     }));
@@ -1397,7 +1439,7 @@ export class ExploreScene {
     h.timerSub = el('div.x-timesub', this.D.name);
     const timer = el('div.x-timer', {}, h.timer, h.timerSub);
     h.mini = el('canvas.x-mini');
-    const tr = el('div.x-tr', {}, h.mini, el('div.x-minihint', {}, el('span.key', 'Tab'), ' map'));
+    const mini = el('div.x-minibox', {}, h.mini, el('div.x-minihint', {}, el('span.key', 'Tab'), ' big map'));
     h.objTitle = el('div.x-objtitle', this.objDef.name);
     h.steps = el('div.x-steps');
     h.extract = el('div.x-extract');
@@ -1406,20 +1448,24 @@ export class ExploreScene {
     h.extract.append(h.extractArrow, h.extractText);
     h.optList = el('div.x-optlist');
     const obj = el('div.x-obj.x-panel', {}, el('div.x-title.amber', 'OBJECTIVE'), h.objTitle, h.steps, h.extract, h.optList);
-    h.promptText = el('div.x-ptext');
-    h.promptBar = bar('x-pbar', 'var(--amber)');
+    const tr = el('div.x-tr', {}, mini, obj);
+    h.promptRing = el('span.x-ring', {}, el('span.key', 'E'));
+    h.promptText = el('span.x-plabel');
+    h.promptTime = el('span.x-ptime');
     h.card = el('div.x-card');
-    h.prompt = el('div.x-prompt', {}, h.card, h.promptText, h.promptBar.node);
+    h.prompt = el('div.x-prompt', {}, h.card, el('div.x-ptext', {}, h.promptRing, h.promptText, h.promptTime));
     h.arrowObj = el('div.x-edge.obj', {}, el('span', '▲'));
     h.arrowExt = el('div.x-edge.ext', {}, el('span', '▲'));
     h.vignette = el('div.x-vignette');
     // Big map overlay
     h.big = el('canvas.x-bigcanvas');
     const legend = el('div.x-legend', {}, ['objective', 'optional', 'event', 'extract', 'extract_locked', 'beacon', 'med', 'container'].map((k) =>
-      el('span.x-leg', {}, el('i', { style: { background: MARKER_STYLE[k].color } }), MARKER_STYLE[k].label)));
+      el('span.x-leg', {}, el('i', { style: { background: MARKER_STYLE[k].color } }), MARKER_STYLE[k].label)),
+      TILE_LEGEND.filter((t) => !t.district || this.D[t.district]).map((t) =>
+        el('span.x-leg', {}, el('i', { style: { background: t.color } }), t.label)));
     h.bigmap = el('div.x-bigmap', { style: { display: 'none' } },
       el('div.x-bigbox.x-panel', {}, el('div.x-bigtitle', {}, el('b', this.D.name), el('span.muted', ` · ${this.objDef.name}`), el('span.muted.x-bigclose', 'Tab / Esc to close')), h.big, legend));
-    h.root = el('div.x-hud', {}, h.vignette, tl, loot, timer, tr, obj, h.prompt, h.arrowObj, h.arrowExt, h.bigmap);
+    h.root = el('div.x-hud', {}, h.vignette, tl, loot, timer, tr, h.prompt, h.arrowObj, h.arrowExt, h.bigmap);
     ui.append(h.root);
     this.hud = h;
     this._hudCache = {};
@@ -1437,6 +1483,7 @@ export class ExploreScene {
     this._hudCache[key] = val;
     if (prop === 'text') node.textContent = val;
     else if (prop === 'html') node.innerHTML = val;
+    else if (prop === 'className') node.className = val;
     else node.style[prop] = val;
   }
 
@@ -1502,13 +1549,23 @@ export class ExploreScene {
     if (t && !this.ending) {
       h.prompt.style.display = '';
       const en = t.enabled();
-      this._set('ptext', h.promptText, 'html', en ? t.label() : `<span class="bad">${t.reason}</span>`);
       const mult = t.objectiveHold && this.game.run.hasSkill('quick_extraction') ? X().quickExtraction : 1;
       const hold = t.hold * mult;
-      h.promptBar.node.style.display = en && hold > 0 ? '' : 'none';
-      if (hold > 0) h.promptBar.set(t.progress / hold, `${Math.max(0, hold - t.progress).toFixed(1)}s`);
+      const holding = en && hold > 0;
+      // "Hold [E] Open Tool Chest  0.8s" with a progress ring around the key, or "Press [E] …".
+      this._set('pring', h.promptRing, 'display', en ? '' : 'none');
+      this._set('pringc', h.promptRing, 'className', holding ? 'x-ring hold' : 'x-ring');
+      h.promptRing.style.setProperty('--p', holding ? (t.progress / hold).toFixed(3) : '0');
+      this._set('ptext', h.promptText, 'html', en ? `${holding ? 'Hold' : 'Press'} · ${t.verb}` : `<span class="bad">${t.reason}</span>`);
+      this._set('ptime', h.promptTime, 'text', holding ? `${(t.progress > 0 ? hold - t.progress : hold).toFixed(1)}s` : '');
       h.card.style.display = t.card ? '' : 'none';
       if (t.card) this._set('card', h.card, 'html', `<div class="x-cardt">${t.card.title}</div>${t.card.lines.map((l) => `<div>${l}</div>`).join('')}`);
+    } else if (this.cutPrompt && !this.ending) {
+      h.prompt.style.display = '';
+      h.card.style.display = 'none';
+      this._set('pring', h.promptRing, 'display', 'none');
+      this._set('ptext', h.promptText, 'html', '<span class="key">RMB</span> Cut the brambles (Pulse Cutter)');
+      this._set('ptime', h.promptTime, 'text', '');
     } else {
       h.prompt.style.display = 'none';
       this._hudCache.ptext = null;

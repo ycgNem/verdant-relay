@@ -75,9 +75,12 @@ export class SummaryScene {
     const d = DISTRICTS[x.district] || { name: x.district || 'Unknown district' };
     const extracted = !!x.extracted;
     const headline = extracted ? 'EXTRACTED' : x.died ? 'YOU WENT DOWN' : 'EXPEDITION LOST';
+    const salvaged = (!extracted && x.salvaged) || null;
     const sub = extracted
       ? 'Everything you carried is banked at the Relay.'
-      : 'Everything you carried this expedition is lost. Towers, banked resources and research are safe.';
+      : salvaged
+        ? 'Most of what you carried is lost, but the drone salvaged a share. Towers, banked resources and research are safe.'
+        : 'Everything you carried this expedition is lost. Towers, banked resources and research are safe.';
 
     const head = el(`div.scr-head.panel.ui-block.sum-head${extracted ? '.ok' : '.fail'}`, {},
       el('div', {}, el('div.headline', headline), el('div.small.muted', {}, `${d.name} · Night ${run.night}`, x.kills ? ` · ${x.kills} kill${x.kills === 1 ? '' : 's'}` : '')),
@@ -89,18 +92,20 @@ export class SummaryScene {
     const carried = x.carried || {};
     const lootRows = RESOURCE_KEYS.map((k) => {
       const n = Math.floor(carried[k] || 0);
+      const kept = Math.floor(salvaged?.[k] || 0);
       const r = RESOURCES[k];
-      return el(`div.loot-row${n ? '' : '.zero'}${extracted ? '' : '.lost'}`, { style: { '--c': r.color } },
+      return el(`div.loot-row${n ? '' : '.zero'}${extracted ? '' : '.lost'}`, { style: { '--c': r.color }, title: r.desc },
         el('span.glyph', r.glyph), el('span.lbl', r.label), el('span.grow'),
         extracted ? el('b.good', n ? `+${n}` : '0') : el('b.bad', n ? el('s', String(n)) : '0'),
-        el('span.small.muted.loot-now', extracted ? `now ${run.res[k]}` : n ? 'lost' : ''));
+        kept ? el('b.good', ` +${kept}`) : null,
+        el('span.small.muted.loot-now', extracted ? `now ${run.res[k]}` : kept ? 'salvaged' : n ? 'lost' : ''));
     });
     const anyLoot = RESOURCE_KEYS.some((k) => carried[k]);
     const loot = el('div.panel.ui-block.sum-col', {},
-      el('h3', extracted ? 'Loot banked' : 'Loot lost'),
+      el('h3', extracted ? 'Loot banked' : salvaged ? 'Loot lost (some salvaged)' : 'Loot lost'),
       lootRows,
       !anyLoot ? el('div.small.muted', 'You came back empty-handed.') : null,
-      el('div.small.muted.sum-note', {}, 'Intel feeds research and wave previews.'));
+      el('div.small.muted.sum-note', { title: RESOURCES.intel.desc }, 'Intel: spend it in night prep to Decrypt (+Research Data) or Sabotage the wave.'));
 
     // Outcomes column.
     const objKey = run.objectiveFor(x.district);

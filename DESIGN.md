@@ -66,6 +66,7 @@ Room types: street, shop, residential, greenhouse, transit platform, utility, co
 - Extraction unlocks when the objective is done. It's marked on the map, and you hold E for 2 s in the zone. You may keep exploring after that.
 - When time runs out, a warning plays, then an emergency beacon appears at the start room and reinforcements keep spawning.
 - **Death:** you lose everything carried this expedition and return to the Relay at low HP. Towers, banked resources and research are kept. The run continues.
+  On nights 1–2 a Relay drone salvages a share of what you carried (30% / 20%), so one early mistake doesn't end the run.
 
 **Loot (carried until extraction):**
 
@@ -78,14 +79,23 @@ Room types: street, shop, residential, greenhouse, transit platform, utility, co
 
 Each resource has its own colour **and** icon. Container yields:
 
-| Container | Yield |
-|---|---|
-| Crate | 8–15 Scrap |
-| Tool chest | 15–25 Scrap, chance of a Circuit or Biofiber |
-| Rare cache | 20–30 Scrap + 1–3 components |
-| Intel terminal | 1–3 Intel |
+| Container | Yield | Hold E |
+|---|---|---|
+| Crate | 8–15 Scrap | 0.4 s |
+| Tool chest | 15–25 Scrap, chance of a Circuit or Biofiber | 0.8 s |
+| Rare cache | 20–30 Scrap + 1–3 components | 1.2 s |
+| Intel terminal | 1–3 Intel | 1.0 s |
 
-Med kits heal 25. You can carry at most 2. Enemies drop occasional small loot.
+Every hold shows its duration in the prompt ("Hold · Open Tool Chest 0.8s") with a progress ring around the E key.
+Progress is kept if you let go (except extraction), and a hit that knocks you slightly out of reach doesn't cancel it.
+Objective and event holds are set in `objectives.js` (e.g. the Route Data terminal 7 s, a locked cache 2 s).
+
+Med kits heal 25. You can carry at most 2. Enemies drop occasional small loot. On nights 1–2 a med kit lies in the start room.
+
+**Difficulty by night** (`CONFIG.expedition.byNight`): nights 1–2 have fewer and weaker enemies (HP ×0.85 / ×0.92,
+damage ×0.75 / ×0.85), at most one ranged enemy per room, 2 guards on a guarded cache and 2–3 enemies summoned by a hold.
+From night 3 rooms fill up, and nights 5–6 bring tougher (×1.2–1.3 HP), more numerous and more ranged enemies.
+The objective room is capped (3–5 enemies including guards) and its doors are never choked with brambles.
 
 **Enemies (day):** Crawler (melee lunge), Skitter (fast melee), Rival Scavenger (ranged, keeps distance),
 Spitter (stationary ranged), Razorback (wind-up, then charge). Every big attack shows a wind-up and telegraph.
@@ -99,7 +109,7 @@ Enemies never spawn on top of the player.
 | Recover Route Data | Hold E at a terminal while enemies arrive | Wave 10% smaller |
 | Activate Pumps | Activate 2 pumps in separate rooms | North lane 15% slower |
 | Salvage a Power Cell | Crack a guarded cache | Towers fire 10% faster |
-| Clear the Blockage | Kill an elite Razorback | +25 Scrap |
+| Clear the Blockage | Kill an elite Razorback (a duel: it stands in the open with 1–2 Crawlers/Skitters, longer charge telegraph, HP ×1.8–2.6 by night) | +25 Scrap |
 
 **Optional objectives:** destroy a nest (wave 15% smaller), rescue an engineer (free +25 repair),
 a data log (Intel and research), a locked cache. Some grant a bonus skill point, capped at 2 points per expedition.

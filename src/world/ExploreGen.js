@@ -32,6 +32,7 @@ import { ROOM_TEMPLATES, ROOM_W, ROOM_H } from '../data/rooms.js';
 import { CONFIG } from '../data/config.js';
 import { DISTRICTS } from '../data/districts.js';
 import { PRIMARY, OPTIONAL, OPTIONAL_KEYS, EVENTS, EVENT_KEYS } from '../data/objectives.js';
+import { EXPLORE_ENEMIES } from '../data/enemies.js';
 
 export const TILE = { FLOOR: 0, ALT: 1, WALL: 2, BLOCK: 3, WATER: 4, VOID: 5 };
 export const FLAG = { SOLID: 1, OPAQUE: 2, BRAMBLE: 4, SPORE: 8, ALARM: 16 };
@@ -47,6 +48,18 @@ const DECOR = {
   r: { keys: ['rubble', 'rubble_2'], solid: true, opaque: false },
   b: { keys: ['bush', 'bush_2'], solid: false, opaque: false },
 };
+
+/** Per-night expedition tuning: CONFIG.expedition.byNight[key] for `night` (the last entry repeats). */
+export function nightTune(key, night) {
+  const t = CONFIG.expedition.byNight[key];
+  return t[Math.max(0, Math.min(t.length - 1, (night || 1) - 1))];
+}
+
+/** Enemy role for the per-room caps: 'ranged' (Spitter, Scav), 'charger' (Razorback) or 'melee'. */
+export function enemyRole(key) {
+  const a = EXPLORE_ENEMIES[key]?.attack;
+  return a === 'ranged' ? 'ranged' : a === 'charge' ? 'charger' : 'melee';
+}
 
 // Solid props (you interact from beside them); everything else is walk-over.
 const SOLID_PROPS = new Set(['crate', 'chest', 'cache', 'intel_terminal', 'power_box', 'terminal', 'pump', 'cell_cache',
@@ -215,7 +228,8 @@ function buildMap(rng, ctx) {
     return rad > 0 && Math.hypot(lx + 0.5 - 6, ly + 0.5 - 4.5) <= rad;
   };
 
-  // ---- stamp templates
+  // ---- stamp templates (no alarm lasers in an elite's room: the duel shouldn't summon help)
+  const eliteObjective = PRIMARY[ctx.objective].steps.some((st) => st.type === 'kill' && st.elite);
   const pendingDecor = [];
   for (const r of rooms) {
     r.type = rng.pick(district.rooms);
@@ -243,7 +257,7 @@ function buildMap(rng, ctx) {
         } else if (ch === 'x' && !clear && r.role !== 'start') {
           flags[i] |= FLAG.SPORE;
           things.push({ kind: 'spore', tx: x, ty: y, room: r.id });
-        } else if (ch === '=' && district.alarms && !clear && r.role !== 'start' && r.role !== 'extract') {
+        } else if (ch === '=' && district.alarms && !clear && r.role !== 'start' && r.role !== 'extract' && !(r.role === 'objective' && eliteObjective)) {
           flags[i] |= FLAG.ALARM;
           things.push({ kind: 'alarm', tx: x, ty: y, room: r.id });
           occ[i] = 1;
@@ -369,6 +383,34 @@ function buildMap(rng, ctx) {
     return rng.pick(pool.filter((r) => dO.get(r.cell) === m));
   };
 
+  // ---- enemy caps: per room, at most rangedCap Spitters/Scavs and chargerCap Razorbacks; the
+  // objective room holds at most objectiveCap enemies (guards included). The elite's room only
+  // gets a little light support, so Clear the Blockage is a fair duel.
+  const tally = new Map();
+  const countOf = (r) => {
+    if (!tally.has(r.id)) tally.set(r.id, { total: 0, ranged: 0, charger: 0, melee: 0 });
+    return tally.get(r.id);
+  };
+  const eliteRoom = (r) => r.role === 'objective' && eliteObjective;
+  const roomCap = (r, role) => {
+    if (role === 'ranged') return eliteRoom(r) ? 0 : nightTune('rangedCap', night);
+    if (role === 'charger') return eliteRoom(r) ? 0 : nightTune('chargerCap', night);
+    return Infinity;
+  };
+  const pickEnemyFor = (r, weights) => {
+    const c = countOf(r);
+    const w = {};
+    for (const [k, v] of Object.entries(weights)) {
+      if (!EXPLORE_ENEMIES[k]) continue;
+      const role = enemyRole(k);
+      if (c[role] >= roomCap(r, role)) continue;
+      w[k] = v;
+    }
+    if (!Object.keys(w).length) return null;
+    return rng.weighted(w);
+  };
+  const countEnemy = (r, key) => { const c = countOf(r); c.total++; c[enemyRole(key)]++; };
+
   // ---- primary objective
   const objective = PRIMARY[ctx.objective];
   objective.steps.forEach((step, si) => {
@@ -380,26 +422,41 @@ function buildMap(rng, ctx) {
         used.add(r.id);
       }
       if (step.type === 'kill') {
-        const p = takeSpot(r, 'o', false) || takeSpot(r, 'e', false);
+        // The elite stands in the open middle of its room (room to dodge its charges).
+        const open = (x, y) => Math.hypot(x + 0.5 - (r.x0 + 6), y + 0.5 - (r.y0 + 4.5)) <= 3.2;
+        const p = takeSpot(r, 'o', false, open) || randomValid(r, false, open) || takeSpot(r, 'e', false);
         if (!p) return;
-        put({ kind: 'enemy', key: step.enemy, elite: !!step.elite, objective: true, step: si, room: r.id, solid: false }, p);
+        const elite = put({ kind: 'enemy', key: step.enemy, elite: !!step.elite, objective: true, step: si, room: r.id, solid: false }, p);
+        if (step.elite) placeSupport(r, elite, nightTune('eliteSupport', night));
         continue;
       }
       const solid = SOLID_PROPS.has(step.prop);
       const p = takeSpot(r, 'o', solid);
       if (!p) return;
       const t = put({ kind: 'primary', key: step.prop, step: si, index: n, room: r.id, solid }, p);
-      if (step.guards) placeGuards(r, t, step.guards);
+      if (step.guards) placeGuards(r, t, Math.min(step.guards, nightTune('guards', night)));
     }
   });
 
   function placeGuards(r, prop, n) {
     for (let g = 0; g < n; g++) {
+      const key = pickEnemyFor(r, district.enemies);
+      if (!key) break;
       const p = randomValid(r, false, (x, y) => {
         const d = Math.hypot(x - prop.tx, y - prop.ty);
         return d >= 1.5 && d <= 3.6;
       }) || randomValid(r, false);
-      if (p) put({ kind: 'enemy', key: rng.weighted(district.enemies), guard: true, room: r.id, solid: false }, p);
+      if (p) { put({ kind: 'enemy', key, guard: true, room: r.id, solid: false }, p); countEnemy(r, key); }
+    }
+  }
+
+  // Light support beside the elite, spread away from it so the fight doesn't start as a pile-up.
+  function placeSupport(r, elite, n) {
+    for (let g = 0; g < n; g++) {
+      const key = rng.weighted(X.elite.supportTypes);
+      const far = (x, y) => Math.hypot(x - elite.tx, y - elite.ty) >= 3.5;
+      const p = takeSpot(r, 'e', false, far) || randomValid(r, false, far);
+      if (p) { put({ kind: 'enemy', key, room: r.id, solid: false }, p); countEnemy(r, key); }
     }
   }
 
@@ -441,6 +498,15 @@ function buildMap(rng, ctx) {
     if (amb && r.role !== 'start' && rng.chance(key === 'crate' || key === 'intel_terminal' ? amb * 0.4 : amb)) thing.ambush = true;
   }
 
+  // ---- early nights: a med kit waits in the start room (a safety net for the first expeditions)
+  if (night <= X.startMedNights) {
+    const p = randomValid(startRoom, false, (x, y) => {
+      const d = Math.hypot(x + 0.5 - (startRoom.x0 + 6), y + 0.5 - (startRoom.y0 + 4.5));
+      return d >= 1.5 && d <= 3.5;
+    }) || randomValid(startRoom, false);
+    if (p) put({ kind: 'med', room: startRoom.id, solid: false, startKit: true }, p);
+  }
+
   // ---- loose med kits
   const meds = stochasticRound(rng, X.medKits * district.loot.med);
   const medRooms = rooms.filter((r) => r.role === 'explore' || r.role === 'optional');
@@ -456,12 +522,17 @@ function buildMap(rng, ctx) {
   for (const r of rooms) {
     const [lo, hi] = X.enemiesPerRoom[r.role] || [0, 0];
     if (hi <= 0) continue;
-    let count = rng.int(lo, hi) + stochasticRound(rng, (night - 1) * X.enemiesPerNight);
+    let count = Math.max(0, rng.int(lo, hi) + stochasticRound(rng, nightTune('extraEnemies', night)));
     if (r.role === 'extract') count = Math.min(count, 1 + Math.floor(night / 3));
+    if (r.role === 'objective') {
+      // The elite's room already has its support; other objective rooms share a cap with the guards.
+      count = eliteRoom(r) ? 0 : Math.min(count, nightTune('objectiveCap', night) - countOf(r).total);
+    }
     for (let n = 0; n < count; n++) {
-      const key = rng.weighted(district.enemies);
+      const key = pickEnemyFor(r, district.enemies);
+      if (!key) break;
       const p = takeSpot(r, 'e', false, farFromStart);
-      if (p) put({ kind: 'enemy', key, room: r.id, solid: false }, p);
+      if (p) { put({ kind: 'enemy', key, room: r.id, solid: false }, p); countEnemy(r, key); }
     }
   }
 
@@ -488,8 +559,10 @@ function buildMap(rng, ctx) {
     }
   }
 
-  // ---- bramble-choked doors (never the start room's doors, so the first steps are free)
-  const brambleDoors = rng.shuffle(doors.filter((d) => rooms[d.a].role !== 'start' && rooms[d.b].role !== 'start'))
+  // ---- bramble-choked doors: never the start room's doors (the first steps are free) and never the
+  // objective room's (no choke point into the hardest fight, and always a way to back out of it).
+  const noBramble = (rl) => rl === 'start' || rl === 'objective';
+  const brambleDoors = rng.shuffle(doors.filter((d) => !noBramble(rooms[d.a].role) && !noBramble(rooms[d.b].role)))
     .slice(0, rng.int(X.brambleDoors[0], X.brambleDoors[1]));
   for (const d of brambleDoors) {
     d.bramble = true;

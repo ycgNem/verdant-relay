@@ -14,6 +14,7 @@ import { KeyNav, Bag, ask, sbtn, researchChip } from '../ui/screensKit.js';
 export function startNewRun(game) {
   clearRun();
   game.run = Run.create(game.meta);
+  game.meta.lifetime.runs += 1;
   game.saveMeta();
   game.go('briefing');
 }
@@ -29,7 +30,8 @@ export function continueRun(game) {
     clearRun();
     return false;
   }
-  if (save.phase === 'prep') game.go('defense', { resume: true });
+  // 'wave' = quit mid-wave: the defense scene restarts that wave with the locked build.
+  if (save.phase === 'prep' || save.phase === 'wave') game.go('defense', { resume: true });
   else game.go('briefing', { resume: true });
   return true;
 }
@@ -53,7 +55,7 @@ export class TitleScene {
 
     const buttons = [];
     if (save) {
-      const where = save.phase === 'prep' ? 'Night prep' : 'Briefing';
+      const where = save.phase === 'prep' ? 'Night prep' : save.phase === 'wave' ? 'Wave (restarts)' : 'Briefing';
       buttons.push(sbtn(game, el('span.mbtn', {}, el('span.mlabel', 'Continue'), el('span.msub', `Night ${save.night} of ${CONFIG.nights} · ${where}`)), () => {
         if (!continueRun(game)) { toast(game.ui, 'That save could not be loaded.', 'bad'); this.rebuild(); }
       }, { cls: 'primary menu-btn', sfx: 'done', hotkey: 'C' }));

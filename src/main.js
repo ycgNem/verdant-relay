@@ -5,6 +5,7 @@
 //   ?debug=defense&night=4&scrap=400&circuits=10&biofiber=10
 //   ?debug=briefing | summary | results
 // They start a fresh run and jump straight to that scene. `window.vr` exposes the game in the console.
+// Debug runs don't count toward lifetime stats and don't overwrite the real run save unless &save=1.
 
 import './ui/style.css';
 import { Game } from './core/Game.js';
@@ -45,12 +46,16 @@ async function boot() {
   const dbg = q.get('debug');
   if (dbg) {
     game.run = Run.create(game.meta);
+    game.run.debug = true;   // keeps debug runs out of lifetime stats / records
+    game.run.noSave = q.get('save') !== '1';   // and away from the real run save (add &save=1 to test Continue)
     game.run.night = Math.max(1, Math.min(6, Number(q.get('night')) || 1));
     for (const k of ['scrap', 'circuits', 'biofiber', 'intel']) if (q.has(k)) game.run.res[k] = Number(q.get(k));
     if (q.has('skills')) game.run.skills = q.get('skills').split(',');
     if (q.has('points')) game.run.skillPoints = Number(q.get('points'));
     const district = q.get('district') || DISTRICT_KEYS[0];
+    game.run.stats.peak = { ...game.run.res };   // results show the debug start's resources, not the default 60 Scrap
     if (dbg === 'explore' || dbg === 'defense' || dbg === 'summary') game.run.chooseDistrict(district);
+    if (dbg === 'defense') game.run.stats.districts = [];   // no expedition happened: don't list a visited district
     if (dbg === 'summary') {
       game.run.applyExpedition({ district, extracted: true, carried: { scrap: 40, circuits: 2, biofiber: 1, intel: 1 }, objectiveDone: true, boon: { text: 'Debug boon: +10% tower rate.', towerRate: 1.1 }, optionals: [], events: [], skillPointsEarned: 1, medsLeft: 0, playerHp: 80, kills: 5 }, game);
     }

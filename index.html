@@ -10,7 +10,9 @@
     <div id="stage">
       <canvas id="view"></canvas>
       <div id="ui"></div>
-      <div id="flash"></div>
+      <!-- starts transparent inline: the stylesheet arrives after first paint, and its 0.35 s opacity
+           transition would otherwise fade a red full-screen flash out over the title -->
+      <div id="flash" style="opacity: 0"></div>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>
