@@ -364,6 +364,58 @@ export function generateWorld(seed, districtKeys) {
     B[i] = BRUSH.none;
   }
 
+  // ---------------------------------------------------------------- the dead city under the jungle
+  // Ruin fragments deep in the brush, and wrecks / pillars / boulders along the old trails.
+  const ruinFree = (x, z, r) => {
+    const tx = Math.floor(x), tz = Math.floor(z);
+    if (tx < 2 || tz < 2 || tx >= W - 2 || tz >= W - 2) return false;
+    if (Math.hypot(x - cx, z - cz) < J.relayClearing + 4) return false;
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const i = (tz + dz) * W + tx + dx;
+      if (occupied[i] || world.site[i] >= 0 || tileLevelMin(tx + dx, tz + dz) <= LEVEL.mud) return false;
+    }
+    return !objects.some((o) => o.kind === 'ruin' && Math.hypot(o.x - x, o.z - z) < r);
+  };
+  for (let k = 0; k < J.deepRuins; k++) {
+    const x = 4 + rng.next() * (W - 8), z = 4 + rng.next() * (W - 8);
+    if (!ruinFree(x, z, 6)) continue;
+    const ri = world.region[Math.floor(z) * W + Math.floor(x)];
+    const look = REGION_LOOK[regionKey(ri)] || REGION_LOOK.overgrown_market;
+    const type = rng.chance(0.15) ? 'statue' : rng.pick(look.ruins).replace('ruin_', '');
+    const px = Math.round(x * 32) / 32, pz = Math.round(z * 32) / 32;
+    objects.push({ id: `o${oid++}`, kind: 'ruin', type, x: px, z: pz, r: 0, flip: rng.chance(0.5) });
+    markCircle(px, pz, 1.4);
+    // The brush thins right around it, so the ruin reads (ferns, not thickets).
+    for (let tz = Math.floor(pz - 2); tz <= Math.floor(pz + 1); tz++) for (let tx = Math.floor(px - 2); tx <= Math.floor(px + 2); tx++) {
+      const i = tz * W + tx;
+      if (B[i] >= BRUSH.thicket && hash2(tx, tz, 97) < 0.75) B[i] = BRUSH.fern;
+    }
+  }
+  for (let z = 2; z < W - 2; z++) {
+    for (let x = 2; x < W - 2; x++) {
+      if (!world.trail[z * W + x] || hash2(x, z, 91) > J.trailDressing) continue;
+      // Step off the trail to its edge.
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0]]) {
+        const tx = x + dx, tz = z + dz;
+        if (world.trail[tz * W + tx]) continue;
+        const px = tx + 0.5, pz = tz + 0.7;
+        if (!ruinFree(px, pz, 5)) break;
+        const ri = world.region[tz * W + tx];
+        const look = REGION_LOOK[regionKey(ri)] || REGION_LOOK.overgrown_market;
+        const r = hash2(x, z, 92);
+        if (r < 0.45) {
+          const type = rng.pick(['car', 'pillar', ...look.ruins.map((t) => t.replace('ruin_', ''))]);
+          objects.push({ id: `o${oid++}`, kind: 'ruin', type, x: px, z: pz, r: 0, flip: rng.chance(0.5) });
+          markCircle(px, pz, 1.2);
+        } else {
+          objects.push({ id: `o${oid++}`, kind: 'rock', type: r < 0.75 ? 'boulder' : 'log', x: px, z: pz, r: 0.45, flip: rng.chance(0.5) });
+          markCircle(px, pz, 0.7);
+        }
+        break;
+      }
+    }
+  }
+
   // ---------------------------------------------------------------- pylons + containers
   for (const s of sites) {
     if (s.type !== 'pylon') continue;

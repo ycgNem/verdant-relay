@@ -202,7 +202,10 @@ export class Player {
         this.walkT = 0;
         const lv = sc.world.levelAt(this.pos.x, this.pos.z);
         if (lv === 0) sc.fx.ring({ x: this.pos.x, z: this.pos.z }, { color: '#5f9a86', radius: 0.45, life: 0.35 });
-        else if (sc.world.brushAt(Math.floor(this.pos.x), Math.floor(this.pos.z)) === 1) sc.fx.burst({ x: this.pos.x, y: 0.3, z: this.pos.z }, { color: '#376a30', color2: '#4b8139', count: 2, speed: 0.8, up: 1.2, life: 0.35, size: 1.5 / 32, gravity: 4 });
+        else if (sc.world.brushAt(Math.floor(this.pos.x), Math.floor(this.pos.z)) === 1) {
+          this.game.sfx.play('rustle');
+          sc.fx.burst({ x: this.pos.x, y: 0.3, z: this.pos.z }, { color: '#376a30', color2: '#4b8139', count: 2, speed: 0.8, up: 1.2, life: 0.35, size: 1.5 / 32, gravity: 4 });
+        }
       }
     }
 
@@ -241,7 +244,7 @@ export class Player {
     setAnim(this.vis, anim, true);
     const len = animLength(this.vis, anim);
     setAnimSpeed(this.vis, len > 0 ? len / this.swing.time : 1);
-    this.game.sfx.play('cutter');
+    this.game.sfx.play('slash');
   }
 
   startChop() {
@@ -259,7 +262,7 @@ export class Player {
     setAnim(this.vis, anim, true);
     const len = animLength(this.vis, anim);
     setAnimSpeed(this.vis, len > 0 ? len / spec.time : 1);
-    this.game.sfx.play('cutter');
+    this.game.sfx.play('chop');
   }
 
   _connect(power) {

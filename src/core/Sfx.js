@@ -17,6 +17,13 @@ const SOUNDS = {
   done: { type: 'triangle', f: 440, f2: 880, dur: 0.3, vol: 0.15 },
   alarm: { type: 'square', f: 880, f2: 660, dur: 0.35, vol: 0.12 },
   error: { type: 'square', f: 140, f2: 140, dur: 0.1, vol: 0.1 },
+  // Noise-based (jungle melee): band-passed noise swept from f to f2 (q = filter resonance);
+  // `thump` adds a short low sine under it.
+  slash: { type: 'noise', f: 900, f2: 3200, q: 1.2, dur: 0.11, vol: 0.22 },
+  chop: { type: 'noise', f: 500, f2: 1600, q: 0.9, dur: 0.18, vol: 0.3, thump: 70 },
+  cut: { type: 'noise', f: 2400, f2: 1200, q: 0.7, dur: 0.09, vol: 0.16 },
+  rustle: { type: 'noise', f: 3000, f2: 2200, q: 0.6, dur: 0.14, vol: 0.06 },
+  flesh: { type: 'noise', f: 400, f2: 180, q: 1.5, dur: 0.08, vol: 0.22, thump: 110 },
 };
 
 export class Sfx {
@@ -42,6 +49,7 @@ export class Sfx {
     if (this.last[name] && now - this.last[name] < 0.03) return; // avoid stacking identical blips
     this.last[name] = now;
     try {
+      if (s.type === 'noise') { this._noise(s, now); return; }
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
       osc.type = s.type;
@@ -54,6 +62,41 @@ export class Sfx {
       osc.stop(now + s.dur + 0.02);
     } catch {
       /* audio is optional */
+    }
+  }
+
+  _noise(s, now) {
+    const ctx = this.ctx;
+    if (!this._noiseBuf) {
+      const n = Math.floor(ctx.sampleRate * 0.4);
+      this._noiseBuf = ctx.createBuffer(1, n, ctx.sampleRate);
+      const d = this._noiseBuf.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = this._noiseBuf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = s.q || 1;
+    bp.frequency.setValueAtTime(s.f, now);
+    bp.frequency.exponentialRampToValueAtTime(Math.max(40, s.f2), now + s.dur);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(s.vol * this.volume, now + Math.min(0.015, s.dur * 0.2));
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + s.dur);
+    src.connect(bp).connect(gain).connect(ctx.destination);
+    src.start(now, Math.random() * 0.2);
+    src.stop(now + s.dur + 0.02);
+    if (s.thump) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(s.thump * 1.6, now);
+      o.frequency.exponentialRampToValueAtTime(s.thump, now + 0.08);
+      g.gain.setValueAtTime(s.vol * this.volume * 1.2, now);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+      o.connect(g).connect(ctx.destination);
+      o.start(now);
+      o.stop(now + 0.14);
     }
   }
 }

@@ -317,6 +317,7 @@ export class ExploreEnemy {
       // Rustling: something moving through the undergrowth gives itself away.
       if (this.moveOpts.throughBrush && Math.hypot(this.vel.x, this.vel.z) > 0.6 && sc.world.brushAt(Math.floor(this.x), Math.floor(this.z)) >= 1 && Math.random() < dt * 5) {
         sc.fx.burst({ x: this.x, y: 0.5, z: this.z }, { color: '#2a5628', color2: '#4b8139', count: 2, speed: 1, up: 1.6, life: 0.4, size: 1.5 / 32, gravity: 5 });
+        if (Math.hypot(this.x - sc.player.pos.x, this.z - sc.player.pos.z) < 9 && Math.random() < 0.35) this.game.sfx.play('rustle');
       }
       if (move && this.state !== 'windup') this.face = Math.hypot(this.vel.x, this.vel.z) > 0.3 && this.state === 'idle' ? { x: this.vel.x, z: this.vel.z } : this.face;
     }

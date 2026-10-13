@@ -24,7 +24,7 @@ export const JUNGLE = {
 
   rivers: 2,
   riverWidth: [1.4, 2.6],    // half-width of the water (tiles)
-  bankWidth: 1.6,            // mud band beyond the water
+  bankWidth: 1.2,            // mud band beyond the water
   pondThreshold: 0.73,       // fBm above this → swamp ponds (flooded districts lower it, see REGION_LOOK)
 
   trailWidth: [0.9, 1.6],    // half-width of trails (tiles)
@@ -34,10 +34,12 @@ export const JUNGLE = {
   // Undergrowth coverage. density = fBm + region bias; thresholds pick fern / thicket.
   brushFern: 0.36,
   brushThicket: 0.47,
-  brambleNoise: 0.69,        // second noise above this turns thicket to bramble
+  brambleNoise: 0.73,        // second noise above this turns thicket to bramble
   trailOvergrowth: [0.05, 0.55],   // chance a trail tile is overgrown, near → far from the Relay
   siteClear: 0.85,           // fraction of a site's radius kept clear
 
+  deepRuins: 90,             // ruin fragments scattered through the brush (attempts)
+  trailDressing: 0.018,      // chance per trail tile of a wreck / pillar / boulder at its edge
   treeSpacing: 2.6,          // jitter-grid step for tree candidates
   treeChance: 0.62,
   bigTreeChance: 0.14,

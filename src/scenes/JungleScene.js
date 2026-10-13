@@ -698,8 +698,9 @@ export class JungleScene {
       }
     }
     this._slashFx(x, z, angle, R, spec.arc, power, hits > 0);
+    if (hits) this.game.sfx.play('flesh');
     if (cut) {
-      this.game.sfx.play('hit');
+      this.game.sfx.play('cut');
       // Cutting is loud: anything nearby comes to look.
       this.alertNear(x, z, 4.5 + Math.min(3, cut), null, true);
       if (!this.warned.cut) { this.warned.cut = true; }
