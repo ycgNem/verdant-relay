@@ -32,11 +32,13 @@ verdant-relay/
   .github/workflows/deploy.yml   builds and publishes to GitHub Pages on every push to main
   critique/                  playtest reports from the critic rounds (A–E)
   pixel-art/                 sprite build scripts (pixel-art-studio) + manifest fragments, merge_manifest.py
-  public/sprites/            exported sprites + manifest.json (85 keys)
+  public/sprites/            exported sprites + manifest.json (V1 hand-made + V2 PixelLab)
+  public/terrain/            PixelLab Wang terrain sets + metadata (base tiles feed TerrainBaker)
   src/
     main.js                  boot: loads sprites, registers scenes, debug URLs, starts at the title
     core/
       Game.js                renderer, internal res, letterbox/integer scaling, loop (dt clamp), deferred scene switching, shake/flash
+      PostFx.js              screen-space canopy light, dusk darkness, grading, foreground leaves
       PixelView.js           PixelCamera (ortho, 55°, 32 px/tile), upright-card sprite shader, per-draw pixel snapping
       Assets.js              manifest sprites; makeVisual(key) → billboard / flat decal / placeholder; anims, facing, flashes, icons
       Fx.js                  particles, rings, bolts, telegraphs, corpses/splats, muzzle flashes, hit-stop, floating text
@@ -46,24 +48,29 @@ verdant-relay/
       Sfx.js  Input.js  rng.js
     data/                    ALL tuning lives here
       config.js (player, expedition byNight, relay, intel, pixel, JUICE, ui) towers.js enemies.js waves.js
-      districts.js objectives.js skills.js unlocks.js rooms.js defenseMap.js visuals.js music.js
+      jungle.js (world gen, DAY, POP, ATMOS, REGION_LOOK) districts.js objectives.js skills.js unlocks.js defenseMap.js visuals.js music.js
     world/
-      ExploreGen.js          seeded room grid → tile map, loops, roles, templates, loot/enemies/objectives, reachability check
-      TileWorld.js           floor canvas texture from tiles, instanced walls, pixel canopy
-      collide.js             circle-vs-tile movement (substeps), ray-cast, line of sight
+      JungleGen.js           the persistent 192×192 jungle: regions, rivers, sites, trails, undergrowth, trees, loot, pylons
+      JungleWorld.js         chunk streaming, upright-card foliage, collision, cutting, canopy shade
+      TerrainBaker.js        per-pixel blended ground (no tile grid), edge shading, AO, litter
+      FloraAtlas.js          atlas of foliage/tree/ruin sprites by family (+ procedural placeholders)
+      Ambience.js            pollen, leaves, fireflies, light shafts
+      DefenseGround.js       the night map drawn with the same terrain/foliage
+      noise.js               seeded value noise, hashes
+      collide.js             ray-cast helpers (telegraph lengths)
     entities/
-      Player.js              move, aim, carbine/scattergun, cutter, dodge, hurt/i-frames, meds
-      ExploreEnemy.js        spawn/idle/chase/windup/attack/recover/stunned state machine, flow-field pathing
+      Player.js              machete: 3-hit combo, charged chop, dodge roll, stamina, hurt/i-frames, meds
+      ExploreEnemy.js        spawn/idle/chase/windup/attack/recover/stunned state machine, flow-field pathing, brush slip/crash
       ExploreShots.js        pooled bullets, bolts, sap globs, cutter sweep
       DefenseEnemy.js        waypoint follower, slow/root, burrow, spit, seed burst, Colossus phases + enrage
       Tower.js               stats from Run.towerStats, targeting (Lead/Nearest/Toughest), bullet/chain/mortar/snare/support
       Projectiles.js         pooled shots and mortar shells
     scenes/
-      TitleScene SettingsScene CollectionScene BriefingScene ExploreScene SummaryScene DefenseScene ResultsScene
-      MenuBackdrop.js        living pixel diorama behind the menus
+      TitleScene SettingsScene CollectionScene BriefingScene JungleScene SummaryScene DefenseScene ResultsScene
+      MenuBackdrop.js        a slow drift over the jungle around the Relay behind the menus
     ui/
-      ui.js screensKit.js hints.js Minimap.js     DOM helpers, menu kit, one-time hints, minimap/Tab map
-      style.css screens.css explore.css defense.css
+      ui.js screensKit.js hints.js JungleMap.js   DOM helpers, menu kit, one-time hints, jungle minimap/Tab map (fog of war)
+      style.css screens.css explore.css jungle.css defense.css
 ```
 
 ## Rules
@@ -108,6 +115,15 @@ Pushing to `main` runs `.github/workflows/deploy.yml`, which builds with Vite an
 - [x] Hit flashes, particles, telegraphs, screen shake (toggleable) — plus hit-stop, death beats, tracers/muzzle flashes, pixel bolts (JUICE in `src/data/config.js`)
 - [x] Sound effects and music
 - [x] Tutorial prompts on first run, balance pass, edge cases (generation, saves)
+
+### Stage 5: V2 — open-world jungle (direction change, 2026-10-13)
+- [x] Persistent seeded jungle per run, chunk streaming, blended terrain (no grid), card foliage, see-through window
+- [x] Machete melee (combo, chop, roll, stamina), cutting undergrowth, persistent trails
+- [x] Open-world day: objectives at sites, pylons as return/drop points, supplies, wildlife per chunk, dusk hunters
+- [x] Screen-space lighting, ambience, foreground leaves; menus and night map use the jungle renderer
+- [x] PixelLab environment art (terrain, undergrowth, trees, ruins, props, decals)
+- [ ] PixelLab character art (player 8-way with slash/chop/roll, creatures)
+- [ ] Critic playtest + fixes on the new loop; balance pass (day length, wildlife, economy)
 
 ## Acceptance checklist
 

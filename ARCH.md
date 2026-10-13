@@ -10,7 +10,7 @@ How the engine pieces fit together. `DESIGN.md` says what the game is; `PLAN.md`
   - UI goes into `game.ui` (DOM overlay). It is cleared on every `game.go()`. Elements that should take mouse clicks need class `ui-block` (or be `button`s).
   - `exit()` must dispose geometries/materials/textures it created, remove window listeners and clear timers.
 - `game.go(name, params)` switches scene. `dt` is clamped to 1/20 s.
-- **Debug URLs** (for testing): `?debug=explore&district=flooded_transit&night=2`, `?debug=defense&night=4&scrap=400&circuits=10&biofiber=10`,
+- **Debug URLs** (for testing): `?debug=explore&district=flooded_transit&night=2` (the jungle; `vr.game.scene.debug` has teleport, god, reveal, timeLeft, extract…), `?debug=defense&night=4&scrap=400&circuits=10&biofiber=10`,
   `?debug=summary`, `?debug=briefing`, `?debug=results&victory=1`. Optional `&skills=a,b&points=2`. `window.vr.game` is the Game.
 
 ## Game (`src/core/Game.js`)
@@ -40,13 +40,37 @@ camera-facing billboard sprite (feet at y=0) or a flat ground decal (`flat: true
 
 Module functions (import from `../core/Assets.js`):
 - `updateVisual(root, dt)` — call every frame for every visual (animation frames, flash decay).
-- `setAnim(root, 'idle'|'walk'|'attack'|'windup'|'hurt'|'death'|…)` — missing names fall back to `idle`. `animDone(root)`.
-- `setFacing(root, dx, dz)` — sprites flip left/right; placeholder models rotate.
+- `setAnim(root, 'idle'|'walk'|'attack'|'windup'|'hurt'|'death'|…)` — missing names fall back to `idle`. `animDone(root)`, `hasAnim`, `animLength`, `animHitFrac`, `setAnimSpeed`.
+- `setFacing(root, dx, dz, snap?)` — directional sheets pick one of 8 directions (west side mirrored), strip sprites flip left/right; placeholder models rotate.
 - `flashVisual(root, color, time)` — hit flash. `setBaseColor(root, '#88aaff')` — persistent tint (slowed); `'#ffffff'` clears.
 - `setOpacity(root, a)` — e.g. burrowed enemies. `setStatus(root, color)` — status light on placeholder props.
 - `game.assets.disposeVisual(root)`; `game.assets.setTint(color)` — ambient tint for all sprites (night: bluish).
 - `root.userData.vis.height` — visual height in world units (for HP bars / labels).
 - `game.assets.spriteInfo(key)` → `{tex, def}` for tiles; `game.assets.iconStyle(key, px)` → CSS string for DOM icons.
+
+## The jungle (day) — `src/world/`
+
+- `JungleGen.generateWorld(seed, districtKeys)` → plain data: `size` (192), `level` (vertex terrain levels, `LEVEL`),
+  `pave`, `brush` (per tile, `BRUSH`), `region`, `trail`, `site`, `objects` (trees/ruins/rocks), `sites`, `containers`,
+  `pylons`, `center`. `worldForRun(game, run, keys)` caches it per run seed; `compass(dx, dz)`; `clearDisc(world, x, z, r)`.
+- `JungleWorld(game, scene3d, data, cutMask)`: chunk streaming (`update(dt, focusX, focusZ)`, `warm(x, z)`), queries
+  (`brushAt solidAt opaqueAt blockedAt(x, z, throughBrush) levelAt speedAt shadeAt lineOfSight`), movement
+  `moveBody(p, dx, dz, r, {throughBrush, onBrush})`, `blockedCircle`, `addCollider(obj)`, the machete
+  `hitBrush(tx, tz, power)` (→ type cut, −1 nicked, 0 nothing), `setPlayer(px, py, z)` for the see-through window,
+  `shadeTex` (canopy density for PostFx). `JungleWorld.regrow(data, cut, seed)` between days.
+  Exports `makeCardMaterial`, `chunkCards(world, atlas, cut, x0, z0, w, h)`, `cardMesh(cards, atlas, mat)` (the night map reuses them).
+- `TerrainBaker(world, assets, terrainArt).bake(cx, cz)` → a 512 × 512 canvas for chunk (cx, cz). `world.blendAmp` tightens edges.
+- `FloraAtlas(assets)`: one atlas of every static world sprite, grouped in `FAMILIES` (regex on manifest keys); `pick(fam, a, b)`.
+- `Ambience(scene3d, world).update(dt, cx, cz, dusk)`: pollen, falling leaves, fireflies, light shafts.
+- `DefenseGround.buildDefenseGround(game, seed, laneTiles, tint)` → `{ group, update(dt), dispose() }`.
+- Persistent state: `run.world` (`run.worldState(size, cell)` decodes it, `run.storeWorld(state)` stores it; bitsets in base64).
+
+## Screen-space lighting (`src/core/PostFx.js`)
+
+A scene that sets `this.post = new PostFx(game)` is rendered into a target and composited by one pass: canopy shade
+(`uniforms.tShade` = `JungleWorld.shadeTex`) with drifting dapples, darkness beyond `uLightR` around `uPlayer`,
+`uDark` (0 day → 1 night), `uAmbient`, `uTint`, grade, stepped vignette, `uHurt` pulse, `uLeaves` (foreground leaf
+frame). All steps are Bayer-dithered so light stays pixel art. Menus get it through `MenuBackdrop.post`.
 
 ## Effects (`src/core/Fx.js`)
 
