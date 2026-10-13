@@ -18,7 +18,8 @@ export function defaultMeta() {
     discovered: [],                 // district keys seen at least once (first-time bonus)
     best: { nights: 0, victory: false },
     lifetime: { runs: 0, victories: 0, kills: 0 },
-    settings: { shake: true, volume: 0.6, resolution: 'chunky' },
+    settings: { shake: true, volume: 0.6, music: 0.5, resolution: 'chunky', hints: true },
+    hints: {},                      // tutorial hint ids already shown
   };
 }
 
@@ -48,7 +49,7 @@ export function loadMeta() {
     return def;
   }
   // Fill any fields added since the save was written.
-  return { ...def, ...m, best: { ...def.best, ...m.best }, lifetime: { ...def.lifetime, ...m.lifetime }, settings: { ...def.settings, ...m.settings } };
+  return { ...def, ...m, best: { ...def.best, ...m.best }, lifetime: { ...def.lifetime, ...m.lifetime }, settings: { ...def.settings, ...m.settings }, hints: { ...(m.hints || {}) } };
 }
 
 export function saveMeta(meta) {
