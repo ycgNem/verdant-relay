@@ -176,6 +176,10 @@ export const VISUALS = {
   prop_stump_fungus: [['cyl', [0.42, 0.5, 0.5], [0, 0.25, -0.35], '#5a4430'], ['box', [0.32, 0.06, 0.22], [0.34, 0.36, -0.3], '#f77622'], ['box', [0.24, 0.05, 0.18], [0.3, 0.24, -0.25], '#feae34']],
   prop_stump_bare: [['cyl', [0.42, 0.5, 0.5], [0, 0.25, -0.35], '#5a4430']],
   prop_fungus_log_overlay: [['box', [0.3, 0.06, 0.2], [0, 0.32, 0], '#f77622'], ['box', [0.24, 0.05, 0.16], [0.16, 0.22, 0.04], '#feae34']],
+  // dusk blooms (critic N2): closed bud by day, open + glowing core from dusk, spent stem once picked
+  prop_dusk_bloom_closed: [['cyl', [0.04, 0.05, 0.4], [0, 0.2, 0], '#3e8948'], ['sph', [0.12], [0, 0.46, 0], '#68386c']],
+  prop_dusk_bloom_open: [['cyl', [0.04, 0.05, 0.4], [0, 0.2, 0], '#3e8948'], ['sph', [0.2], [0, 0.48, 0], '#f5a3e8', { emissive: true }], ['sph', [0.08], [0, 0.52, -0.12], '#2ce8f5', { emissive: true }]],
+  prop_dusk_bloom_spent: [['cyl', [0.04, 0.05, 0.36], [0, 0.18, 0], '#265c42']],
   // pickups
   pick_scrap: [['dod', [0.16], [0, 0.25, 0], '#c0cbdc', { emissive: true }]],
   pick_circuits: [['box', [0.24, 0.06, 0.24], [0, 0.25, 0], '#2ce8f5', { emissive: true }]],

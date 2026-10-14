@@ -83,8 +83,9 @@ export class Run {
     // pylons = activated relay pylons, explored = map discovery (bitset), used = sites whose objective
     // props are spent, day = the night the regrowth was last applied for; relics = relic sources used
     // (strongboxes, shrines, '<shrine>+' = a landmark's one-time extra), lore = data logs taken, visited = named
-    // places already announced (Stage 7 relics & lore; older saves: empty).
-    this.world = { cut: '', opened: [], pylons: [], explored: '', used: [], day: 0, relics: [], lore: [], visited: [] };
+    // places already announced (Stage 7 relics & lore; older saves: empty); forage = wild fruit bushes, fungus stumps
+    // and dusk blooms you have seen (ids; the map remembers them, critic N2).
+    this.world = { cut: '', opened: [], pylons: [], explored: '', used: [], day: 0, relics: [], lore: [], visited: [], forage: [] };
     // The night map this run plays (src/data/defenseMap.js DEFENSE_MAPS; picked from the seed in create()).
     // Saves from before map variants have none: Object.assign in fromSave keeps this default.
     this.mapKey = 'twin';
@@ -309,6 +310,7 @@ export class Run {
       relics: new Set(w.relics || []),
       lore: new Set(w.lore || []),
       visited: new Set(w.visited || []),
+      forage: new Set(w.forage || []),
     };
   }
 
@@ -318,6 +320,7 @@ export class Run {
       cut: packBits(st.cut), opened: [...st.opened], pylons: [...st.pylons],
       explored: packBits(st.explored), used: [...st.used], day: st.day,
       relics: [...(st.relics || [])], lore: [...(st.lore || [])], visited: [...(st.visited || [])],
+      forage: [...(st.forage || [])],
     };
   }
 
@@ -1103,6 +1106,8 @@ export class Run {
     for (const e of result.events || []) {
       if (e.flag) this.addBoon(e.flag, summary, true);
     }
+    // Dusk blooms picked today (Forage.js): Research like a bonus task, whether or not you got home.
+    if (result.bloomResearch) this.award(game, result.bloomResearch, `Dusk bloom${result.blooms > 1 ? 's' : ''} picked`, summary);
     // Area bosses killed today (JungleScene, AreaBoss.js): Research whether or not you got home (the kill stands).
     for (const k of result.bossesKilled || []) {
       if (BOSSES[k]) this.award(game, BOSS.reward.research, `Killed the ${BOSSES[k].name}`, summary);

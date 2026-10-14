@@ -677,8 +677,9 @@ export function generateWorld(seed, districtKeys, opts = {}) {
   if (opts.guided) guidedRoute(world, sites, districtKeys, occupied, makeRng(subSeed(seed, 'guided')));
 
   // Foraging (critic N, FORAGE): shelf-fungus hosts and wild fruit, from their own stream after everything else is
-  // placed (nothing above moves) and before reachability (so a new stump never walls a site off).
-  placeForage(world, makeRng(subSeed(seed, 'forage')), { occupied, openDist, markFoot, nextId: () => `o${oid++}`, wet: (tx, tz) => tileLevelMin(tx, tz) <= LEVEL.mud });
+  // placed (nothing above moves) and before reachability (so a new stump never walls a site off); the dusk blooms
+  // from a sub-stream of their own (critic N2), so adding them moved no stump or bush.
+  placeForage(world, makeRng(subSeed(seed, 'forage')), { occupied, openDist, markFoot, nextId: () => `o${oid++}`, wet: (tx, tz) => tileLevelMin(tx, tz) <= LEVEL.mud, bloomRng: makeRng(subSeed(seed, 'forage', 'bloom')) });
 
   // Make sure the Relay clearing and every site/pylon are clear of brush at their centres.
   for (const s of sites) clearDisc(world, s.x, s.z, s.type === 'pylon' ? 1.6 : 1.2);
@@ -740,13 +741,21 @@ export function returnYield(world, x, z) {
  *     clearing (not on it); all marked `fungus: true`, at least `spacing` apart. Forage.js draws the stumps.
  *   - world.forage: wild fruit bushes per district region (perRegion × perRegionMult), open ground within nearOpen
  *     of a trail or clearing (not on it), away from the Relay, each other and the boss lairs.
+ *   - world.forage also gets FORAGE.bloom.count dusk blooms ({kind: 'bloom'}, from `bloomRng`): open tiles of site
+ *     clearings far from the Relay, the lairs, each other and the clearing's props.
+ * None of them stands under a tree canopy (FORAGE.canopy, critic N2 P1-2) or within its lairGap of a boss lair.
  */
-function placeForage(world, rng, { occupied, openDist, markFoot, nextId, wet }) {
+function placeForage(world, rng, { occupied, openDist, markFoot, nextId, wet, bloomRng }) {
   const W = world.size, B = world.brush, cx = world.center.x, cz = world.center.z;
-  const F = FORAGE.fungus, R = FORAGE.fruit;
+  const F = FORAGE.fungus, R = FORAGE.fruit, C = FORAGE.canopy;
   const hosts = [];
   const farFromHosts = (x, z) => hosts.every((o) => Math.hypot(o.x - x, o.z - z) >= F.spacing);
   const nearSpore = (x, z, r) => (world.spores || []).some((p) => Math.hypot(p.x - x, p.z - z) < r);
+  const lairs = (world.lairs || []).map((i) => world.sites[i]).filter(Boolean);
+  const nearLair = (x, z, r) => lairs.some((s) => Math.hypot(x - s.x, z - s.z) < r);
+  // Under a canopy: a tree trunk south of the spot (it draws over it) within the canopy's footprint.
+  const trees = world.objects.filter((o) => o.kind === 'tree');
+  const underCanopy = (x, z) => trees.some((t) => t.z > z && t.z - z <= C.depth && Math.abs(t.x - x) <= C.half);
   // Logs nearest open ground first (deterministic: by distance, then generation order).
   const logs = world.objects.filter((o) => o.kind === 'rock' && o.type === 'log' && Math.hypot(o.x - cx, o.z - cz) >= F.minRelay)
     .map((o) => ({ o, d: openDist[Math.floor(o.z) * W + Math.floor(o.x)] }))
@@ -781,7 +790,7 @@ function placeForage(world, rng, { occupied, openDist, markFoot, nextId, wet }) 
     if (hosts.length >= F.logHosts + F.newStumps) break;
     const tx = i % W, tz = (i - tx) / W;
     const o = { id: '', kind: 'rock', type: 'stump', x: tx + 0.5, z: tz + 0.5, r: 0.45, flip: hash2(tx, tz, 61) < 0.5, fungus: true };
-    if (!farFromHosts(o.x, o.z) || !stumpOk(o) || nearSpore(o.x, o.z, F.sporeGap)) continue;
+    if (!farFromHosts(o.x, o.z) || !stumpOk(o) || nearSpore(o.x, o.z, F.sporeGap) || nearLair(o.x, o.z, F.lairGap) || underCanopy(o.x, o.z)) continue;
     o.id = nextId();
     world.objects.push(o);
     markFoot(o, 0.4);
@@ -791,7 +800,6 @@ function placeForage(world, rng, { occupied, openDist, markFoot, nextId, wet }) 
   }
   // Wild fruit.
   world.forage = [];
-  const lairs = (world.lairs || []).map((i) => world.sites[i]).filter(Boolean);
   const fruitBand = band(R.nearOpen, R.minRelay);
   for (let ri = 0; ri < world.districts.length; ri++) {
     const want = Math.round(R.perRegion * (R.perRegionMult[world.districts[ri]] ?? 1));
@@ -801,7 +809,7 @@ function placeForage(world, rng, { occupied, openDist, markFoot, nextId, wet }) 
       const tx = i % W, tz = (i - tx) / W;
       if (world.region[i] !== ri || occupied[i] || world.trail[i] || world.site[i] >= 0 || world.deep[i] || wet(tx, tz) || B[i] === BRUSH.bramble) continue;
       const px = tx + 0.5, pz = tz + 0.5;
-      if (lairs.some((s) => Math.hypot(px - s.x, pz - s.z) < R.lairGap)) continue;
+      if (nearLair(px, pz, R.lairGap) || underCanopy(px, pz)) continue;
       if (nearSpore(px, pz, R.sporeGap)) continue;
       if (world.forage.some((f) => Math.hypot(f.x - px, f.z - pz) < R.spacing)) continue;
       occupied[i] = 1;
@@ -810,6 +818,27 @@ function placeForage(world, rng, { occupied, openDist, markFoot, nextId, wet }) 
       k++;
     }
   }
+  // Dusk blooms: open tiles of a site's clearing (not a trail), far out, clear of the clearing's props.
+  const BL = FORAGE.bloom;
+  const props = [...world.sites, ...world.containers, ...world.pylons, ...(world.relicCaches || []), ...(world.shrines || []), ...(world.loreSpots || []), ...(world.spores || [])];
+  const blooms = [];
+  const cand = [];
+  for (let tz = 3; tz < W - 3; tz++) for (let tx = 3; tx < W - 3; tx++) {
+    const i = tz * W + tx;
+    if (world.site[i] >= 0 && !world.trail[i] && Math.hypot(tx + 0.5 - cx, tz + 0.5 - cz) >= BL.minRelay) cand.push(i);
+  }
+  for (const i of bloomRng.shuffle(cand)) {
+    if (blooms.length >= BL.count) break;
+    const tx = i % W, tz = (i - tx) / W, px = tx + 0.5, pz = tz + 0.5;
+    if (occupied[i] || world.deep[i] || wet(tx, tz) || B[i] === BRUSH.bramble) continue;
+    if (nearLair(px, pz, BL.lairGap) || underCanopy(px, pz)) continue;
+    if (props.some((p) => Math.hypot(p.x - px, p.z - pz) < BL.clear)) continue;
+    if ([...blooms, ...world.forage, ...hosts].some((f) => Math.hypot(f.x - px, f.z - pz) < (f.kind === 'bloom' ? BL.spacing : BL.clear))) continue;
+    occupied[i] = 1;
+    B[i] = BRUSH.none;
+    blooms.push({ id: `b${blooms.length}`, kind: 'bloom', x: px, z: pz, region: world.region[i] });
+  }
+  world.forage.push(...blooms);
 }
 
 /**

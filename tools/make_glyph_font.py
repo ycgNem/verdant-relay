@@ -316,6 +316,188 @@ GLYPHS = {
                    '#####',
                    '.###.',
                    '#.#.#']),
+    # ---- skill / unlock / recipe / tower icons in src/data (critic M2 P1-5: they fell back to Segoe UI Symbol and
+    # Cambria Math, smooth vector circles in the skill picker and the Codex). tools/check_glyphs.py keeps this list
+    # complete: it fails when UI text uses a character neither Tiny5 nor this font draws.
+    '§': (5, ['.###',    # section (7 rows: up into the ascent, like ⚠)
+                   '#...',
+                   '.##.',
+                   '#..#',
+                   '.##.',
+                   '...#',
+                   '###.']),
+    '½': (6, ['#...#',   # one half
+                   '#..#.',
+                   '#.#..',
+                   '.#.##',
+                   '#...#',
+                   '...#.',
+                   '..###']),
+    '⁘': (6, ['..#..',   # four dots
+                   '.....',
+                   '#...#',
+                   '.....',
+                   '..#..']),
+    '↻': (6, ['.##.#',   # clockwise open circle arrow
+                   '#..##',
+                   '#.###',
+                   '#...#',
+                   '.###.']),
+    '⟳': (6, ['.##.#',   # clockwise gapped circle arrow
+                   '#..##',
+                   '#.###',
+                   '#...#',
+                   '.###.']),
+    '⟲': (6, ['#.##.',   # anticlockwise gapped circle arrow
+                   '##..#',
+                   '###.#',
+                   '#...#',
+                   '.###.']),
+    '⇄': (6, ['...#.',   # right arrow over left arrow
+                   '#####',
+                   '.....',
+                   '#####',
+                   '.#...']),
+    '⊚': (6, ['.###.',   # circled ring
+                   '#...#',
+                   '#.#.#',
+                   '#...#',
+                   '.###.']),
+    '◎': (6, ['.###.',   # bullseye
+                   '#...#',
+                   '#.#.#',
+                   '#...#',
+                   '.###.']),
+    '◉': (6, ['.###.',   # fisheye
+                   '#...#',
+                   '#.#.#',
+                   '#...#',
+                   '.###.']),
+    '⦿': (6, ['.###.',   # circled bullet
+                   '#...#',
+                   '#.#.#',
+                   '#...#',
+                   '.###.']),
+    '◍': (6, ['.###.',   # circle with vertical fill
+                   '#.#.#',
+                   '#.#.#',
+                   '#.#.#',
+                   '.###.']),
+    '⌁': (5, ['...#',    # electric arrow (a bolt)
+                   '..#.',
+                   '####',
+                   '.#..',
+                   '#...']),
+    '⌖': (6, ['..#..',   # position indicator (crosshair)
+                   '.#.#.',
+                   '##.##',
+                   '.#.#.',
+                   '..#..']),
+    '⏱': (6, ['..#..',   # stopwatch
+                   '.###.',
+                   '#.#.#',
+                   '#.###',
+                   '.###.']),
+    '▣': (6, ['#####',   # square with a square inside
+                   '#...#',
+                   '#.#.#',
+                   '#...#',
+                   '#####']),
+    '▦': (6, ['#####',   # square with a grid
+                   '#.#.#',
+                   '#####',
+                   '#.#.#',
+                   '#####']),
+    '◫': (6, ['#####',   # square, vertical bisector
+                   '#.#.#',
+                   '#.#.#',
+                   '#.#.#',
+                   '#####']),
+    '◣': (6, ['#....',   # lower-left triangle
+                   '##...',
+                   '###..',
+                   '####.',
+                   '#####']),
+    '♁': (6, ['.###.',   # earth: a globe on a cross
+                   '#...#',
+                   '.###.',
+                   '..#..',
+                   '.###.']),
+    '♛': (6, ['#.#.#',   # crown
+                   '#.#.#',
+                   '#####',
+                   '#####',
+                   '.....']),
+    '♣': (6, ['..#..',   # club
+                   '.###.',
+                   '#####',
+                   '#.#.#',
+                   '..#..']),
+    '⚑': (6, ['####.',   # flag
+                   '#.###',
+                   '####.',
+                   '#....',
+                   '#....']),
+    '⚒': (6, ['#####',   # hammer
+                   '#####',
+                   '..#..',
+                   '..#..',
+                   '..#..']),
+    '⚔': (8, ['#.....#', # crossed swords (7 rows: up into the ascent)
+                   '.#...#.',
+                   '..#.#..',
+                   '...#...',
+                   '..#.#..',
+                   '##...##',
+                   '##...##']),
+    '⛨': (6, ['#####',   # shield with a cross
+                   '##.##',
+                   '#...#',
+                   '.#.#.',
+                   '..#..']),
+    '✂': (6, ['#...#',   # scissors
+                   '.#.#.',
+                   '..#..',
+                   '##.##',
+                   '##.##']),
+    '✉': (6, ['#####',   # envelope
+                   '##.##',
+                   '#.#.#',
+                   '#...#',
+                   '#####']),
+    '✎': (6, ['...##',   # pencil
+                   '..###',
+                   '.###.',
+                   '###..',
+                   '#....']),
+    '✦': (8, ['...#...', # four-pointed star (7 rows, so it is not the ◆ diamond)
+                   '...#...',
+                   '..###..',
+                   '#######',
+                   '..###..',
+                   '...#...',
+                   '...#...']),
+    '✹': (6, ['#.#.#',   # twelve-pointed star (a burst)
+                   '.###.',
+                   '#####',
+                   '.###.',
+                   '#.#.#']),
+    '❄': (6, ['#.#.#',   # snowflake
+                   '.###.',
+                   '##.##',
+                   '.###.',
+                   '#.#.#']),
+    '➶': (6, ['..###',   # arrow up and right (a thrown blade)
+                   '...##',
+                   '..#.#',
+                   '.#...',
+                   '#....']),
+    '🔒': (6, ['.###.',  # lock (outside the BMP: cmap format 12)
+                   '#...#',
+                   '#####',
+                   '##.##',
+                   '##.##',
+                   '#####']),
 }
 
 # src/ui/fonts/vr-clock.ttf (critic G #10): the HUD clock is Silkscreen Bold, whose "4" is a filled block
@@ -409,7 +591,8 @@ def build(path, glyphs=GLYPHS, family='VR Glyphs'):
     os2 += struct.pack('>II', 1, 0)                          # code page ranges (Latin 1)
     os2 += struct.pack('>hhHHH', 4 * PX, 5 * PX, 0, 0x20, 0)  # xHeight, capHeight, default/break char, maxContext
     # cmap format 4: one segment per code point + the 0xFFFF terminator.
-    codes = sorted((ord(c), order.index(c)) for c in glyphs)
+    allcodes = sorted((ord(c), order.index(c)) for c in glyphs)
+    codes = [cg for cg in allcodes if cg[0] < 0xFFFF]   # format 4 is BMP-only; format 12 (below) has them all
     segs = codes + [(0xFFFF, 0)]
     sc = len(segs)
     ends = b''.join(struct.pack('>H', c) for c, _ in segs)
@@ -420,7 +603,13 @@ def build(path, glyphs=GLYPHS, family='VR Glyphs'):
     sub = struct.pack('>HHHHHHH', 4, 0, 0, sc * 2, sr, (sr // 2).bit_length() - 1, sc * 2 - sr)
     sub += ends + b'\0\0' + starts + deltas + offs
     sub = sub[:2] + struct.pack('>H', len(sub)) + sub[4:]
-    cmap = struct.pack('>HHHHI', 0, 1, 3, 1, 12) + sub
+    if len(codes) == len(allcodes):
+        cmap = struct.pack('>HHHHI', 0, 1, 3, 1, 12) + sub
+    else:
+        # Code points beyond the BMP (🔒): a (3, 10) format-12 subtable (one group per code point) beside format 4.
+        sub12 = struct.pack('>HHIII', 12, 0, 16 + 12 * len(allcodes), 0, len(allcodes))
+        sub12 += b''.join(struct.pack('>III', c, c, g) for c, g in allcodes)
+        cmap = struct.pack('>HH', 0, 2) + struct.pack('>HHI', 3, 1, 4 + 16) + struct.pack('>HHI', 3, 10, 4 + 16 + len(sub)) + sub + sub12
     loca_b = b''.join(struct.pack('>I', o) for o in loca)
     ps = family.replace(' ', '')
     names = {1: family, 2: 'Regular', 3: f'{family} Regular 1.0', 4: f'{family} Regular', 5: 'Version 1.0', 6: f'{ps}-Regular'}

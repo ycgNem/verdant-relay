@@ -38,5 +38,29 @@
       12,
       19
     ]
+  },
+  "prop_dusk_bloom_closed": {
+    "file": "prop_dusk_bloom_closed.png",
+    "ppu": 32,
+    "anchor": [
+      16,
+      33
+    ]
+  },
+  "prop_dusk_bloom_open": {
+    "file": "prop_dusk_bloom_open.png",
+    "ppu": 32,
+    "anchor": [
+      16,
+      33
+    ]
+  },
+  "prop_dusk_bloom_spent": {
+    "file": "prop_dusk_bloom_spent.png",
+    "ppu": 32,
+    "anchor": [
+      16,
+      33
+    ]
   }
 }

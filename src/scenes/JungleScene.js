@@ -41,7 +41,7 @@ import { SporePods } from '../entities/SporePods.js';
 import { Forage } from '../entities/Forage.js';
 import { JungleMap, MAP_MARKERS, drawMarker } from '../ui/JungleMap.js';
 import { MAP_VIEW, HUD, TEXT_LANE } from '../data/hud.js';
-import { el, button, bar, toast, modal, fmtTime, resChip, resIcon, resIconHtml, setToastsPaused, showBanner } from '../ui/ui.js';
+import { el, button, bar, toast, modal, fmtTime, resChip, resIcon, resIconHtml, setToastsPaused, showBanner, pinWhole, snapLine, snapBox } from '../ui/ui.js';
 import { showHint } from '../ui/hints.js';
 import { GUIDE, FIRST_DAY, RETURN_PROMPT, HOME_HINT, WORDS, TIPS } from '../data/guide.js';
 import { openSettingsOverlay } from './SettingsScene.js';
@@ -792,7 +792,8 @@ export class JungleScene {
     const tx = r.left - sr.left + Math.min(r.width * 0.3, 14), ty = r.top - sr.top + r.height / 2;
     const n = resIcon(key, { cls: 'x-fly' });
     ui.append(n);
-    const at = (x, y, s) => `translate(${x.toFixed(0)}px, ${y.toFixed(0)}px) translate(-50%, -50%) scale(${s})`;
+    const hw = Math.round(n.offsetWidth / 2), hh = Math.round(n.offsetHeight / 2);   // whole pixels, not translate(-50%) (critic M2 P1-3)
+    const at = (x, y, s) => `translate(${Math.round(x) - hw}px, ${Math.round(y) - hh}px) scale(${s})`;
     const mx = (from.x + tx) / 2, my = Math.min(from.y, ty) - 40 * this.game.u;
     const ms = JUICE.pickup.flyTime * 1000;
     n.style.transform = at(from.x, from.y, 1.3);
@@ -1381,6 +1382,7 @@ export class JungleScene {
       events: this.eventsDone.map((e) => ({ ...e })),
       objectiveFailed: !!this.objectiveFailed,                 // (the engineer went down)
       bossesKilled: [...(this.bosses?.killed || [])],          // area bosses killed today (Research; Run.clearBoss already ran)
+      blooms: this.forage?.picked || 0, bloomResearch: this.forage?.bloomResearch() || 0,   // dusk blooms picked (Research)
       weather: this.weather?.key || null,
       skillPointsEarned: this.spEarned,
       medsLeft: Math.min(this.player.maxMeds ?? CONFIG.player.maxMeds, this.player.meds),
@@ -1879,7 +1881,8 @@ export class JungleScene {
     // Beacons join the legend once you have met one (no unexplained terms on day 1).
     const metPylon = this.data.pylons.some((p) => this.map.isExplored(p.x, p.z));
     const legendKeys = ['player', 'relay', this.state.pylons.size ? 'pylon_on' : null, metPylon ? 'pylon_off' : null, 'objective', 'optional', 'container',
-      this.game.run.isGuidedDay() ? null : 'relic', 'ford', this.bosses?.lairs.length ? 'boss' : null].filter(Boolean);   // relics: strongboxes / shrines (not on the guided day); ford: the crossing to use; ☠ area bosses (day 3+)
+      this.game.run.isGuidedDay() ? null : 'relic', 'ford', this.bosses?.lairs.length ? 'boss' : null,
+      'forage_fruit', 'forage_fungus', [...(this.state.forage || [])].some((id) => id[0] === 'b') ? 'forage_bloom' : null].filter(Boolean);   // relics: strongboxes / shrines (not on the guided day); ford: the crossing to use; ☠ area bosses (day 3+); forage you have seen (the bloom once met)
     const legend = el('div.x-legend', {}, legendKeys.map((k) =>
       el('span.x-leg', {}, JungleMap.legendIcon(k, 12 * this.game.u), MAP_MARKERS[k].label)));
     h.bigSteps = el('div.j-bigsteps');
@@ -1894,6 +1897,10 @@ export class JungleScene {
     h.root = el('div.x-hud', {}, h.lowhp, h.tlcol, h.tr, h.strip, h.prompt, h.arrowObj, h.arrowExt, h.arrowCrate, h.bigmap);
     h.root.style.setProperty('--hudfade', String(JUICE.hudFade?.opacity ?? 0.5));
     ui.append(h.root);
+    // Whole pixels (critic M2 P1-3): the centred GOAL strip is pinned, the clock lines are snapped when they change.
+    pinWhole(h.strip);
+    snapBox(h.bigmap.firstElementChild);
+    h.timer._snap = h.dayLbl._snap = true;
     this.hud = h;
     this._hudCache = {};
   }
@@ -1922,7 +1929,9 @@ export class JungleScene {
       if (!pr.visible) continue;
       const m = this._mark(n++);
       m.style.display = '';
-      m.style.transform = `translate(${Math.round(pr.x)}px, ${Math.round(pr.y)}px) translate(-50%, -100%)`;
+      // Whole pixels (critic M2 P1-3): the mark's size, measured once, as integer offsets (not translate(-50%)).
+      if (!m._wh?.[0]) m._wh = [m.offsetWidth, m.offsetHeight];
+      m.style.transform = `translate(${Math.round(pr.x) - Math.round(m._wh[0] / 2)}px, ${Math.round(pr.y) - m._wh[1]}px)`;
     }
     for (let i = n; i < h.marks.length; i++) h.marks[i].style.display = 'none';
   }
@@ -1937,7 +1946,7 @@ export class JungleScene {
   _set(key, node, prop, val) {
     if (this._hudCache[key] === val) return;
     this._hudCache[key] = val;
-    if (prop === 'text') node.textContent = val;
+    if (prop === 'text') { node.textContent = val; if (node._snap) requestAnimationFrame(() => snapLine(node)); }
     else if (prop === 'html') node.innerHTML = val;
     else if (prop === 'className') node.className = val;
     else if (prop.startsWith('--')) node.style.setProperty(prop, val);
@@ -2056,6 +2065,7 @@ export class JungleScene {
       else if (it.kind === 'container' && this.map.isExplored(it.x, it.z) && Math.hypot(it.x - this.player.pos.x, it.z - this.player.pos.z) < MAP_VIEW.containerRange) out.push({ x: it.x, z: it.z, type: 'container' });
     }
     for (const n of this.nests) if (!n.dead && this.seen.has(n)) out.push({ x: n.x, z: n.z, type: 'optional' });
+    this.forage?.markers(out);   // wild fruit, fungus stumps and dusk blooms you have seen (dim once used today)
     if (this.relicsCtl) out.push(...this.relicsCtl.markers());   // strongboxes, shrines, relics, logs, compass caches
     this.bosses?.markers(out);   // ☠ area bosses' lairs
     if (this._ford) out.push({ x: this._ford.x, z: this._ford.z, type: 'ford' });   // deep water in the way: cross here
@@ -2077,7 +2087,10 @@ export class JungleScene {
     const note = this.goals?.note() || '';   // live: the engineer's health, the uplink's time left, nests popped…
     if (!all) {
       const s = def.steps[this.objStep];
-      return `<span class="x-step cur">${def.name}${multi && s ? `: ${s.label}${cnt(s, this.objStep)}` : ''}${note}</span>`;
+      // The step and its count only (critic M2 P1-1: "goal: goal again (0/2)" lost the count to the ellipsis); the
+      // goal's name is the strip's tooltip and on the big map. A step that says "him" / "it" keeps the name in front.
+      const lbl = s && (/\b(him|it|its)\b/.test(s.label) ? `${def.name}: ${s.label}` : s.label[0].toUpperCase() + s.label.slice(1));
+      return `<span class="x-step cur">${multi && s ? `${lbl}${cnt(s, this.objStep)}` : def.name}${note}</span>`;
     }
     if (!multi) return `<span class="x-step cur">☐ ${def.name}</span>`;
     return [`<span class="x-step cur">${def.name}</span>`, ...def.steps.map((s, i) => {
@@ -2567,7 +2580,7 @@ export class JungleScene {
         const t = f?.[kind === 'glint' ? 'glints' : kind]?.[n];
         if (!t) return null;
         const x = t.tx != null ? t.tx + 0.5 : t.x, z = t.tz != null ? t.tz + 0.5 : t.z;
-        let p = { x, z: z + (kind === 'fruit' ? 1 : 1.5) };   // (inside the fruit's E radius)
+        let p = { x, z: z + (kind === 'fruit' || kind === 'bloom' ? 1 : 1.5) };   // (inside the fruit's / bloom's E radius)
         if (kind === 'glint') {
           const W = this.world;
           let best = null;

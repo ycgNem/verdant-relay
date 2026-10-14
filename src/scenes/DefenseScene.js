@@ -24,7 +24,7 @@
 import * as THREE from 'three';
 import { buildDefenseGround, makePlinth } from '../world/DefenseGround.js';
 import '../ui/defense.css';
-import { el, button, resChip, resRow, costLine, bar, toast, modal, resIconHtml, setToastsPaused } from '../ui/ui.js';
+import { el, button, resChip, resRow, costLine, bar, toast, modal, resIconHtml, setToastsPaused, pinWhole, snapCentred } from '../ui/ui.js';
 import { showHint } from '../ui/hints.js';
 import { JUICE } from '../data/config.js';
 import { vineTextures, shade } from '../core/Fx.js';
@@ -326,6 +326,7 @@ export class DefenseScene {
         if (this.readyT > 0) {
           this.readyEl = el('div.df-ready', {}, el('div.df-ready-t', 'Get ready'), el('div.df-ready-s', ''));
           this.uiRoot.append(this.readyEl);
+          pinWhole(this.readyEl, { cy: true });   // whole pixels, not translate(-50%) (critic M2 P1-3)
         }
       }
     }
@@ -1154,6 +1155,7 @@ export class DefenseScene {
     this._topKey = {};
     this._refreshTop(true);
     this._renderSide();
+    requestAnimationFrame(() => snapCentred(this.zoomBox.parentNode ? this.top : null));   // centred button glyphs on whole pixels (critic M2 P1-3)
   }
 
   /**
@@ -1245,8 +1247,15 @@ export class DefenseScene {
 
   /** Icon for a tower / enemy, at most `size` stage units (N px on a 960-wide stage), integer-scaled. */
   _iconFor(kind, key, size = 22) {
-    const css = this.game.assets.iconStyle(key, size * this.game.u);
-    if (css) return el('span.df-ico', { style: css });
+    const spec = this.game.assets.iconSpec(key, size * this.game.u);
+    if (spec) {
+      // A half-texel crop can leave a fractional width (31.5 px): pad it to a whole pixel so the text after it stays
+      // on whole pixels too (critic M2 P1-3).
+      const n = el('span.df-ico', { style: spec.css });
+      const padW = Math.ceil(spec.w - 0.001) - spec.w;
+      if (padW > 0.001) n.style.marginRight = `${padW}px`;
+      return n;
+    }
     if (kind === 'tower') {
       const ic = TOWERS[key].icon || { glyph: '?', color: '#8b9bb4' };
       return el('span.df-glyph', { style: { '--c': ic.color } }, ic.glyph);
@@ -1390,6 +1399,14 @@ export class DefenseScene {
     else if (mode === 'placing') this._renderPlacing(head, body);
     else if (mode === 'tower') this._renderTower(t, head, body);
     else this._renderPreview(head, body);
+    // The coach hint docks under the paths in the wave preview (critic M2 P0-1: the night-6 boss hint pushed both
+    // paths and Start Wave out of the panel), under the title otherwise.
+    const lanes = mode === 'preview' ? body.querySelectorAll(':scope > .df-lane, :scope > .df-threat1') : [];
+    if (lanes.length) lanes[lanes.length - 1].after(this.hintDock);
+    else if (this.hintDock.parentNode !== this.side || this.hintDock.nextSibling !== body) this.side.insertBefore(this.hintDock, body);
+    // "▾ more" pinned to the body's bottom edge while content sits below the fold (_sideMore).
+    this._moreCue = el('div.df-morecue');
+    body.append(this._moreCue);
     this._renderFoot(foot);
     // A different panel (or another tower) starts at the top: the wave preview's THREAT block must not
     // stay scrolled out of view from an earlier panel.
@@ -1421,7 +1438,9 @@ export class DefenseScene {
 
   _sideMore() {
     const b = this.sideBody;
-    b.classList.toggle('df-more', b.scrollTop + b.clientHeight < b.scrollHeight - 2);
+    const more = b.scrollTop + b.clientHeight < b.scrollHeight - 2;
+    b.classList.toggle('df-more', more);
+    if (this._moreCue) this._moreCue.style.visibility = more ? 'visible' : 'hidden';
   }
 
   _renderBuild(head, body) {
@@ -1469,8 +1488,8 @@ export class DefenseScene {
     },
     el('div.df-cardicon', {}, this._iconFor('tower', type, 22), i < 9 ? el('span.df-hk', String(i + 1)) : null),
     el('div.df-cardmain', {},
-      el('div.df-cardtop', {}, el('b', def.name), el('span.grow'), surcharge ? el('span.df-sur', `+${surcharge}`) : null, costLine(cost, run.res)),
-      el('div.df-desc', def.line || def.desc)));
+      el('div.df-cardtop', {}, el('b', def.name), el('span.grow'), surcharge ? el('span.df-sur', `+${surcharge}`) : null, costLine(cost, run.res))));
+    // (The tower's one plain line is the card's tooltip, critic M2 P0-1: ellipsised in the panel, and every card fits.)
     return card;
   }
 
@@ -1640,10 +1659,47 @@ export class DefenseScene {
     const lull = this.phase === 'lull' && this.events;
     const nextPush = lull ? this.pushIdx + 1 : -1;
     const nextN = lull ? this.events.filter((e) => e.push === nextPush).length : 0;
-    head.append(el('h2', lull ? `Next: push ${nextPush + 1} of ${this.wave.pushes}` : inWave ? 'Still coming' : 'Tonight\'s attack'),
-      el('div.small.muted', lull ? `${nextN} enemies on these paths. Build for them now` : inWave ? 'Enemies still to arrive on each path' : `Night ${night} · ${this.wave.total} enemies`));
+    // (Prep: no subtitle — the top bar says "Tonight N enemies" and each path head its count; critic M2 P0-1.)
+    head.append(el('h2', lull ? `Next: push ${nextPush + 1} of ${this.wave.pushes}` : inWave ? 'Still coming' : 'Tonight\'s attack'));
+    if (inWave) head.append(el('div.small.muted', lull ? `${nextN} enemies on these paths. Build for them now` : 'Enemies still to arrive on each path'));
 
-    // District threat and boons first: they're what makes tonight different.
+    // Per-lane counts first (critic M2 P0-1: the list is the most important thing on the night screen; in a wave:
+    // what's still to spawn). In prep each path is a row of icon chips (icon + ×N; name, role and NEW in the
+    // tooltip, NEW also as an amber corner dot), like the briefing; mid-wave the counts change, so rows stay.
+    let perLane = this.wave.perLane;
+    if (inWave && this.events) {
+      perLane = this.lanes.map(() => new Map());
+      for (let i = this.spawnIdx; i < this.events.length; i++) {
+        const e = this.events[i];
+        if (lull && e.push !== nextPush) continue;
+        perLane[e.lane].set(e.type, (perLane[e.lane].get(e.type) || 0) + 1);
+      }
+    }
+    this.lanes.forEach((lane, li) => {
+      const m = perLane[li];
+      let n = 0;
+      for (const c of m.values()) n += c;
+      const box = el(`div.df-lane${inWave ? '' : '.df-chips'}`, {}, el('div.df-lanehead', {}, el('b', lane.name.replace(/lane/i, 'path')), el('span.muted', ` ${n}`)));
+      if (!m.size) box.append(el('div.small.muted', lull ? 'Quiet in this push.' : inWave ? 'All here.' : 'Quiet tonight.'));
+      for (const [type, c] of m) {
+        const d = DEFENSE_ENEMIES[type];
+        const fresh = night > 1 && isNewType(type, night) && !inWave;
+        if (!inWave) {
+          box.append(el(`span.df-echip${d.boss ? '.boss' : ''}${fresh ? '.new' : ''}`, { title: `${d.name}${fresh ? ' (NEW tonight)' : ''} · ${d.role}${d.note ? `: ${d.note}` : ''}` },
+            this._iconFor('enemy', type, d.boss ? 28 : 18), el('b', `×${c}`)));
+          continue;
+        }
+        box.append(el(`div.df-erow${d.boss ? '.boss' : ''}`, { title: `${d.name} (${d.role}): ${d.note || ''}` },
+          el(`span.df-icoslot${d.boss ? '.boss' : ''}`, {}, this._iconFor('enemy', type, d.boss ? 28 : 18)),
+          el('span.df-ename', d.name),
+          el('span.grow'),
+          el('b', `×${c}`)));
+      }
+      body.append(box);
+    });
+
+    // Then the district threat and boons: what makes tonight different. In prep the threat is one short line
+    // (its full text and where it comes from in the tooltip); the briefing already said it in full.
     const thr = tn.threat;
     if (thr) {
       // Tag kept short: wide pixel caps would wrap a district name onto 2–3 lines.
@@ -1662,7 +1718,11 @@ export class DefenseScene {
       // the area lies goes in the box's tooltip.
       const via = dl ? el('div.small.df-via', `Comes down the ${dl.name.replace(/lane/i, 'path')}.`) : null;
       const where = dl ? ` It comes down the ${dl.name.replace(/lane/i, 'path')}${dir && faces ? ` (${area} lies ${dir})` : `, the side nearest ${area}`}.` : '';
-      body.append(el('div.df-threat', { title: `Danger from ${area}, the area you visited.${where}` }, el('div.df-tag.bad', '⚠ Danger tonight'), el('div.small', thr.text), via));
+      if (inWave) body.append(el('div.df-threat', { title: `Danger from ${area}, the area you visited.${where}` }, el('div.df-tag.bad', '⚠ Danger tonight'), el('div.small', thr.text), via));
+      else {
+        body.append(el('div.df-threat.df-threat1', { title: `${thr.text} Danger from ${area}, the area you visited.${where}` },
+          el('div.small', {}, el('span.df-threatglyph', '⚠ '), thr.short || thr.text, dl ? el('span.df-via', `: ${dl.name.replace(/lane/i, 'path')}`) : null)));
+      }
     }
     const boons = tn.boons || [];
     // Wave-size cuts stack under one cap (critic J2 C3): say the combined cut and the cap plainly.
@@ -1675,34 +1735,6 @@ export class DefenseScene {
     if (boons.length || cutLine) {
       body.append(el('div.df-boons', {}, el('div.df-tag.good', '▲ Rewards'), boons.map((b) => el('div.small', b.text)), cutLine));
     }
-
-    // Per-lane counts (in a wave: what's still to spawn).
-    let perLane = this.wave.perLane;
-    if (inWave && this.events) {
-      perLane = this.lanes.map(() => new Map());
-      for (let i = this.spawnIdx; i < this.events.length; i++) {
-        const e = this.events[i];
-        if (lull && e.push !== nextPush) continue;
-        perLane[e.lane].set(e.type, (perLane[e.lane].get(e.type) || 0) + 1);
-      }
-    }
-    this.lanes.forEach((lane, li) => {
-      const m = perLane[li];
-      let n = 0;
-      for (const c of m.values()) n += c;
-      const box = el('div.df-lane', {}, el('div.df-lanehead', {}, el('b', lane.name.replace(/lane/i, 'path')), el('span.muted', ` ${n}`)));
-      if (!m.size) box.append(el('div.small.muted', lull ? 'Quiet in this push.' : inWave ? 'All here.' : 'Quiet tonight.'));
-      for (const [type, c] of m) {
-        const d = DEFENSE_ENEMIES[type];
-        box.append(el(`div.df-erow${d.boss ? '.boss' : ''}`, { title: `${d.name} (${d.role}): ${d.note || ''}` },
-          el(`span.df-icoslot${d.boss ? '.boss' : ''}`, {}, this._iconFor('enemy', type, d.boss ? 28 : 18)),
-          el('span.df-ename', d.name),
-          night > 1 && isNewType(type, night) && !inWave ? el('span.df-new', 'NEW') : null,
-          el('span.grow'),
-          el('b', `×${c}`)));
-      }
-      body.append(box);
-    });
 
     // Boss tip (critic K #3: putting every tower on Toughest abandons the escort).
     const bossEv = this.wave.events.find((e) => DEFENSE_ENEMIES[e.type]?.boss);
@@ -1746,6 +1778,11 @@ export class DefenseScene {
           r.down ? el('span.rl-down', ` · ${r.down}`) : null))));
     }
     if (!inWave) body.append(el('div.small.muted.df-note', 'Click a glowing square to build. Click a tower to upgrade it.'));
+    if (!inWave && run.night <= 1 && !this.game.meta.hints?.relay_zap) {
+      // The Relay's own zap (RELAY_ZAP), said once on night 1 (critic M P1-6: after that it lives in the Relay bar's
+      // tooltip). In the body, under the paths (critic M2 P0-1: in the footer it pushed the enemy list out of view).
+      body.append(el('div.small.df-zapline', {}, el('span.df-zapglyph', 'ϟ '), RELAY_ZAP.hint));
+    }
   }
 
   _renderFoot(foot) {
@@ -1773,8 +1810,9 @@ export class DefenseScene {
     // once you hold enough Scrap for it to matter.
     const X = DEFENSE.exchange;
     if (this.phase === 'prep' && this.sideMode === 'preview' && run.res.scrap >= X.showAt && run.exchangeLeft() > 0) {
-      foot.append(el('div.df-intel.df-exchange', {}, X.gives.map((k) => button(
-        el('span', {}, 'Trade ', costLine({ scrap: X.scrap }, run.res), el('span.df-arrow', ' → '), costLine({ [k]: 1 })),
+      // One row: "Trade [⚙35 → ▣1] [⚙35 → ✿1]" (critic M2 P0-1: two-line buttons ate the enemy list's room).
+      foot.append(el('div.df-intel.df-exchange', {}, el('span.df-xlbl', 'Trade'), X.gives.map((k) => button(
+        el('span', {}, costLine({ scrap: X.scrap }, run.res), el('span.df-arrow', '→'), costLine({ [k]: 1 })),
         () => this._exchange(k), { cls: 'df-half', title: `Trade ${X.scrap} Scrap for 1 ${k === 'circuits' ? 'Circuit' : 'Biofiber'} (${run.exchangeLeft()} trade${run.exchangeLeft() === 1 ? '' : 's'} left tonight).` }))));
     }
     // Repair and Emergency Patch: side by side as half buttons when both show (keeps the footer short
@@ -1803,16 +1841,14 @@ export class DefenseScene {
       pair.append(button(label, () => this._patch(), { disabled: !!reason, reason, cls: halves ? 'df-half' : 'df-wide', title: `Emergency Patch: ${SKILLS.emergency_patch.desc}` }));
     }
     if (halves) foot.append(pair);
-    if (prep && run.night <= 1 && !this.game.meta.hints?.relay_zap) {
-      // The Relay's own zap (RELAY_ZAP), said once on night 1 (critic M P1-6: the side panel is dense; after that
-      // it lives in the Relay bar's tooltip): the line goes after the first wave starts.
-      foot.append(el('div.small.df-zapline', {}, el('span.df-zapglyph', 'ϟ '), RELAY_ZAP.hint));
-    }
+    // (The night-1 Relay zap line is in the wave preview's body now: _renderPreview.)
     if (prep) {
       // Readiness (critic K §4.6 / L §6.2): per path and a predicted Relay loss from the night forecast;
       // a weak defense asks before starting.
       const r = this._readiness();
       const armed = this.startArmed && this.game.time < this.startArmed;
+      // Not while picking or placing a tower (critic M2 P0-1: not actionable then, and it hid half the build list).
+      const showRd = this.sideMode !== 'build' && this.sideMode !== 'placing';
       const say = {
         weak: this.towers.length ? 'Too weak: expect heavy damage' : 'No towers yet: enemies will walk right in',
         risky: 'Risky: the Relay will take damage',
@@ -1822,7 +1858,7 @@ export class DefenseScene {
       const expect = r.hi <= 0 ? 'Expect no Relay damage'
         : r.hi >= run.relayHp ? `Expect −${Math.min(r.lo, Math.round(run.relayHp))} or worse: the Relay may fall`
         : r.lo <= 0 ? `Expect up to −${r.hi} Relay health` : `Expect −${r.lo} to −${r.hi} Relay health`;
-      foot.append(el(`div.df-rd-line.${r.level}`, {
+      if (showRd) foot.append(el(`div.df-rd-line.${r.level}`, {
         title: `Forecast: tonight's pushes replayed against your towers' damage, the stretch of path each one covers, slows and tanks, and the Relay's own zap (${RELAY_ZAP.range} tiles round it)${this.protocols.keys.length ? ', counting your Relay Protocols' : ''}. Predicted Relay loss ~${r.lost}.`,
       },
       el('span.df-rd-k', 'Your defense'),
@@ -1833,7 +1869,7 @@ export class DefenseScene {
       // path's dots), then the expected Relay loss. Every path's dots and damage stay in the tooltips.
       const worst = r.lanes.reduce((w, l) => (l.top && l.dots <= 1 && (!w || l.lost > w.lost) ? l : w), null);
       const laneTip = (l) => `${l.name}: about ${l.lost} Relay damage from this path${l.top ? `, most of it from ${leakName(l.top, true)}` : ''}`;
-      foot.append(el('div.small.df-rd-lanes', {},
+      if (showRd) foot.append(el('div.small.df-rd-lanes', {},
         worst
           ? el('div.df-rd-lane', { title: r.lanes.map((l) => `${l.short} ${dots(l.dots)}`).join(' · ') + `\n${laneTip(worst)}` },
             `${worst.short} `, el(`b.df-rd-dots.d${worst.dots}`, dots(worst.dots)), el('span.bad', ` ${leakName(worst.top, true)}`))
@@ -2864,12 +2900,15 @@ export class DefenseScene {
     const tagE = !tagT ? this.hoverEnemy : null;
     if ((tagT && tagT !== selT) || tagE) {
       const txt = tagT ? `${TOWERS[tagT.rec.type].name} · L${tagT.rec.level}` : `${tagE.def.name} · ${Math.ceil(tagE.hp)} / ${Math.ceil(tagE.maxHp)}`;
-      if (this.towerTag.textContent !== txt) this.towerTag.textContent = txt;
+      if (this.towerTag.textContent !== txt) { this.towerTag.textContent = txt; this._tagW = 0; }
       this.towerTag.style.setProperty('--c', tagT ? TOWERS[tagT.rec.type].icon?.color || '#ead4aa' : '#e43b44');
       const at = tagT ? new THREE.Vector3(tagT.pos.x, this.padBaseY + tagT.height + 0.55, tagT.pos.z) : new THREE.Vector3(tagE.pos.x, tagE.height + 0.6, tagE.pos.z);
       const tp = game.project(at, this.camera);
-      this.towerTag.style.transform = `translate(${Math.round(tp.x)}px, ${Math.round(tp.y)}px) translate(-50%, -100%)`;
+      // Whole pixels (critic M2 P1-3: translate(-50%) on an odd width put the tag on a half pixel): its size, measured
+      // once per text, as integer offsets.
       this.towerTag.style.display = '';
+      if (!this._tagW) { this._tagW = this.towerTag.offsetWidth; this._tagH = this.towerTag.offsetHeight; }
+      this.towerTag.style.transform = `translate(${Math.round(tp.x) - Math.round(this._tagW / 2)}px, ${Math.round(tp.y) - this._tagH}px)`;
     } else if (this.towerTag.style.display !== 'none') this.towerTag.style.display = 'none';
 
     // Lane tags at the field entrance. While the boss walks in from off-screen its lane's tag and an

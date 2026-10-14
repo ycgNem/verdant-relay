@@ -7,97 +7,97 @@
 
 /* ---------------------------------------------------------------- top bar */
 .df-top {
-  position: absolute; left: calc(var(--u) * 6); right: calc(var(--u) * 6); top: calc(var(--u) * 6); height: calc(var(--u) * 34);
-  display: flex; align-items: center; gap: calc(var(--u) * 14); padding: 0 calc(var(--u) * 10);
-  background: var(--panel); border: calc(var(--u) * 2) solid var(--panel-edge); border-radius: calc(var(--u) * 3);
+  position: absolute; left: round(calc(var(--u) * 6), 1px); right: round(calc(var(--u) * 6), 1px); top: round(calc(var(--u) * 6), 1px); height: round(calc(var(--u) * 34), 1px);
+  display: flex; align-items: center; gap: round(calc(var(--u) * 14), 1px); padding: 0 round(calc(var(--u) * 10), 1px);
+  background: var(--panel); border: round(calc(var(--u) * 2), 1px) solid var(--panel-edge); border-radius: round(calc(var(--u) * 3), 1px);
   box-shadow: 0 0 0 calc(var(--u) * 2) var(--ink);
 }
-.df-night { line-height: 1.05; min-width: calc(var(--u) * 96); }
+.df-night { line-height: 1.05; min-width: round(calc(var(--u) * 96), 1px); }
 .df-night b { color: var(--amber); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 15 - 0.01px), var(--fq))); letter-spacing: 0; }
 .df-phase { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: var(--muted); text-transform: uppercase; letter-spacing: 0; }
-.df-lbl { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: var(--muted); letter-spacing: 0; margin-right: calc(var(--u) * 4); }
+.df-lbl { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: var(--muted); letter-spacing: 0; margin-right: round(calc(var(--u) * 4), 1px); }
 .df-relay { display: flex; align-items: center; }
 .df-relay .df-lbl { color: var(--accent); }
-.df-relaybar { width: calc(var(--u) * 140); height: calc(var(--u) * 17); }
+.df-relaybar { width: round(calc(var(--u) * 140), 1px); height: round(calc(var(--u) * 17), 1px); }
 .df-relaybar .barlbl { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 .df-relaybar.low { animation: df-blink 0.8s steps(2) infinite; border-color: var(--danger); }
 .df-relaybar.hit { animation: df-hit 0.35s; }
-.df-res .resrow { gap: calc(var(--u) * 10); }
-.df-wavestat { display: flex; align-items: center; gap: calc(var(--u) * 6); white-space: nowrap; }
+.df-res .resrow { gap: round(calc(var(--u) * 10), 1px); }
+.df-wavestat { display: flex; align-items: center; gap: round(calc(var(--u) * 6), 1px); white-space: nowrap; }
 .df-wavestat b { color: var(--text); }
-.df-wavebar { width: calc(var(--u) * 100); min-width: 0; height: calc(var(--u) * 15); }
-.df-left { min-width: calc(var(--u) * 46); }
-.df-ctrl { display: flex; gap: calc(var(--u) * 4); }
-.btn.df-icon { padding: calc(var(--u) * 3) calc(var(--u) * 7); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); min-width: calc(var(--u) * 30); text-align: center; }
-.btn.df-icon.selected { outline: calc(var(--u) * 2) solid var(--amber); color: var(--amber); }
+.df-wavebar { width: round(calc(var(--u) * 100), 1px); min-width: 0; height: round(calc(var(--u) * 15), 1px); }
+.df-left { min-width: round(calc(var(--u) * 46), 1px); }
+.df-ctrl { display: flex; gap: round(calc(var(--u) * 4), 1px); }
+.btn.df-icon { padding: round(calc(var(--u) * 3), 1px) round(calc(var(--u) * 7), 1px); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); min-width: round(calc(var(--u) * 30), 1px); text-align: center; }
+.btn.df-icon.selected { outline: round(calc(var(--u) * 2), 1px) solid var(--amber); color: var(--amber); }
 
 @keyframes df-blink { 50% { filter: brightness(1.7); } }
-@keyframes df-hit { 0% { filter: brightness(2.2) saturate(0.2); transform: translateX(calc(var(--u) * -3)); } 50% { transform: translateX(calc(var(--u) * 3)); } 100% { filter: none; transform: none; } }
+@keyframes df-hit { 0% { filter: brightness(2.2) saturate(0.2); transform: translateX(round(calc(var(--u) * -3), 1px)); } 50% { transform: translateX(round(calc(var(--u) * 3), 1px)); } 100% { filter: none; transform: none; } }
 
 /* ---------------------------------------------------------------- side panel */
 .df-side {
-  position: absolute; right: calc(var(--u) * 6); top: calc(var(--u) * 48); bottom: calc(var(--u) * 6); width: calc(var(--u) * 236);
-  display: flex; flex-direction: column; gap: calc(var(--u) * 6); padding: calc(var(--u) * 8) calc(var(--u) * 9);
+  position: absolute; right: round(calc(var(--u) * 6), 1px); top: round(calc(var(--u) * 48), 1px); bottom: round(calc(var(--u) * 6), 1px); width: round(calc(var(--u) * 236), 1px);
+  display: flex; flex-direction: column; gap: round(calc(var(--u) * 6), 1px); padding: round(calc(var(--u) * 8), 1px) round(calc(var(--u) * 9), 1px);
 }
 .df-head h2 { margin: 0; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 19 - 0.01px), var(--fq))); }
 .df-head .row { flex-wrap: nowrap; }
-.df-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: calc(var(--u) * 6); padding-right: calc(var(--u) * 3); }
-.df-body h3 { margin: calc(var(--u) * 4) 0 0; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
-.df-foot { display: flex; flex-direction: column; gap: calc(var(--u) * 5); border-top: calc(var(--u) * 1) solid var(--panel-edge); padding-top: calc(var(--u) * 6); }
-.btn.df-wide { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 6); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
+.df-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: round(calc(var(--u) * 6), 1px); padding-right: round(calc(var(--u) * 3), 1px); }
+.df-body h3 { margin: round(calc(var(--u) * 4), 1px) 0 0; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 19 - 0.01px), var(--fq))); }   /* sub-head a step above body (critic M2 P1-2) */
+.df-foot { display: flex; flex-direction: column; gap: round(calc(var(--u) * 5), 1px); border-top: round(calc(var(--u) * 1), 1px) solid var(--panel-edge); padding-top: round(calc(var(--u) * 6), 1px); }
+.btn.df-wide { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: round(calc(var(--u) * 6), 1px); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 .btn.df-wide .cost { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 .btn.df-start { justify-content: center; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 16 - 0.01px), var(--fq))); }
 .df-note { line-height: 1.35; }
 
 /* build cards */
 .df-card {
-  display: flex; gap: calc(var(--u) * 7); padding: calc(var(--u) * 4) calc(var(--u) * 6); cursor: pointer; flex: none;
-  background: rgba(38, 43, 68, 0.65); border: calc(var(--u) * 2) solid #3a4466; border-radius: calc(var(--u) * 3);
+  display: flex; gap: round(calc(var(--u) * 7), 1px); padding: round(calc(var(--u) * 4), 1px) round(calc(var(--u) * 6), 1px); cursor: pointer; flex: none;
+  background: rgba(38, 43, 68, 0.65); border: round(calc(var(--u) * 2), 1px) solid #3a4466; border-radius: round(calc(var(--u) * 3), 1px);
 }
 .df-card:hover { border-color: var(--amber); background: rgba(58, 68, 102, 0.75); }
 .df-card.disabled { opacity: 0.6; cursor: not-allowed; }
 .df-card.disabled:hover { border-color: var(--danger); }
-.df-cardicon { position: relative; flex: none; width: calc(var(--u) * 30); display: flex; justify-content: center; padding-top: calc(var(--u) * 2); }
+.df-cardicon { position: relative; flex: none; width: round(calc(var(--u) * 30), 1px); display: flex; justify-content: center; padding-top: round(calc(var(--u) * 2), 1px); }
 .df-hk {
-  position: absolute; left: calc(var(--u) * -2); top: calc(var(--u) * 26); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: var(--text);
-  background: #262b44; border: 1px solid var(--muted); padding: 0 calc(var(--u) * 3); border-radius: calc(var(--u) * 2);
+  position: absolute; left: round(calc(var(--u) * -2), 1px); top: round(calc(var(--u) * 26), 1px); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: var(--text);
+  background: #262b44; border: 1px solid var(--muted); padding: 0 round(calc(var(--u) * 3), 1px); border-radius: round(calc(var(--u) * 2), 1px);
 }
-.df-cardmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: calc(var(--u) * 1); }
-.df-cardtop { display: flex; align-items: baseline; justify-content: space-between; gap: calc(var(--u) * 4); }
+.df-cardmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: round(calc(var(--u) * 1), 1px); }
+.df-cardtop { display: flex; align-items: baseline; justify-content: space-between; gap: round(calc(var(--u) * 4), 1px); }
 .df-cardtop b { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12.5 - 0.01px), var(--fq))); white-space: nowrap; }
-.df-cardcost { display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 4); }
+.df-cardcost { display: flex; align-items: center; justify-content: space-between; gap: round(calc(var(--u) * 4), 1px); }
 .df-cardcost .cost { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 .df-desc { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: var(--muted); line-height: 1.25; }
 .df-desc.bad { color: var(--danger); }
 .df-stats { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
-.df-role { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: var(--muted); border: 1px solid #5a6988; padding: 0 calc(var(--u) * 4); border-radius: calc(var(--u) * 2); text-transform: uppercase; letter-spacing: 0; }
+.df-role { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: var(--muted); border: 1px solid #5a6988; padding: 0 round(calc(var(--u) * 4), 1px); border-radius: round(calc(var(--u) * 2), 1px); text-transform: uppercase; letter-spacing: 0; }
 .df-stats { color: #c0cbdc; }
 .df-role { white-space: nowrap; }
 
 .df-glyph {
-  display: inline-grid; place-items: center; flex: none; width: calc(var(--u) * 26); height: calc(var(--u) * 26);
-  background: #181425; border: calc(var(--u) * 2) solid var(--c); color: var(--c); border-radius: calc(var(--u) * 4);
+  display: inline-grid; place-items: center; flex: none; width: round(calc(var(--u) * 26), 1px); height: round(calc(var(--u) * 26), 1px);
+  background: #181425; border: round(calc(var(--u) * 2), 1px) solid var(--c); color: var(--c); border-radius: round(calc(var(--u) * 4), 1px);
   font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 15 - 0.01px), var(--fq))); font-weight: bold; line-height: 1;
 }
-.df-glyph.enemy { width: calc(var(--u) * 18); height: calc(var(--u) * 18); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); border-radius: 50%; background: var(--c); color: #181425; border-color: #181425; }
+.df-glyph.enemy { width: round(calc(var(--u) * 18), 1px); height: round(calc(var(--u) * 18), 1px); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); border-radius: 50%; background: var(--c); color: #181425; border-color: #181425; }
 .df-ico { flex: none; }
 
 /* tower details */
-.df-level { display: flex; align-items: center; gap: calc(var(--u) * 3); }
-.df-pip { display: inline-block; width: calc(var(--u) * 8); height: calc(var(--u) * 8); border: calc(var(--u) * 1.5) solid var(--amber); }
+.df-level { display: flex; align-items: center; gap: round(calc(var(--u) * 3), 1px); }
+.df-pip { display: inline-block; width: round(calc(var(--u) * 8), 1px); height: round(calc(var(--u) * 8), 1px); border: round(calc(var(--u) * 1.5), 1px) solid var(--amber); }
 .df-pip.on { background: var(--amber); }
-.df-statgrid { display: grid; grid-template-columns: auto 1fr; gap: calc(var(--u) * 2) calc(var(--u) * 8); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
-.df-targets { gap: calc(var(--u) * 4); flex-wrap: nowrap; }
-.btn.df-tgt { flex: 1; text-align: center; padding: calc(var(--u) * 4) calc(var(--u) * 2); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
+.df-statgrid { display: grid; grid-template-columns: auto 1fr; gap: round(calc(var(--u) * 2), 1px) round(calc(var(--u) * 8), 1px); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
+.df-targets { gap: round(calc(var(--u) * 4), 1px); flex-wrap: nowrap; }
+.btn.df-tgt { flex: 1; text-align: center; padding: round(calc(var(--u) * 4), 1px) round(calc(var(--u) * 2), 1px); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 
 /* wave preview */
-.df-lane { background: rgba(38, 43, 68, 0.55); border-left: calc(var(--u) * 3) solid var(--amber); padding: calc(var(--u) * 4) calc(var(--u) * 6); border-radius: calc(var(--u) * 2); display: flex; flex-direction: column; gap: calc(var(--u) * 3); }
-.df-lanehead { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
-.df-erow { display: flex; align-items: center; gap: calc(var(--u) * 6); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
+.df-lane { background: rgba(38, 43, 68, 0.55); border-left: round(calc(var(--u) * 3), 1px) solid var(--amber); padding: round(calc(var(--u) * 4), 1px) round(calc(var(--u) * 6), 1px); border-radius: round(calc(var(--u) * 2), 1px); display: flex; flex-direction: column; gap: round(calc(var(--u) * 3), 1px); }
+.df-lanehead { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 19 - 0.01px), var(--fq))); line-height: 1.1; }
+.df-erow { display: flex; align-items: center; gap: round(calc(var(--u) * 6), 1px); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 .df-erow.boss { color: #ff4d6d; font-weight: bold; }
 .df-ename { min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.15; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
-.df-new { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: #181425; background: var(--amber); padding: 0 calc(var(--u) * 3); border-radius: calc(var(--u) * 2); font-weight: 400; }
-.df-threat, .df-boons, .df-mods { padding: calc(var(--u) * 5) calc(var(--u) * 6); border-radius: calc(var(--u) * 3); display: flex; flex-direction: column; gap: calc(var(--u) * 2); line-height: 1.3; }
+.df-new { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: #181425; background: var(--amber); padding: 0 round(calc(var(--u) * 3), 1px); border-radius: round(calc(var(--u) * 2), 1px); font-weight: 400; }
+.df-threat, .df-boons, .df-mods { padding: round(calc(var(--u) * 5), 1px) round(calc(var(--u) * 6), 1px); border-radius: round(calc(var(--u) * 3), 1px); display: flex; flex-direction: column; gap: round(calc(var(--u) * 2), 1px); line-height: 1.3; }
 .df-threat { background: rgba(162, 38, 51, 0.22); border: 1px solid rgba(228, 59, 68, 0.6); }
 .df-boons { background: rgba(62, 137, 72, 0.22); border: 1px solid rgba(99, 199, 77, 0.6); }
 .df-mods { background: rgba(38, 43, 68, 0.55); border: 1px solid #3a4466; }
@@ -108,52 +108,52 @@
 
 /* ---------------------------------------------------------------- map overlays */
 .df-boss {
-  position: absolute; top: calc(var(--u) * 48); left: calc(var(--u) * 167); width: calc(var(--u) * 380);
-  text-align: center; display: flex; flex-direction: column; gap: calc(var(--u) * 2);
-  text-shadow: 1px 1px 0 #000, -1px 1px 0 #000;
+  position: absolute; top: round(calc(var(--u) * 48), 1px); left: round(calc(var(--u) * 167), 1px); width: round(calc(var(--u) * 380), 1px);
+  text-align: center; display: flex; flex-direction: column; gap: round(calc(var(--u) * 2), 1px);
+  text-shadow: var(--ol);   /* over the world: the one-font-pixel outline (critic M2 P1-6) */
 }
-.df-bossname { color: #ff4d6d; font-weight: bold; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 13 - 0.01px), var(--fq))); letter-spacing: 0; }
-.df-bossbar { height: calc(var(--u) * 16); border-color: #a22633; }
-.df-bossphase { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: var(--text); min-height: calc(var(--u) * 14); }
+.df-bossname { color: #ff4d6d; font-weight: 400; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 19 - 0.01px), var(--fq))); letter-spacing: 0; }
+.df-bossbar { height: round(calc(var(--u) * 16), 1px); border-color: #a22633; }
+.df-bossphase { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: var(--text); min-height: round(calc(var(--u) * 14), 1px); }
 .df-bossphase.bad { color: #ff4d6d; font-weight: bold; animation: df-blink 0.4s steps(2) infinite; }
 .df-bossphase.good { color: var(--good); }
 
 .df-lanetag {
   position: absolute; left: 0; top: 0; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); white-space: nowrap; pointer-events: none;
-  color: var(--amber); background: rgba(24, 20, 37, 0.85); border: 1px solid var(--amber); padding: 0 calc(var(--u) * 5);
-  border-radius: calc(var(--u) * 2); z-index: 4;
+  color: var(--amber); background: rgba(24, 20, 37, 0.85); border: 1px solid var(--amber); padding: 0 round(calc(var(--u) * 5), 1px);
+  border-radius: round(calc(var(--u) * 2), 1px); z-index: 4;
 }
 
 .df-banner {
-  position: absolute; left: calc(var(--u) * 6); width: calc(var(--u) * 702); top: 50%; transform: translateY(-50%);
-  text-align: center; padding: calc(var(--u) * 16) calc(var(--u) * 12); background: rgba(11, 10, 18, 0.8);
-  border-top: calc(var(--u) * 3) solid; border-bottom: calc(var(--u) * 3) solid; z-index: 35; cursor: pointer;
+  position: absolute; left: round(calc(var(--u) * 6), 1px); width: round(calc(var(--u) * 702), 1px); top: 50%; transform: translateY(-50%);
+  text-align: center; padding: round(calc(var(--u) * 16), 1px) round(calc(var(--u) * 12), 1px); background: rgba(11, 10, 18, 0.8);
+  border-top: round(calc(var(--u) * 3), 1px) solid; border-bottom: round(calc(var(--u) * 3), 1px) solid; z-index: 35; cursor: pointer;
   animation: df-banner-in 0.5s ease-out;
 }
 .df-banner.good { border-color: var(--good); }
 .df-banner.bad { border-color: var(--danger); }
-.df-bannertitle { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 34 - 0.01px), var(--fq))); letter-spacing: 0; font-weight: 400; text-shadow: calc(var(--u) * 3) calc(var(--u) * 3) 0 var(--ink); }
+.df-bannertitle { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 34 - 0.01px), var(--fq))); letter-spacing: 0; font-weight: 400; text-shadow: round(calc(var(--u) * 3), 1px) round(calc(var(--u) * 3), 1px) 0 var(--ink); }
 .df-banner.good .df-bannertitle { color: var(--good); }
 .df-banner.bad .df-bannertitle { color: var(--danger); }
-.df-bannersub { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 14 - 0.01px), var(--fq))); margin: calc(var(--u) * 6) 0; }
+.df-bannersub { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 14 - 0.01px), var(--fq))); margin: round(calc(var(--u) * 6), 1px) 0; }
 @keyframes df-banner-in { from { opacity: 0; transform: translateY(-50%) scaleY(0.2); } to { opacity: 1; transform: translateY(-50%) scaleY(1); } }
 
 /* Intel actions (prep footer): two half-width buttons */
-.df-intel { display: flex; gap: calc(var(--u) * 4); }
-.btn.df-half { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 1); padding: calc(var(--u) * 3) calc(var(--u) * 2); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); line-height: 1.15; }
-.btn.df-half > span { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: calc(var(--u) * 3); }
+.df-intel { display: flex; gap: round(calc(var(--u) * 4), 1px); }
+.btn.df-half { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: round(calc(var(--u) * 1), 1px); padding: round(calc(var(--u) * 3), 1px) round(calc(var(--u) * 2), 1px); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); line-height: 1.15; }
+.btn.df-half > span { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: round(calc(var(--u) * 3), 1px); }
 .btn.df-half .cost { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 .df-arrow { color: var(--amber); white-space: nowrap; }
 
 /* Toasts sit bottom-right of the map (scenery rows below both lanes): never over the boss bar, the side
    panel or a pad, and clear of the night hints (bottom-left). Newest at the bottom; at most 3 (ui.js toast). */
-.defense-ui .toasts { left: auto; right: calc(var(--u) * 250); width: calc(var(--u) * 380); top: auto; bottom: calc(var(--u) * 10); align-items: flex-end; }
-.defense-ui .toast { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); padding: calc(var(--u) * 4) calc(var(--u) * 10); max-width: 100%; text-align: right; }
+.defense-ui .toasts { left: auto; right: round(calc(var(--u) * 250), 1px); width: round(calc(var(--u) * 380), 1px); top: auto; bottom: round(calc(var(--u) * 10), 1px); align-items: flex-end; }
+.defense-ui .toast { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); padding: round(calc(var(--u) * 4), 1px) round(calc(var(--u) * 10), 1px); max-width: 100%; text-align: right; }
 
 /* Sell confirm: shrinking bar shows how long the confirm stays armed */
 .btn.df-sellarmed { position: relative; overflow: hidden; }
 .df-sellbar {
-  position: absolute; left: 0; bottom: 0; width: 100%; height: calc(var(--u) * 3); background: #ffd0d0;
+  position: absolute; left: 0; bottom: 0; width: 100%; height: round(calc(var(--u) * 3), 1px); background: #ffd0d0;
   transform-origin: left center; animation-name: df-shrink; animation-timing-function: linear; animation-fill-mode: forwards;
 }
 @keyframes df-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
@@ -162,8 +162,8 @@
 .defense-ui .toasts { --max-toasts: 2; }
 /* Pixel fonts are wider than the old monospace: keep the top bar on one line. */
 .df-phase, .df-lbl { white-space: nowrap; }
-.df-res .resrow { flex-wrap: nowrap; gap: calc(var(--u) * 8); }
-.df-top { gap: calc(var(--u) * 10); }
+.df-res .resrow { flex-wrap: nowrap; gap: round(calc(var(--u) * 8), 1px); }
+.df-top { gap: round(calc(var(--u) * 10), 1px); }
 
 /* Balance pass: disabled prep buttons (Upgrade, Repair, Intel) keep their cost legible: the frame
    dims and turns dashed, but the label and cost stay full contrast (shortfalls stay red). */
@@ -172,7 +172,7 @@
 .defense-ui .btn.disabled .res b { color: #ead4aa; }
 .defense-ui .btn.disabled .res.short-of b, .defense-ui .btn.disabled .res.short-of .lbl { color: #ff6b6b; }
 /* Build cards: the role chip wraps under the cost on narrow stages instead of being clipped. */
-.df-cardcost { flex-wrap: wrap; row-gap: calc(var(--u) * 2); }
+.df-cardcost { flex-wrap: wrap; row-gap: round(calc(var(--u) * 2), 1px); }
 .df-role { flex: none; }
 
 /* Side panel fit: children never shrink (a squeezed overflow:hidden child is how "Confirm sell" got cut),
@@ -181,50 +181,51 @@
 .df-body > * { flex-shrink: 0; }
 .df-side { line-height: 1.25; }
 .df-side .df-note, .df-threat, .df-boons, .df-mods { line-height: 1.25; }
-.df-body.df-more { -webkit-mask-image: linear-gradient(#000 calc(100% - var(--u) * 22), rgba(0, 0, 0, 0.15)); mask-image: linear-gradient(#000 calc(100% - var(--u) * 22), rgba(0, 0, 0, 0.15)); }
-.df-lane { gap: calc(var(--u) * 2); padding: calc(var(--u) * 3) calc(var(--u) * 6); }
+/* (.df-more: the "▾ more" cue, .df-morecue below; the old 22-unit mask fade was invisible at 108 px, critic M2 P0-1.) */
+.df-lane { gap: round(calc(var(--u) * 2), 1px); padding: round(calc(var(--u) * 3), 1px) round(calc(var(--u) * 6), 1px); }
 
 /* Boss entry: the lane tag turns red and pulses, and an arrow blinks at the lane mouth. */
 .df-lanetag.boss { color: #fff; background: #a22633; border-color: #ff4d6d; animation: df-entry 0.35s steps(2) infinite; z-index: 6; }
 .df-bossarrow {
   position: absolute; left: 0; top: 0; pointer-events: none; z-index: 6; white-space: nowrap; color: #ff4d6d;
   font-family: var(--font-display); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 26 - 0.01px), var(--fq)));
-  text-shadow: 1px 0 0 #181425, -1px 0 0 #181425, 0 1px 0 #181425, 0 -1px 0 #181425, 0 2px 0 #000;
+  text-shadow: var(--ol);
   animation: df-entry 0.35s steps(2) infinite;
 }
 @keyframes df-entry { 50% { opacity: 0.35; } }
 .defense-ui .hint { line-height: 1.25; }
-.btn.df-start { padding-top: calc(var(--u) * 6); padding-bottom: calc(var(--u) * 6); }
+.btn.df-start { padding-top: round(calc(var(--u) * 6), 1px); padding-bottom: round(calc(var(--u) * 6), 1px); }
 .df-night { flex: none; }
-.df-icoslot { flex: none; display: inline-flex; justify-content: center; align-items: center; width: calc(var(--u) * 20); }
-.df-icoslot.boss { width: calc(var(--u) * 30); }
+/* Wide enough for the whole-scale portrait (critic M2 P0-1.5: 46-px creatures overdrew the names at 1280). */
+.df-icoslot { flex: none; display: inline-flex; justify-content: center; align-items: center; width: auto; min-width: round(calc(var(--u) * 20), 1px); }
+.df-icoslot.boss { min-width: round(calc(var(--u) * 30), 1px); }
 /* Name tag over the hovered tower (type colour border). */
 .df-towertag {
   position: absolute; left: 0; top: 0; pointer-events: none; white-space: nowrap; z-index: 5;
   font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: var(--text);
-  background: rgba(24, 20, 37, 0.9); border: 1px solid var(--c, var(--amber)); padding: 0 calc(var(--u) * 5); border-radius: calc(var(--u) * 2);
+  background: rgba(24, 20, 37, 0.9); border: 1px solid var(--c, var(--amber)); padding: 0 round(calc(var(--u) * 5), 1px); border-radius: round(calc(var(--u) * 2), 1px);
 }
 /* "Get ready" beat before a wave restarted by Continue. */
-.df-ready { position: absolute; left: calc(var(--u) * 357); top: calc(var(--u) * 220); transform: translate(-50%, -50%); text-align: center; pointer-events: none; z-index: 8; text-shadow: calc(var(--u) * 2) calc(var(--u) * 2) 0 var(--ink); }
+.df-ready { position: absolute; left: round(calc(var(--u) * 357), 1px); top: round(calc(var(--u) * 220), 1px); transform: translate(-50%, -50%); text-align: center; pointer-events: none; z-index: 8; text-shadow: round(calc(var(--u) * 2), 1px) round(calc(var(--u) * 2), 1px) 0 var(--ink); }
 .df-ready-t { font-family: var(--font-display); color: var(--amber); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 26 - 0.01px), var(--fq))); letter-spacing: 0; }
 .df-ready-s { color: var(--text); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 13 - 0.01px), var(--fq))); }
 
 /* ---- simplicity pass: plain tower cards (one line + strength bars), readiness meter */
-.df-cardtop { display: flex; align-items: center; gap: calc(var(--u) * 6); }
-.df-pips { display: flex; gap: calc(var(--u) * 2) calc(var(--u) * 7); margin-top: calc(var(--u) * 3); flex-wrap: wrap; white-space: nowrap; }
-.df-piprow { display: inline-flex; align-items: center; gap: calc(var(--u) * 3); }
+.df-cardtop { display: flex; align-items: center; gap: round(calc(var(--u) * 6), 1px); }
+.df-pips { display: flex; gap: round(calc(var(--u) * 2), 1px) round(calc(var(--u) * 7), 1px); margin-top: round(calc(var(--u) * 3), 1px); flex-wrap: wrap; white-space: nowrap; }
+.df-piprow { display: inline-flex; align-items: center; gap: round(calc(var(--u) * 3), 1px); }
 .df-pipl { color: var(--muted); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
-.df-pipbar { display: inline-flex; gap: calc(var(--u) * 1); }
-.df-pipbar i { width: calc(var(--u) * 5); height: calc(var(--u) * 5); background: #3a4466; display: inline-block; }
+.df-pipbar { display: inline-flex; gap: round(calc(var(--u) * 1), 1px); }
+.df-pipbar i { width: round(calc(var(--u) * 5), 1px); height: round(calc(var(--u) * 5), 1px); background: #3a4466; display: inline-block; }
 .df-pipbar i.on { background: var(--amber); }
 .df-rd-line {
-  display: flex; align-items: center; gap: calc(var(--u) * 6); padding: calc(var(--u) * 4) calc(var(--u) * 6); margin-bottom: calc(var(--u) * 4);
-  border: 1px solid var(--panel-edge); border-radius: calc(var(--u) * 3); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq)));
+  display: flex; align-items: center; gap: round(calc(var(--u) * 6), 1px); padding: round(calc(var(--u) * 4), 1px) round(calc(var(--u) * 6), 1px); margin-bottom: round(calc(var(--u) * 4), 1px);
+  border: 1px solid var(--panel-edge); border-radius: round(calc(var(--u) * 3), 1px); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq)));
 }
 .df-rd-k { color: var(--muted); white-space: nowrap; }
 .df-rd-t { flex: 1; }
-.df-meter { display: inline-flex; gap: calc(var(--u) * 1); }
-.df-meter i { width: calc(var(--u) * 8); height: calc(var(--u) * 8); background: #3a4466; display: inline-block; }
+.df-meter { display: inline-flex; gap: round(calc(var(--u) * 1), 1px); }
+.df-meter i { width: round(calc(var(--u) * 8), 1px); height: round(calc(var(--u) * 8), 1px); background: #3a4466; display: inline-block; }
 .df-rd-line.weak { border-color: var(--danger); background: rgba(162, 38, 51, 0.25); }
 .df-rd-line.weak .df-meter i.on { background: var(--danger); }
 .df-rd-line.weak .df-rd-t { color: #ffb0b0; }
@@ -237,10 +238,10 @@
 /* ---------------------------------------------------------------- night mechanics (Stage 7 rules stream)
    Content styles for: Relay Protocol buttons (cooldown sweep), level-3 branch buttons, the per-path
    readiness line, the call-next-push button and the post-night salvage pick. Layout belongs to the board. */
-.df-protobar { display: flex; flex-direction: column; gap: calc(var(--u) * 3); border-top: calc(var(--u) * 1) solid var(--panel-edge); padding-top: calc(var(--u) * 5); }
-.df-protos { display: flex; flex-direction: column; gap: calc(var(--u) * 3); }
+.df-protobar { display: flex; flex-direction: column; gap: round(calc(var(--u) * 3), 1px); border-top: round(calc(var(--u) * 1), 1px) solid var(--panel-edge); padding-top: round(calc(var(--u) * 5), 1px); }
+.df-protos { display: flex; flex-direction: column; gap: round(calc(var(--u) * 3), 1px); }
 .btn.df-proto {
-  position: relative; overflow: hidden; width: 100%; display: flex; align-items: center; padding: calc(var(--u) * 4) calc(var(--u) * 6);
+  position: relative; overflow: hidden; width: 100%; display: flex; align-items: center; padding: round(calc(var(--u) * 4), 1px) round(calc(var(--u) * 6), 1px);
   font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); border-color: var(--c);
 }
 /* Cooldown sweep: a dark shade that drains from the right as the protocol recharges (--cd 1 → 0). */
@@ -248,34 +249,34 @@
   content: ''; position: absolute; top: 0; bottom: 0; right: 0; width: calc(var(--cd, 0) * 100%);
   background: rgba(11, 10, 18, 0.62); pointer-events: none;
 }
-.btn.df-proto.aiming { outline: calc(var(--u) * 2) solid var(--c); background: linear-gradient(#3a4466, #262b44); }
-.df-pmain { position: relative; z-index: 1; display: flex; align-items: center; gap: calc(var(--u) * 5); flex: 1; min-width: 0; }
-.df-pglyph { color: var(--c); width: calc(var(--u) * 12); text-align: center; }
+.btn.df-proto.aiming { outline: round(calc(var(--u) * 2), 1px) solid var(--c); background: linear-gradient(#3a4466, #262b44); }
+.df-pmain { position: relative; z-index: 1; display: flex; align-items: center; gap: round(calc(var(--u) * 5), 1px); flex: 1; min-width: 0; }
+.df-pglyph { color: var(--c); width: round(calc(var(--u) * 12), 1px); text-align: center; }
 .df-pname { flex: 1; text-align: left; white-space: nowrap; }
 .df-pcost .cost { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
-.df-pt { min-width: calc(var(--u) * 34); text-align: right; color: var(--muted); }
-.btn.df-proto .hotkey { position: relative; z-index: 1; margin-left: calc(var(--u) * 5); }
+.df-pt { min-width: round(calc(var(--u) * 34), 1px); text-align: right; color: var(--muted); }
+.btn.df-proto .hotkey { position: relative; z-index: 1; margin-left: round(calc(var(--u) * 5), 1px); }
 /* Level-3 branches: two half buttons, name / one line / price. */
-.df-branches .btn.df-branch > span { flex-direction: column; gap: calc(var(--u) * 2); }
+.df-branches .btn.df-branch > span { flex-direction: column; gap: round(calc(var(--u) * 2), 1px); }
 .df-bline { color: var(--muted); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); line-height: 1.2; white-space: normal; }
 /* Readiness per path: "North ●●● · South ●○○ · expect −10 to −30". */
-.df-rd-lanes { margin: calc(var(--u) * -2) 0 calc(var(--u) * 4); line-height: 1.3; }
+.df-rd-lanes { margin: round(calc(var(--u) * -2), 1px) 0 round(calc(var(--u) * 4), 1px); line-height: 1.3; }
 .df-rd-dots { letter-spacing: 0; }
 .df-rd-dots.d3 { color: var(--good); } .df-rd-dots.d2 { color: var(--amber); }
 .df-rd-dots.d1, .df-rd-dots.d0 { color: var(--danger); }
-.btn.df-callnext .good { margin-left: calc(var(--u) * 4); }
+.btn.df-callnext .good { margin-left: round(calc(var(--u) * 4), 1px); }
 /* The Relay's zap, said once in night prep (RELAY_ZAP.hint). */
-.df-zapline { color: #8ff8ff; margin-bottom: calc(var(--u) * 3); }
+.df-zapline { color: #8ff8ff; margin-bottom: round(calc(var(--u) * 3), 1px); }
 .df-zapglyph { color: #2ce8f5; }
 /* Post-night salvage pick on the "Night survived" banner. */
-.df-salvage { margin: calc(var(--u) * 4) auto calc(var(--u) * 8); max-width: calc(var(--u) * 560); }
-.df-salvage-row { display: flex; gap: calc(var(--u) * 8); justify-content: center; margin-top: calc(var(--u) * 5); }
+.df-salvage { margin: round(calc(var(--u) * 4), 1px) auto round(calc(var(--u) * 8), 1px); max-width: round(calc(var(--u) * 560), 1px); }
+.df-salvage-row { display: flex; gap: round(calc(var(--u) * 8), 1px); justify-content: center; margin-top: round(calc(var(--u) * 5), 1px); }
 .btn.df-salvage-card {
-  flex: 1; max-width: calc(var(--u) * 180); display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 3);
-  padding: calc(var(--u) * 7) calc(var(--u) * 8); white-space: normal; border-color: var(--good);
+  flex: 1; max-width: round(calc(var(--u) * 180), 1px); display: flex; flex-direction: column; align-items: center; gap: round(calc(var(--u) * 3), 1px);
+  padding: round(calc(var(--u) * 7), 1px) round(calc(var(--u) * 8), 1px); white-space: normal; border-color: var(--good);
 }
 .btn.df-salvage-card .hotkey { margin-left: 0; }
-.btn.df-salvage-card.picked { outline: calc(var(--u) * 2) solid var(--good); background: linear-gradient(#3e8948, #265c42); }
+.btn.df-salvage-card.picked { outline: round(calc(var(--u) * 2), 1px) solid var(--good); background: linear-gradient(#3e8948, #265c42); }
 .df-salvage.df-nudge { animation: df-hit 0.35s; }
 
 /* ---------------------------------------------------------------- night board (Stage 7 board stream)
@@ -283,42 +284,42 @@
    never eat clicks, styled tooltips, the leak feed, the zoom control. */
 
 /* Top bar: controls never shrink; the resource chips (icon + number) give way first. */
-.df-top { gap: calc(var(--u) * 8); padding: 0 calc(var(--u) * 8); }
-.df-night { min-width: calc(var(--u) * 86); }
+.df-top { gap: round(calc(var(--u) * 8), 1px); padding: 0 round(calc(var(--u) * 8), 1px); }
+.df-night { min-width: round(calc(var(--u) * 86), 1px); }
 .df-res { flex: 0 1 auto; min-width: 0; overflow: hidden; }
-.df-res .resrow { gap: calc(var(--u) * 7); }
-.df-relaybar { width: calc(var(--u) * 118); }
+.df-res .resrow { gap: round(calc(var(--u) * 7), 1px); }
+.df-relaybar { width: round(calc(var(--u) * 118), 1px); }
 .df-wavestat { flex: none; }
-.df-ctrl, .df-zoom { flex: none; display: flex; align-items: center; gap: calc(var(--u) * 3); }
-.btn.df-icon { min-width: calc(var(--u) * 27); padding: calc(var(--u) * 3) calc(var(--u) * 5); }
-.btn.df-zbtn { min-width: calc(var(--u) * 20); padding: calc(var(--u) * 3) calc(var(--u) * 4); }
-.df-zoomlbl { min-width: calc(var(--u) * 20); text-align: center; color: var(--muted); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
+.df-ctrl, .df-zoom { flex: none; display: flex; align-items: center; gap: round(calc(var(--u) * 3), 1px); }
+.btn.df-icon { min-width: round(calc(var(--u) * 27), 1px); padding: round(calc(var(--u) * 3), 1px) round(calc(var(--u) * 5), 1px); }
+.btn.df-zbtn { min-width: round(calc(var(--u) * 20), 1px); padding: round(calc(var(--u) * 3), 1px) round(calc(var(--u) * 4), 1px); }
+.df-zoomlbl { min-width: round(calc(var(--u) * 20), 1px); text-align: center; color: var(--muted); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 /* Wave bar label: bigger, with a full 1-px dark outline so "97%" never reads as "37%" on the orange fill. */
 .df-wavebar .barlbl {
   font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq)));
-  text-shadow: 1px 0 0 #181425, -1px 0 0 #181425, 0 1px 0 #181425, 0 -1px 0 #181425, 1px 1px 0 #181425, -1px 1px 0 #181425, 1px -1px 0 #181425, -1px -1px 0 #181425;
+  text-shadow: var(--ol);
 }
-.df-wavebar { width: calc(var(--u) * 92); height: calc(var(--u) * 17); }
+.df-wavebar { width: round(calc(var(--u) * 92), 1px); height: round(calc(var(--u) * 17), 1px); }
 
 /* Build list: one compact row per tower (icon · name · price / one plain line). 9 rows fit at 720p. */
-.df-cards { display: flex; flex-direction: column; gap: calc(var(--u) * 3); }
-.df-cards .df-card { gap: calc(var(--u) * 6); padding: calc(var(--u) * 3) calc(var(--u) * 5); align-items: center; }
-.df-cards .df-cardicon { width: calc(var(--u) * 24); padding-top: 0; }
-.df-cards .df-hk { top: auto; bottom: calc(var(--u) * -3); left: calc(var(--u) * -3); }
+.df-cards { display: flex; flex-direction: column; gap: round(calc(var(--u) * 3), 1px); }
+.df-cards .df-card { gap: round(calc(var(--u) * 6), 1px); padding: round(calc(var(--u) * 3), 1px) round(calc(var(--u) * 5), 1px); align-items: center; }
+.df-cards .df-cardicon { width: round(calc(var(--u) * 24), 1px); padding-top: 0; }
+.df-cards .df-hk { top: auto; bottom: round(calc(var(--u) * -3), 1px); left: round(calc(var(--u) * -3), 1px); }
 .df-cards .df-cardtop b { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); overflow: hidden; text-overflow: ellipsis; }
-.df-cards .df-cardtop .cost { gap: calc(var(--u) * 5); }
+.df-cards .df-cardtop .cost { gap: round(calc(var(--u) * 5), 1px); }
 .df-cards .df-desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .df-sur { color: var(--amber); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 
 /* Styled tooltip (data-tip): shows at once, beside the side panel or under the top bar. */
 .df-tip {
-  position: absolute; left: 0; top: 0; z-index: 60; pointer-events: none; max-width: calc(var(--u) * 230);
-  background: rgba(16, 14, 26, 0.96); border: calc(var(--u) * 2) solid var(--panel-edge); border-radius: calc(var(--u) * 3);
-  padding: calc(var(--u) * 5) calc(var(--u) * 7); line-height: 1.25; color: var(--text);
+  position: absolute; left: 0; top: 0; z-index: 60; pointer-events: none; max-width: round(calc(var(--u) * 230), 1px);
+  background: rgba(16, 14, 26, 0.96); border: round(calc(var(--u) * 2), 1px) solid var(--panel-edge); border-radius: round(calc(var(--u) * 3), 1px);
+  padding: round(calc(var(--u) * 5), 1px) round(calc(var(--u) * 7), 1px); line-height: 1.25; color: var(--text);
   font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); box-shadow: 0 0 0 calc(var(--u) * 2) var(--ink);
 }
 .df-tip b { color: var(--amber); }
-.df-tip > div { margin-top: calc(var(--u) * 2); }
+.df-tip > div { margin-top: round(calc(var(--u) * 2), 1px); }
 .df-tipnum { color: #c0cbdc; }
 .df-tipbars { color: var(--muted); white-space: nowrap; }
 .df-tipbar { color: var(--amber); letter-spacing: 0; }
@@ -326,10 +327,10 @@
 .df-tip .bad { color: #ff8a8a; }
 
 /* Night hints: the pointer goes through to the map (pads stay clickable); only the × takes clicks. */
-.defense-ui .hint.df-hint { pointer-events: none; padding-right: calc(var(--u) * 22); }
+.defense-ui .hint.df-hint { pointer-events: none; padding-right: round(calc(var(--u) * 22), 1px); }
 .df-hint-x {
-  position: absolute; top: calc(var(--u) * 2); right: calc(var(--u) * 3); pointer-events: auto; cursor: pointer;
-  background: none; border: none; color: var(--amber); font-family: var(--font); line-height: 1; padding: calc(var(--u) * 2) calc(var(--u) * 4);
+  position: absolute; top: round(calc(var(--u) * 2), 1px); right: round(calc(var(--u) * 3), 1px); pointer-events: auto; cursor: pointer;
+  background: none; border: none; color: var(--amber); font-family: var(--font); line-height: 1; padding: round(calc(var(--u) * 2), 1px) round(calc(var(--u) * 4), 1px);
   font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 14 - 0.01px), var(--fq)));
 }
 .df-hint-x:hover { color: #fff; }
@@ -337,33 +338,33 @@
 .df-hintdock { flex: none; display: flex; flex-direction: column; }
 .df-hintdock:empty { display: none; }
 .df-hintdock .hint.docked {
-  margin: calc(var(--u) * 4) 0 calc(var(--u) * 2); padding: calc(var(--u) * 5) calc(var(--u) * 20) calc(var(--u) * 5) calc(var(--u) * 7);
+  margin: round(calc(var(--u) * 4), 1px) 0 round(calc(var(--u) * 2), 1px); padding: round(calc(var(--u) * 5), 1px) round(calc(var(--u) * 20), 1px) round(calc(var(--u) * 5), 1px) round(calc(var(--u) * 7), 1px);
   font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); line-height: 1.25; z-index: auto;
 }
 
 /* Leak feed (pushes and lulls): what got through, newest first. */
 .df-leaks {
-  display: flex; flex-direction: column; gap: calc(var(--u) * 1); flex: none;
-  border: 1px solid rgba(228, 59, 68, 0.55); background: rgba(162, 38, 51, 0.16); border-radius: calc(var(--u) * 3);
-  padding: calc(var(--u) * 3) calc(var(--u) * 6); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq)));
+  display: flex; flex-direction: column; gap: round(calc(var(--u) * 1), 1px); flex: none;
+  border: 1px solid rgba(228, 59, 68, 0.55); background: rgba(162, 38, 51, 0.16); border-radius: round(calc(var(--u) * 3), 1px);
+  padding: round(calc(var(--u) * 3), 1px) round(calc(var(--u) * 6), 1px); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq)));
 }
-.df-leakhead { display: flex; align-items: center; gap: calc(var(--u) * 4); }
+.df-leakhead { display: flex; align-items: center; gap: round(calc(var(--u) * 4), 1px); }
 .df-leakrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.df-leakhp { color: #ff6b6b; display: inline-block; min-width: calc(var(--u) * 26); }
-.df-leakline { margin: calc(var(--u) * 2) auto calc(var(--u) * 6); max-width: calc(var(--u) * 640); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
+.df-leakhp { color: #ff6b6b; display: inline-block; min-width: round(calc(var(--u) * 26), 1px); }
+.df-leakline { margin: round(calc(var(--u) * 2), 1px) auto round(calc(var(--u) * 6), 1px); max-width: round(calc(var(--u) * 640), 1px); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 .df-leakline .bad { color: #ff6b6b; }
 
 /* Upgrade + Sell side by side (critic K §5.4): label over price, the hotkey in the corner. */
-.df-act { display: flex; gap: calc(var(--u) * 4); margin-top: calc(var(--u) * 4); }
+.df-act { display: flex; gap: round(calc(var(--u) * 4), 1px); margin-top: round(calc(var(--u) * 4), 1px); }
 .df-act .btn { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: calc(var(--u) * 5) calc(var(--u) * 3) calc(var(--u) * 4); line-height: 1.15; text-align: center;
+  padding: round(calc(var(--u) * 5), 1px) round(calc(var(--u) * 3), 1px) round(calc(var(--u) * 4), 1px); line-height: 1.15; text-align: center;
   font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
-.df-act .btn > span:first-child { display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 2); }
-.df-act .btn > span:first-child > span { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--u) * 4); }
-.df-act .btn .hotkey { position: absolute; top: calc(var(--u) * 2); right: calc(var(--u) * 2); margin-left: 0; padding: 0 calc(var(--u) * 2);
+.df-act .btn > span:first-child { display: flex; flex-direction: column; align-items: center; gap: round(calc(var(--u) * 2), 1px); }
+.df-act .btn > span:first-child > span { display: flex; flex-wrap: wrap; justify-content: center; gap: round(calc(var(--u) * 4), 1px); }
+.df-act .btn .hotkey { position: absolute; top: round(calc(var(--u) * 2), 1px); right: round(calc(var(--u) * 2), 1px); margin-left: 0; padding: 0 round(calc(var(--u) * 2), 1px);
   font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); line-height: 1.1; }
 /* Sell alone (max level, or under the level-3 pair): one short full-width line. */
-.df-act1 .btn { flex-direction: row; gap: calc(var(--u) * 6); padding: calc(var(--u) * 4) calc(var(--u) * 6); }
+.df-act1 .btn { flex-direction: row; gap: round(calc(var(--u) * 6), 1px); padding: round(calc(var(--u) * 4), 1px) round(calc(var(--u) * 6), 1px); }
 .df-act1 .btn > span:first-child, .df-act1 .btn > span:first-child > span { flex-direction: row; }
 .df-act1 .btn .hotkey { position: static; margin-left: auto; }
 /* Level-3 pair in the narrow panel: the line clamps to 3 rows (the whole line is the tooltip). */
@@ -374,20 +375,20 @@
 .df-lanetag.danger { border-color: var(--danger); color: #ffb0b0; }
 
 /* Narrow (236-unit) side panel: the readiness line wraps its verdict under the meter; buttons stay on one line. */
-.df-side .df-rd-line { flex-wrap: wrap; row-gap: calc(var(--u) * 2); }
+.df-side .df-rd-line { flex-wrap: wrap; row-gap: round(calc(var(--u) * 2), 1px); }
 .df-side .df-rd-t { flex: 1 1 100%; line-height: 1.2; }
 .df-side .btn.df-start { white-space: nowrap; }
 .df-side .btn.df-start .hotkey, .df-side .btn.df-callnext .hotkey { flex: none; }
-.df-side .btn.df-callnext:not(.df-start) { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); padding-left: calc(var(--u) * 6); padding-right: calc(var(--u) * 6); }
+.df-side .btn.df-callnext:not(.df-start) { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); padding-left: round(calc(var(--u) * 6), 1px); padding-right: round(calc(var(--u) * 6), 1px); }
 /* Relay Protocol rows in the 236-unit panel: the icon spans two lines (name / price + status), hotkey at the right. */
-.df-side .btn.df-proto { padding: calc(var(--u) * 3) calc(var(--u) * 4); }
-.df-side .df-pmain { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: calc(var(--u) * 4); row-gap: 0; align-items: center; line-height: 1.2; }
+.df-side .btn.df-proto { padding: round(calc(var(--u) * 3), 1px) round(calc(var(--u) * 4), 1px); }
+.df-side .df-pmain { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: round(calc(var(--u) * 4), 1px); row-gap: 0; align-items: center; line-height: 1.2; }
 .df-side .df-pglyph { grid-row: 1 / span 2; }
 .df-side .df-pname { grid-column: 2 / span 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .df-side .df-pcost { grid-column: 2; }
-.df-side .df-pcost .cost { gap: calc(var(--u) * 3); }
+.df-side .df-pcost .cost { gap: round(calc(var(--u) * 3), 1px); }
 .df-side .df-pt { grid-column: 3; min-width: 0; text-align: right; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
-.df-side .btn.df-proto .hotkey { margin-left: calc(var(--u) * 4); flex: none; }
+.df-side .btn.df-proto .hotkey { margin-left: round(calc(var(--u) * 4), 1px); flex: none; }
 .df-picon { display: inline-block; flex: none; }
 /* Leak feed header on one line. */
 .df-leakhead { white-space: nowrap; }
@@ -396,30 +397,30 @@
 .df-side .df-tag { white-space: normal; }
 /* Panel tags on the text grid (critic M: N 12, wrapping in the 236-unit panel instead of clipping at 8 px). */
 .df-side .df-threat .df-tag, .df-side .df-boons .df-tag, .df-leakhead .df-tag { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
-.df-via { color: #ffb0b0; margin-top: calc(var(--u) * 2); }
+.df-via { color: #ffb0b0; margin-top: round(calc(var(--u) * 2), 1px); }
 /* "Call next push +N Scrap" as the big lull button: may wrap, a size down (it overflowed at 1080p). */
 .df-side .btn.df-start.df-callnext { white-space: normal; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 13 - 0.01px), var(--fq))); }
 
 /* Side panel fit at 720p (critic K2 §5): the Protocols sit in one row; the hint dock and the leak feed give way
    (shrink, clip) before the build list does, and the build list keeps room for about four cards, so the footer
    ("Call next push") always stays on screen. */
-.df-side .df-protos { flex-direction: row; gap: calc(var(--u) * 3); }
-.df-side .btn.df-proto { flex: 1 1 0; min-width: 0; padding: calc(var(--u) * 3) calc(var(--u) * 3); }
+.df-side .df-protos { flex-direction: row; gap: round(calc(var(--u) * 3), 1px); }
+.df-side .btn.df-proto { flex: 1 1 0; min-width: 0; padding: round(calc(var(--u) * 3), 1px) round(calc(var(--u) * 3), 1px); }
 /* Two or three Protocols: each button is [icon][timer] over its cost, the key in the corner, the name in the tooltip. */
 .df-side .df-protos.n3 .df-pname, .df-side .df-protos.n2 .df-pname { display: none; }
 .df-side .df-protos.n3 .df-pmain, .df-side .df-protos.n2 .df-pmain {
-  grid-template-columns: auto auto; justify-content: start; column-gap: calc(var(--u) * 3); row-gap: calc(var(--u) * 1);
+  grid-template-columns: auto auto; justify-content: start; column-gap: round(calc(var(--u) * 3), 1px); row-gap: round(calc(var(--u) * 1), 1px);
 }
 .df-side .df-protos.n3 .df-pglyph, .df-side .df-protos.n2 .df-pglyph { grid-column: 1; grid-row: 1; }
 .df-side .df-protos.n3 .df-pt, .df-side .df-protos.n2 .df-pt { grid-column: 2; grid-row: 1; min-width: 0; text-align: left; }
 .df-side .df-protos.n3 .df-pcost, .df-side .df-protos.n2 .df-pcost { grid-column: 1 / span 2; grid-row: 2; justify-self: start; }
 .df-side .df-protos.n3 .btn.df-proto .hotkey, .df-side .df-protos.n2 .btn.df-proto .hotkey {
-  position: absolute; top: calc(var(--u) * 2); right: calc(var(--u) * 2); margin: 0; z-index: 2;
-  font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); line-height: 1.1; padding: 0 calc(var(--u) * 2);
+  position: absolute; top: round(calc(var(--u) * 2), 1px); right: round(calc(var(--u) * 2), 1px); margin: 0; z-index: 2;
+  font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); line-height: 1.1; padding: 0 round(calc(var(--u) * 2), 1px);
 }
 .df-side .df-hintdock { flex: none; }
 .df-side .df-leaks { flex: 0 1 auto; min-height: 0; overflow: hidden; }
-.df-side .df-body { min-height: calc(var(--u) * 96); }
+.df-side .df-body { min-height: round(calc(var(--u) * 96), 1px); }
 /* The Relay's health digits (critic K2 §4: "94" read as "34" at 720p — white anti-aliased digits with a 1-px shadow
    on bright cyan lost the 9's left stroke): no shadow; dark navy over the cyan fill, white over the empty bar
    (one label, its colour split at the fill edge: --f is the fill fraction, set with the bar). */
@@ -429,3 +430,35 @@
   -webkit-background-clip: text; background-clip: text;
 }
 .df-side.df-nodock .df-hintdock { display: none; }
+
+/* ---------------------------------------------------------------- wave preview as chips (critic M2 P0-1)
+   Prep: each path is a row of icon chips (icon + ×N, the name in the tooltip) like the briefing, so both paths
+   show every enemy type without scrolling at 1024×600. NEW: amber border + a two-font-pixel corner dot. */
+.df-lane.df-chips { flex-direction: row; flex-wrap: wrap; align-items: center; gap: round(calc(var(--u) * 3), 1px); padding: round(calc(var(--u) * 3), 1px) round(calc(var(--u) * 5), 1px) round(calc(var(--u) * 4), 1px); }
+.df-lane.df-chips .df-lanehead { flex: 1 1 100%; }
+.df-echip {
+  position: relative; display: inline-flex; align-items: center; gap: round(calc(var(--u) * 2), 1px); padding: round(calc(var(--u) * 1), 1px) round(calc(var(--u) * 4), 1px) round(calc(var(--u) * 1), 1px) round(calc(var(--u) * 2), 1px);
+  background: rgba(24, 20, 37, 0.6); border: 1px solid #3a4466; border-radius: round(calc(var(--u) * 2), 1px); line-height: 1;
+}
+.df-echip b { color: var(--text); }
+.df-echip.boss { border-color: #ff4d6d; background: rgba(162, 38, 51, 0.35); }
+.df-echip.boss b { color: #ff7a80; }
+.df-echip.new { border-color: var(--amber); }
+.df-echip.new::after { content: ''; position: absolute; top: -1px; right: -1px; width: 0.25em; height: 0.25em; background: var(--amber); }
+/* Prep threat: one short line (full text in the tooltip). */
+.df-threat.df-threat1 { padding: round(calc(var(--u) * 3), 1px) round(calc(var(--u) * 6), 1px); }
+.df-threat1 .small { color: #ffb0b0; }
+.df-threatglyph { color: #ff7a80; }
+.df-threat1 .df-via { margin: 0; }
+/* "▾ more" pinned to the scroller's bottom edge (zero height: it never adds to the scroll height itself). */
+.df-morecue { position: sticky; bottom: 0; height: 0; flex: none; margin-top: round(calc(var(--u) * -6), 1px); pointer-events: none; }
+.df-morecue::before {
+  content: '▾ more'; position: absolute; right: 0; bottom: 0; padding: 0 round(calc(var(--u) * 4), 1px);
+  color: var(--text); background: rgba(24, 20, 37, 0.92); border: 1px solid var(--panel-edge); border-radius: round(calc(var(--u) * 2), 1px);
+  font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); line-height: 1.25;
+}
+/* Trades on one row: a "Trade" label and two one-line buttons. */
+.df-exchange { align-items: stretch; }
+.df-xlbl { flex: none; align-self: center; color: var(--muted); }
+.df-exchange .btn.df-half { flex-direction: row; justify-content: flex-start; padding: round(calc(var(--u) * 2), 1px) round(calc(var(--u) * 2), 1px); }
+.df-exchange .btn.df-half > span { flex-wrap: nowrap; gap: round(calc(var(--u) * 2), 1px); }

@@ -9,7 +9,7 @@
 // Note: Input.js swallows Tab and Space, so keyboard support here is explicit (arrows, Enter, Esc, digits).
 
 import * as THREE from 'three';
-import { el, button, modal, toast } from './ui.js';
+import { el, button, modal, toast, snapBox } from './ui.js';
 import { SKILLS } from '../data/skills.js';
 import { VISUALS } from '../data/visuals.js';
 
@@ -168,6 +168,7 @@ export function ask(game, opts) {
 export function overlay(game, content, opts = {}) {
   const ov = el('div.overlay.ui-block.scr-modal', {}, content);
   game.ui.append(ov);
+  snapBox(content);   // whole pixels (critic M2 P1-3)
   if (opts.clickOutside) ov.addEventListener('click', (e) => { if (e.target === ov) opts.clickOutside(); });
   return { ov, close: () => ov.remove() };
 }
@@ -280,7 +281,7 @@ function renderThumb(game, key, px = 40) {
  * model. Otherwise a coloured glyph.
  */
 export function iconEl(game, key, size = 28, opts = {}) {
-  const box = el('span.vicon', { style: { width: `calc(var(--u) * ${size})`, height: `calc(var(--u) * ${size})` } });
+  const box = el('span.vicon', { style: { width: `round(calc(var(--u) * ${size}), 1px)`, height: `round(calc(var(--u) * ${size}), 1px)` } });   // whole px (critic M2 P1-3)
   const info = game.assets.spriteInfo?.(key);
   if (info?.tex?.image) {
     // Integer-scaled (Assets.iconScale): the biggest 1×/2×/3× (or even 1/n) that fits the box.
@@ -288,8 +289,8 @@ export function iconEl(game, key, size = 28, opts = {}) {
     const spec = game.assets.iconSpec ? game.assets.iconSpec(key, boxPx) : { css: game.assets.iconStyle(key, boxPx) };
     box.append(el('span.vicon-sprite', { style: spec.css }));
     // A creature drawn at 1× may be bigger than the slot (never ½: Assets.iconScale): the box grows with it.
-    if (spec.w > boxPx) box.style.minWidth = `${spec.w}px`;
-    if (spec.h > boxPx) box.style.minHeight = `${spec.h}px`;
+    if (spec.w > boxPx) box.style.minWidth = `${Math.ceil(spec.w)}px`;
+    if (spec.h > boxPx) box.style.minHeight = `${Math.ceil(spec.h)}px`;
     return box;
   }
   const base = key.replace(/_\d+$/, '');
@@ -338,7 +339,7 @@ export function skillPicker(game, opts = {}) {
       node.append(el('p.muted', 'You have learned every skill available. Points carry no further use this run.'));
       return;
     }
-    const row = el('div.skill-cards');
+    const row = el('div.skill-cards', { style: { '--n': ids.length } });
     ids.forEach((id, i) => {
       const s = SKILLS[id];
       // Branch line: how many of its skills you own (builds lean into an identity); a keystone says why it's here.

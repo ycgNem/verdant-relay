@@ -15,7 +15,7 @@ import { PRIMARY, OPTIONAL, EVENTS } from '../data/objectives.js';
 import { BOSSES } from '../data/bosses.js';
 import { MenuBackdrop } from './MenuBackdrop.js';
 import { runStatus, nightPips, skillRerollBtn } from './BriefingScene.js';
-import { KeyNav, Bag, sbtn, skillPicker, skillTag } from '../ui/screensKit.js';
+import { KeyNav, Bag, sbtn, skillPicker, skillTag, RESEARCH } from '../ui/screensKit.js';
 import { workbenchView, showBench } from '../ui/workbench.js';
 import { WORKBENCH } from '../data/crafting.js';
 import { relicCard, relicTag } from '../ui/relics.js';
@@ -133,6 +133,22 @@ export class SummaryScene {
     const chip = (k, n, cls = 'good') => el('span.sum-chip', { style: { '--c': RESOURCES[k].color }, title: RESOURCES[k].desc },
       resIcon(k), el(`b.${cls}`, `+${n}`), el('span.lbl', RESOURCES[k].label));
     const got = gotKeys.map((k) => chip(k, Math.floor(extracted ? carried[k] : salvaged[k])));
+    // Intel and Research are chips here, not rows of their own (critic M2 P1-1: the card cut its last line at 1024).
+    const intelChip = extracted && carried.intel ? got[gotKeys.indexOf('intel')] : null;
+    if (intelChip) {
+      intelChip.title = 'Spend it tonight, before the attack (night prep, under the wave list).';
+      intelChip.append(el('span.muted', ' (night prep)'));
+    }
+    const earned = (x.research || []).reduce((n, r) => n + r.amount, 0);
+    const resTip = (x.research || []).map((r) => `+${r.amount}  ${r.reason}`).join('\n');
+    // The "where to spend it" words show once (critic L §2.4: they nagged by day 3): the first summary with Research
+    // on it, in the player's first run (meta.lifetime.runs counts the run in progress); re-renders keep them.
+    const H = game.meta.hints;
+    const firstSum = game.meta.lifetime.runs <= 1 && earned && (!H.sum_research || this._teachResearch);
+    if (firstSum && !H.sum_research) { H.sum_research = true; this._teachResearch = true; game.saveMeta(); }
+    if (earned) got.push(el('span.sum-chip', { style: { '--c': RESEARCH.color }, title: `Research Data, kept forever: spend it on new gear in Collection (from the title screen).\n${resTip}` },
+      el('span.glyph', { style: { color: RESEARCH.color } }, RESEARCH.glyph), el('b.good', `+${earned}`), el('span.lbl', 'Research'),
+      firstSum ? el('span.muted', ' (kept forever)') : null));
     if (x.bonusScrap) got.push(el('span.sum-chip', { title: 'Bonus Scrap from your goal / bonus tasks' }, resIcon('scrap'), el('b.amber', `+${x.bonusScrap}`), el('span.lbl', 'bonus Scrap')));
     const lostKeys = extracted ? [] : RESOURCE_KEYS.filter((k) => Math.floor(carried[k] || 0) - Math.floor(salvaged?.[k] || 0) > 0);
     const rows = [];
@@ -179,20 +195,12 @@ export class SummaryScene {
     if (t.threat) rows.push(el('div.sum-row', {}, el(`span.sum-k.${t.threat.cleared ? 'good' : 'bad'}`, 'Danger'), el('div', {}, el(t.threat.cleared ? 'span.good' : 'span.sum-danger', t.threat.text),   // (cleared: its area boss is dead)
       t.threat2 ? el('div.sum-danger.small', `+ ${t.threat2.text} (Restless jungle)`) : null)));
     const pts = x.skillPointsEarned || 0;
-    if (pts) rows.push(el('div.sum-row', {}, el('span.sum-k.amber', 'Skill'), el('span', `+${pts} skill point${pts === 1 ? '' : 's'}: pick a skill below`)));
-    if (extracted && carried.intel) rows.push(el('div.sum-row', {}, el('span.sum-k', 'Intel'), el('span.muted', 'Spend it tonight, before the attack (night prep, under the wave list).')));
+    // (Not while the picker is open right below it: it says the same; critic M2 P1-1, the card cut lines at 1024.)
+    if (pts && !(run.skillPoints > 0 && !this.pickerHidden)) rows.push(el('div.sum-row', {}, el('span.sum-k.amber', 'Skill'), el('span', `+${pts} skill point${pts === 1 ? '' : 's'}: pick a skill below`)));
     // A bad day: say what tomorrow starts with (dawn health is never lower than going home hurt).
     if (!extracted && x.dawnHp) rows.push(el('div.sum-row', {}, el('span.sum-k', 'Health'), el('span.muted', `You start tomorrow with ${x.dawnHp} health.`)));
-    const earned = (x.research || []).reduce((n, r) => n + r.amount, 0);
-    const resTip = (x.research || []).map((r) => `+${r.amount}  ${r.reason}`).join('\n');
-    // The "where to spend it" line shows once (critic L §2.4: it nagged by day 3): the first summary with Research
-    // on it, in the player's first run (meta.lifetime.runs counts the run in progress); re-renders keep it.
-    const H = game.meta.hints;
-    const firstSum = game.meta.lifetime.runs <= 1 && earned && (!H.sum_research || this._teachResearch);
-    if (firstSum && !H.sum_research) { H.sum_research = true; this._teachResearch = true; game.saveMeta(); }
-    const teach = firstSum ? ' (kept forever: spend it on new gear in Collection, from the title screen)' : ' (kept forever)';
-    const card = el('div.panel.ui-block.sum-card', {}, rows,
-      earned ? el('div.sum-research.small.muted', { title: resTip }, `+${earned} Research${teach}`) : null);
+    // (Research is a "You got" chip, with the where-to-spend-it words on the first summary only.)
+    const card = el('div.panel.ui-block.sum-card', {}, rows);
 
     // Skill pick / skills owned.
     let skillArea = null;

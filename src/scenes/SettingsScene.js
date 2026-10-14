@@ -8,7 +8,7 @@
 //   openSettingsOverlay(game, { onClose })
 
 import '../ui/screens.css';
-import { el, toast } from '../ui/ui.js';
+import { el, toast, snapBox } from '../ui/ui.js';
 import { resetAll, loadMeta } from '../core/Save.js';
 import { MenuBackdrop } from './MenuBackdrop.js';
 import { KeyNav, Bag, ask, sbtn, overlay } from '../ui/screensKit.js';
@@ -74,7 +74,7 @@ export function buildSettingsPanel(game, opts = {}) {
   const lvl = (k) => (typeof s()[k] === 'number' ? s()[k] : MIX.defaults[k]);
   const audio = () => game.sfx.applySettings();
   const soundRows = () => {
-    const W = { width: 'calc(var(--u) * 66)', flex: 'none', justifyContent: 'center' };   // mute button + spacers keep the sliders aligned
+    const W = { width: 'round(calc(var(--u) * 66), 1px)', flex: 'none', justifyContent: 'center' };   // mute button + spacers keep the sliders aligned
     const mute = sbtn(game, '', () => { s().muted = !s().muted; save(); audio(); paintMute(); }, { cls: 'small-btn mute-btn', title: `Mute everything (${MIX.muteKey} works anywhere)` });
     Object.assign(mute.style, W);
     const paintMute = () => { mute.textContent = s().muted ? 'Muted' : 'Mute'; mute.classList.toggle('danger', !!s().muted); };
@@ -324,6 +324,7 @@ export class SettingsScene {
     const api = buildSettingsPanel(game, { onBack: () => game.go(this.from, { from: 'settings' }) });
     this.bag.add(api);
     game.ui.append(el('div.screen.scr.settings-screen', {}, el('div.scr-dim'), api.node));
+    snapBox(api.node);   // whole pixels (critic M2 P1-3)
   }
 
   update(dt) { this.backdrop?.update(dt); }

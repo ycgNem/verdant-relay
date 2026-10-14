@@ -132,7 +132,7 @@ export function relicIcon(game, id, size = 18, opts = {}) {
     const key = `relic_${id}`, img = game.assets.spriteInfo(key)?.tex?.image;
     const k = game.assets.iconScale(key, size * (game.u || 1)) || 1;
     if (img) {
-      return el('span.vicon.rl-icon.rl-sil.rl-obj', { style: { width: `calc(var(--u) * ${size})`, height: `calc(var(--u) * ${size})` } },
+      return el('span.vicon.rl-icon.rl-sil.rl-obj', { style: { width: `round(calc(var(--u) * ${size}), 1px)`, height: `round(calc(var(--u) * ${size}), 1px)` } },
         el('span.rl-pend', { style: { width: `${img.width * k}px`, height: `${img.height * k}px`, backgroundImage: `url(${silhouetteUrl(img, id)})` } }));
     }
   }
@@ -145,7 +145,7 @@ export function relicIcon(game, id, size = 18, opts = {}) {
   // The pendant is 12 texels: the biggest whole multiple of device px that fits the box.
   const dpr = window.devicePixelRatio || 1;
   const k = Math.max(1, Math.floor((size * (game.u || 1) * dpr) / 12 + 0.15)) / dpr;
-  return el(`span.vicon.rl-icon${sil}`, { style: { width: `calc(var(--u) * ${size})`, height: `calc(var(--u) * ${size})` } },
+  return el(`span.vicon.rl-icon${sil}`, { style: { width: `round(calc(var(--u) * ${size}), 1px)`, height: `round(calc(var(--u) * ${size}), 1px)` } },
     el('span.rl-pend', { style: { width: `${12 * k}px`, height: `${12 * k}px`, backgroundImage: `url(${pendantUrl(R?.rarity || 'C')})` } }));
 }
 

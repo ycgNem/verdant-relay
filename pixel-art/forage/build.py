@@ -5,14 +5,21 @@
   prop_stump_bare        63x60  fol_stump repainted without its bracket fungus (bark + a pale break scar)
   prop_stump_fungus      63x60  fol_stump with larger, brighter bracket fungus + glint pixels (harvestable)
   prop_fungus_log_overlay 24x20 three bright brackets on a transparent card, laid over fol_log
+  fol_log (repaint)      64x51  the pale bracket shelves baked into fol_log painted out (bark + moss), from orig/fol_log.png
+  prop_dusk_bloom_closed 32x36  rare clearing flower by day: tight violet/indigo bud on a stalk among broad leaves
+  prop_dusk_bloom_open   32x36  the same plant at dusk: pale lilac petals around a cyan core (EMISSIVE glow texels)
+  prop_dusk_bloom_spent  32x36  after harvest: petals gone, the stalk drooping, a withered seed head
 
 Every pixel is placed here (Pillow only); the stumps start from public/sprites/fol_stump.png.
 Anchors: the bushes [21, 31] (base of the stems), the stumps [30, 49] (= fol_stump, so they swap in place),
-the overlay [12, 19] (bottom centre).
+the overlay [12, 19] (bottom centre), the dusk blooms [16, 33] (base of the stalk).
+fol_log keeps its manifest entry (manifest.v2env.json, anchor [32, 36]); only its PNG is regenerated, always from the
+untouched original copied once to pixel-art/forage/orig/fol_log.png, so canvas, anchor and alpha mask never change.
 Run: python pixel-art/forage/build.py   (then python pixel-art/merge_manifest.py)
 """
 import json
 import math
+import shutil
 import random
 from pathlib import Path
 
@@ -344,6 +351,267 @@ def build_log_overlay():
     return im
 
 
+# --------------------------------------------------------------------------------------------- fol_log repaint
+# critic N2 P2-7: logs are never fungus hosts, so the three pale brackets baked into fol_log promise a harvest that
+# isn't there. Paint them out: the shelf texels (and the dark lens outline around them) take the bark along the grain,
+# then a few moss texels creep in where the shelves were. The alpha mask is never touched.
+ORIG = HERE / "orig"
+LOG_SHELF_COLORS = {hx(c) for c in ("#edd19c", "#d4a67b", "#a9744d", "#804f34", "#502614", "#faf0cc", "#5d483b",
+                                     "#94735c", "#84624c")}
+LOG_INKS = {hx("#030302"), hx("#080100")}
+LOG_BOXES = [(44, 24, 52, 29), (24, 30, 41, 37), (6, 22, 13, 25)]   # inclusive: right shelf, lower shelf, left cap
+LOG_GRAIN = (3, -1)          # the log runs from lower-left to upper-right
+MOSS = [hx(c) for c in ("#0b3531", "#1b432b", "#2b5438", "#346340", "#49693f")]
+
+
+def log_original():
+    src = ORIG / "fol_log.png"
+    if not src.exists():                      # first run: keep the untouched export (it has the fungus)
+        ORIG.mkdir(exist_ok=True)
+        shutil.copy2(SPR / "fol_log.png", src)
+    return Image.open(src).convert("RGBA")
+
+
+def build_log():
+    im = log_original()
+    W, H = im.size
+    opaque = lambda x, y: get(im, x, y)[3] > 0
+    kill = set()
+    for x0, y0, x1, y1 in LOG_BOXES:
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                if get(im, x, y) in LOG_SHELF_COLORS:
+                    kill.add((x, y))
+    # the shelf's dark lens outline: inks touching a shelf texel and buried in the log (not on its silhouette)
+    rim = set()
+    for (x, y) in kill:
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            q = (x + dx, y + dy)
+            if q in kill or get(im, *q) not in LOG_INKS:
+                continue
+            if all(opaque(q[0] + a, q[1] + b) for a in (-1, 0, 1) for b in (-1, 0, 1)):
+                rim.add(q)
+    kill |= rim
+    src = im.copy()
+
+    def is_moss(c):
+        return c[1] > c[0] + 10
+
+    for (x, y) in sorted(kill):
+        for k in (1, -1, 2, -2, 3, -3, 4, -4, 5, -5):
+            q = (x + LOG_GRAIN[0] * k, y + LOG_GRAIN[1] * k)
+            c = get(src, *q)
+            if q in kill or not c[3] or is_moss(c) or c in LOG_SHELF_COLORS:
+                continue
+            put(im, x, y, c)
+            break
+        else:
+            put(im, x, y, BARK[1])
+    # moss creeping into the old shelf sites: low, ragged, dark (nothing a player reads as a cap)
+    for x, y, i in [(45, 25, 1), (46, 25, 2), (47, 25, 1), (46, 26, 0), (49, 26, 1), (50, 26, 2), (50, 27, 1),
+                    (29, 33, 1), (30, 33, 2), (31, 33, 3), (32, 33, 2), (30, 34, 0), (32, 34, 1), (33, 34, 0),
+                    (36, 35, 1), (37, 35, 2), (37, 36, 0),
+                    (8, 23, 2), (9, 23, 3), (10, 23, 2), (11, 23, 1), (9, 24, 0)]:
+        if opaque(x, y):
+            put(im, x, y, MOSS[i])
+    assert all((src.getpixel((x, y))[3] > 0) == (im.getpixel((x, y))[3] > 0) for y in range(H) for x in range(W))
+    check_alpha(im)
+    return im
+
+
+# --------------------------------------------------------------------------------------------- dusk bloom
+BLOOM_W, BLOOM_H = 32, 36
+BLOOM_ANCHOR = (16, 33)
+STEM = [hx(c) for c in ("#0b3531", "#1b432b", "#2b5438", "#45704a")]
+# closed bud: dull indigo/violet, every value well under the emissive floor
+BUD = {"k": hx("#140c24"), "d": hx("#251a40"), "s": hx("#3b2a66"), "m": hx("#533d86"), "l": hx("#6d55a0"),
+       "q": STEM[0], "Q": STEM[1], "G": STEM[2], "g": STEM[3]}
+# open bloom. EMISSIVE glow texels (value >= 0.72, saturation >= 0.4) are only the core and the two lit petal tones:
+#   core:   #7ef9ff (hot centre, 183 deg), #2ce8f5 (184 deg), #1ab4d6 (191 deg)
+#   petals: #cc96ff (271 deg, the lit petal face), #9a6ef0 (260 deg, mid petal)
+# shade #5b3fa6 (V 0.65) and the outline stay dark, so the glow draws the flower's shape, not a blob.
+PET = {"k": hx("#1d1038"), "D": hx("#3a2470"), "S": hx("#5b3fa6"), "M": hx("#9a6ef0"), "L": hx("#cc96ff")}
+CORE = {"o": hx("#0e3a52"), "c": hx("#1ab4d6"), "C": hx("#2ce8f5"), "H": hx("#7ef9ff")}
+SPENT = {"k": hx("#140c0a"), "d": hx("#2e2018"), "m": hx("#4a3424"), "l": hx("#6b4c32"), "v": hx("#4a3a5c")}
+
+
+def bloom_leaves(tone_shift=0, droop=0.0):
+    """Broad leaves fanning out of the base (16, 32), back to front, tone_shift < 0 = tired / dimmer."""
+    im = Image.new("RGBA", (BLOOM_W, BLOOM_H), (0, 0, 0, 0))
+    leaves = [  # (base x, base y, angle deg, length, width, tone)
+        (15, 30, 200 + droop, 13.0, 7.0, 2),    # long leaf out to the left
+        (17, 30, -20 - droop, 12.5, 7.0, 2),    # out to the right
+        (15, 29, 232 + droop * 0.5, 9.5, 6.4, 3),   # up-left
+        (17, 29, -50 - droop * 0.5, 9.0, 6.2, 3),   # up-right
+        (14, 32, 168 + droop, 8.0, 5.6, 3),     # front-left, drooping over the ground
+        (18, 32, 14 - droop, 8.5, 5.6, 4),      # front-right, lit
+    ]
+    for bx, by, ang, L, Wd, tone in leaves:
+        leaf(im, bx, by, math.radians(ang), L, Wd, max(0, tone + tone_shift))
+    return im
+
+
+def stalk(im, pts):
+    """A 1-texel stalk through pts (list of (x, y)), lit on its left: a light texel left of every dark one."""
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        n = max(abs(x1 - x0), abs(y1 - y0))
+        for i in range(n + 1):
+            x = round(x0 + (x1 - x0) * i / n)
+            y = round(y0 + (y1 - y0) * i / n)
+            put(im, x, y, STEM[2])
+            put(im, x + 1, y, STEM[1])
+            if y > 24:                    # thicker at the base
+                put(im, x - 1, y, STEM[3])
+
+
+BUD_ROWS = [
+    "....kk....",
+    "...kmlk...",
+    "..kmlmsk..",
+    "..kmlmsk..",
+    ".kmllmsdk.",
+    ".kmlmmsdk.",
+    ".kslmmsdk.",
+    ".kGsmsdQk.",
+    "kgGqsdqQQk",
+    ".kgGqqGQk.",
+    "..kkgGkk..",
+]
+
+
+def build_bloom_closed():
+    im = bloom_leaves()
+    stalk(im, [(16, 31), (16, 22), (15, 15), (15, 12)])
+    stamp(im, 11, 2, BUD_ROWS, BUD)
+    # one furled leaf on the stalk
+    stamp(im, 17, 17, ["gk.", "Ggk", ".Qk"], {"g": STEM[3], "G": STEM[2], "Q": STEM[1], "k": INK})
+    outline_outside(im, INK)
+    check_alpha(im)
+    return im
+
+
+def petal(im, cx, cy, ang, length, width, lit):
+    """One petal from the core outward along ang (deg); squashed vertically (seen from front-above)."""
+    a = math.radians(ang)
+    ux, uy = math.cos(a), math.sin(a) * 0.78
+    nrm = math.hypot(ux, uy)
+    ux, uy = ux / nrm, uy / nrm
+    vx, vy = -uy, ux
+    r = int(length + width + 2)
+    for y in range(int(cy) - r, int(cy) + r + 1):
+        for x in range(int(cx) - r, int(cx) + r + 1):
+            dx, dy = x + 0.5 - cx, y + 0.5 - cy
+            u = dx * ux + dy * uy
+            v = dx * vx + dy * vy
+            if u < 0.3 or u > length + 0.3:
+                continue
+            t = u / length
+            q = (t - 0.56) / 0.5                      # rounded spoon: narrow at the core, widest past the middle
+            if abs(q) >= 1.0:
+                continue
+            half = width * 0.5 * math.sqrt(1.0 - q * q)
+            if abs(v) > half:
+                continue
+            # light from the top-left: upper-left petals and the lit half of each petal are brightest
+            k = 3 + lit
+            if t > 0.4:
+                k += 1
+            if v * (1 if (vx * -0.7 + vy * -0.7) > 0 else -1) < -0.8:
+                k -= 1
+            if abs(v) < 0.6 and t < 0.55:
+                k -= 1                       # a darker vein running into the core
+            k = max(1, min(4, k))
+            put(im, x, y, PET["DSML"[k - 1]])
+
+
+def build_bloom_open():
+    im = bloom_leaves()
+    stalk(im, [(16, 31), (16, 22), (15, 15), (15, 11)])
+    stamp(im, 17, 17, ["gk.", "Ggk", ".Qk"], {"g": STEM[3], "G": STEM[2], "Q": STEM[1], "k": INK})
+    cx, cy = 15.5, 9.0
+    head = Image.new("RGBA", im.size, (0, 0, 0, 0))
+    # each petal on its own card with its own dark outline, composited back to front, so every petal is a
+    # separate lobe: a back ring of short dim petals peeking between the five long front ones
+    rings = [(ang, 6.4, 4.4, -2) for ang in (-54, 18, 90, 162, 234)]                 # back ring, in shadow
+    rings += [(ang, 9.0, 6.6, 0 if ang in (-90, 198) else -1) for ang in (54, 126, -18, 198, -90)]
+    for ang, L, Wd, lit in rings:
+        card = Image.new("RGBA", im.size, (0, 0, 0, 0))
+        petal(card, cx, cy, ang, L, Wd, lit)
+        outline_outside(card, PET["k"])
+        head.alpha_composite(card)
+    # core: a cyan disc with a hot centre and stamen dots
+    for y in range(4, 15):
+        for x in range(10, 22):
+            d = math.hypot((x + 0.5 - cx), (y + 0.5 - cy) / 0.85)
+            if d <= 2.7:
+                put(head, x, y, CORE["c"] if d > 1.9 else CORE["C"])
+    for x, y in [(14, 8), (15, 8), (14, 9)]:
+        put(head, x, y, CORE["H"])
+    for x, y in [(17, 10), (16, 11)]:
+        put(head, x, y, CORE["c"])
+    im.alpha_composite(head)
+    # pollen motes drifting off the bloom (glow at dusk too)
+    for x, y in [(4, 3), (27, 6), (25, 1)]:
+        put(im, x, y, CORE["C"])
+    check_alpha(im)
+    return im
+
+
+def build_bloom_spent():
+    im = bloom_leaves(tone_shift=-1, droop=8)
+    # tired leaves: the outer leaf tips dry to olive-brown (brightness rank kept)
+    dry = [hx(c) for c in ("#1e1a10", "#2e2a18", "#45402a", "#5c5434")]
+    for y in range(BLOOM_H):
+        for x in range(BLOOM_W):
+            c = get(im, x, y)
+            if c[3] and c not in (INK, GAP) and (x <= 5 or x >= 27 or (y >= 33 and (x <= 9 or x >= 23))):
+                put(im, x, y, dry[min(3, sum(c[:3]) // 90)])
+    # the stalk bends over and hangs: up, then arcing to the right and down
+    stalk(im, [(16, 31), (16, 23), (17, 17), (19, 13), (22, 12), (24, 14)])
+    # the withered seed head hangs from the hook, two limp petal shreds dangling under it
+    stamp(im, 22, 14, [
+        ".kkk.",
+        "kmlmk",
+        "kdmdk",
+        "kvkvk",
+        "kvkvk",
+        ".k.vk",
+        "....k",
+    ], SPENT)
+    # one fallen petal on the leaves, browned
+    stamp(im, 6, 28, [".kk", "kvk", "kk."], {"v": SPENT["v"], "k": SPENT["k"]})
+    outline_outside(im, INK)
+    check_alpha(im)
+    return im
+
+
+def glow_mask(im, bands, minv=0.72, mins=0.4):
+    """The texels src/core/Emissive.js lights for these hue bands (same sRGB test as the shader)."""
+    out = set()
+    for y in range(im.height):
+        for x in range(im.width):
+            r, g, b, a = [v / 255 for v in im.getpixel((x, y))]
+            if a < 0.5:
+                continue
+            mx, mn = max(r, g, b), min(r, g, b)
+            d = mx - mn
+            if mx < minv or d < mins * mx:
+                continue
+            if mx == r:
+                h = ((g - b) / d) % 6
+            elif mx == g:
+                h = (b - r) / d + 2
+            else:
+                h = (r - g) / d + 4
+            h *= 60
+            if any((lo <= h <= hi) if lo <= hi else (h >= lo or h <= hi) for lo, hi in bands):
+                out.add((x, y))
+    return out
+
+
+BLOOM_GLOW = [[180, 195], [255, 275]]
+
+
 # --------------------------------------------------------------------------------------------- export
 def save(key, im, anchor):
     im.save(SPR / f"{key}.png")
@@ -361,7 +629,13 @@ def main():
         "prop_stump_bare": save("prop_stump_bare", build_stump_bare(), STUMP_ANCHOR),
         "prop_stump_fungus": save("prop_stump_fungus", build_stump_fungus(), STUMP_ANCHOR),
         "prop_fungus_log_overlay": save("prop_fungus_log_overlay", build_log_overlay(), (12, 19)),
+        "prop_dusk_bloom_closed": save("prop_dusk_bloom_closed", build_bloom_closed(), BLOOM_ANCHOR),
+        "prop_dusk_bloom_open": save("prop_dusk_bloom_open", build_bloom_open(), BLOOM_ANCHOR),
+        "prop_dusk_bloom_spent": save("prop_dusk_bloom_spent", build_bloom_spent(), BLOOM_ANCHOR),
     }
+    save("fol_log", build_log(), (32, 36))   # PNG only: its manifest entry stays in manifest.v2env.json
+    glow = glow_mask(Image.open(SPR / "prop_dusk_bloom_open.png").convert("RGBA"), BLOOM_GLOW)
+    print("prop_dusk_bloom_open glow texels:", len(glow), "bands", BLOOM_GLOW)
     (ROOT / "pixel-art" / "manifest.forage.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf8")
     for k, e in manifest.items():
         print(k, Image.open(SPR / e["file"]).size, e["anchor"])

@@ -44,7 +44,7 @@ function nodeIcon(game, k, size) {
   for (const key of [UNLOCK_ICON[k]?.key, n.icon?.key]) {
     if (key && (game.assets.spriteInfo?.(key)?.tex?.image || VISUALS[key])) return iconEl(game, key, size);
   }
-  return el('span.vicon.glyph', { style: { '--c': n.icon?.color || ic.color || '#8b9bb4', width: `calc(var(--u) * ${size})`, height: `calc(var(--u) * ${size})` } }, n.icon?.glyph || ic.glyph || '◆');
+  return el('span.vicon.glyph', { style: { '--c': n.icon?.color || ic.color || '#8b9bb4', width: `round(calc(var(--u) * ${size}), 1px)`, height: `round(calc(var(--u) * ${size}), 1px)` } }, n.icon?.glyph || ic.glyph || '◆');
 }
 
 /** First night a defense enemy type appears in the authored waves (null if only via events/bosses). */

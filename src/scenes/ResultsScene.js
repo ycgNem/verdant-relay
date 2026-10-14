@@ -7,7 +7,7 @@
 
 import '../ui/screens.css';
 import '../ui/meta.css';
-import { el, resRow } from '../ui/ui.js';
+import { el, resRow, snapCentred } from '../ui/ui.js';
 import { frameGeom } from '../core/Assets.js';
 import { CONFIG } from '../data/config.js';
 import { RESEARCH_TREE, affordableNodes, nextGoal, UNLOCK_KEYS, ownedCount } from '../data/unlocks.js';
@@ -167,6 +167,8 @@ export class ResultsScene {
       el('div.row.center.res-btns', {}, newRun, coll, title));
 
     game.ui.append(el(`div.screen.scr.results-screen${win ? '.win' : '.lose'}`, {}, el('div.scr-dim.results-dim'), panel, this._tableau(win)));
+    // The panel's centred lines on whole pixels (critic M2 P1-3), once it has slid in and the numbers have counted up.
+    for (const ms of [900, 2600]) setTimeout(() => snapCentred(panel), ms);
 
     this.nav = this.bag.add(new KeyNav(game, {
       items: () => this.buttons,

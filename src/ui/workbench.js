@@ -116,10 +116,11 @@ export function workbenchView(game, opts = {}) {
         const btn = button(el('span', {}, done ? 'Owned' : 'Make', el('span.hotkey', String(n))), () => craft(key), {
           disabled: !!reason, reason, cls: `wb-craft${done ? ' wb-done' : ''}`, title: reason || `Make ${look.name}`,
         });
-        return el(`div.wb-card${reason ? '.blocked' : ''}${done ? '.done' : ''}`, { style: { '--c': look.color }, title: r.mod ? `Fits: ${fitsText(r.mod)}` : '' },
+        // The plain sentence ("The tower reaches 15% further") repeats the coloured number ("+15% range"): it is the
+        // card's tooltip (critic M2 P0-2: two to three lines a card hid the second row's prices and Make at 1024).
+        return el(`div.wb-card${reason ? '.blocked' : ''}${done ? '.done' : ''}`, { style: { '--c': look.color }, title: `${look.name}: ${look.line}` },
           el('div.wb-top', {}, look.icon, el('b.wb-name', look.name)),
-          look.num ? el('div.wb-num', look.num) : null,
-          el('div.wb-line', look.line),
+          el('div.wb-num', look.num || look.line),
           r.mod ? el('div.wb-fits.small.muted', `Fits: ${fitsText(r.mod)}`) : null,
           haveLine(run, key),
           el('div.wb-foot', {}, done ? null : costLine(r.cost, run.res), el('span.grow'), btn),
@@ -128,6 +129,14 @@ export function workbenchView(game, opts = {}) {
       rows.append(el(`div.wb-group.wb-${groups[0]}`, { style: { '--n': keys.length } },
         el('div.wb-ghead', {}, el('h3', title), note ? el('span.small.muted', note) : null),
         el('div.wb-cards', {}, cards)));
+    }
+    // The groups that share a row (all but the full-width tower mods) get whole-pixel widths in proportion to their
+    // card counts (critic M2 P1-3: flex-grow put the second group, and every line in it, on x.8).
+    const shared = [...rows.children].filter((g) => !g.classList.contains('wb-mod'));
+    const tot = shared.reduce((s, g) => s + Number(g.style.getPropertyValue('--n') || 1), 0);
+    for (const g of shared) {
+      g.style.flex = '0 0 auto';
+      g.style.width = `round(down, calc((100% - ${shared.length - 1} * round(calc(var(--u) * 12), 1px)) * ${g.style.getPropertyValue('--n') || 1} / ${tot}), 1px)`;
     }
     node.append(rows);
     // Short on parts? Point at the night prep exchange (the night board's Scrap → component trade).

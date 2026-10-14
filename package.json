@@ -9,7 +9,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "playtest": "vite build && vite preview --port 5191 --strictPort"
+    "playtest": "vite build && vite preview --port 5191 --strictPort",
+    "check:glyphs": "python tools/check_glyphs.py"
   },
   "dependencies": {
     "three": "0.186.1"

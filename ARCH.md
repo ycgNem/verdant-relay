@@ -175,7 +175,10 @@ Module functions (import from `../core/Assets.js`):
   rolling) and leaves only `SPORES.tickIframes` of immunity.
 - **Foraging** (critic N; tuning `FORAGE` in `src/data/jungle.js`). Generation (`JungleGen.placeForage`, own stream
   `subSeed(seed, 'forage')`, after the guided route and before `ensureReachable`, so the main stream and every
-  container / site / lair / pylon stay put): `world.forage` `[{id 'f…', kind: 'fruit', x, z, region}]`, and fungus hosts
+  container / site / lair / pylon stay put; the dusk blooms from `subSeed(seed, 'forage', 'bloom')`): `world.forage`
+  `[{id 'f…', kind: 'fruit', x, z, region}, …, {id 'b…', kind: 'bloom', …}]` (blooms: open site-clearing tiles,
+  `bloom.minRelay` / `lairGap` / `spacing` / `clear`). Nothing is placed under a canopy (`FORAGE.canopy`: a tree trunk
+  ≤ depth south and ≤ half across) or within its `lairGap` of a boss lair (fruit, stumps, blooms). Fungus hosts
   on `world.objects` (`fungus: true`): the `logHosts` generated logs nearest open ground (0 now) + `newStumps` new
   `{kind: 'rock', type: 'stump'}` objects within `nearOpen` tiles of a trail / clearing (the rock_stump collider). The
   old random-scatter 'stump' pick now places a log (its pick and its occupancy footprint are unchanged).
@@ -188,10 +191,20 @@ Module functions (import from `../core/Assets.js`):
   `chunkCards(…, skip)`, the night board still draws the atlas stump), logs keep their card + a
   `prop_fungus_log_overlay` card; `hittables(out)` pushes `{…, forage: true}` (meleeHit calls `hit()` and leaves it
   out of the creature `hits`, so it costs plant stamina; ExploreShots ignores it); a one-per-run `forage_hint`
-  interactable (hold 0, `noKey`: the prompt hides its E keycap). Glints: `_rollGlints()` per day (hash of tile, seed,
-  `run.night`) over uncut thicket / bramble; `update(dt)` flashes the gold sparkle (`fx.flash`, no depth test: over
-  the foliage) within `glint.show` tiles; `world.onCut` (set by Forage) spills the Scrap. First-time lines per run in
-  `run.forageSeen`. `info()` = `debug.forage()` → `{fruit, fungus, glints}`; `debug.gotoForage(kind, n)`.
+  interactable (hold 0, `noKey`: the prompt hides its E keycap). Fruit: whole-number heals (`_missing()` floors);
+  `update()` sets the bush's `hold` 0 / `noKey` at full health (an info line, no ring). Glints: `_rollGlints()` per
+  day (hash of tile, seed, `run.night`) over uncut thicket / bramble outside the `glint.edge` band, `amt` ≥ `minAmt`;
+  `update(dt)` flashes the gold star + a white twinkle (`fx.flash`, no depth test: over the foliage) within
+  `glint.show` tiles and plays `sfx glint_twinkle` within `glint.sound` on screen; `world.onCut` (set by Forage)
+  spills the Scrap for any cutter, but `coins`, the burst and the first-time toast only on screen (`_onScreen`,
+  `FORAGE.view`). Dusk blooms: interactables of kind `'forage'` (closed: hold 0, `noKey`; open once
+  `DAY.length − dayT ≤ bloom.openLeft`: hold `bloom.hold`), visuals `prop_dusk_bloom_closed` → `_open` (EMISSIVE.keys) →
+  `_spent`; a pick spawns `bloom.intel` Intel pickups and counts `picked` → `result.blooms` / `bloomResearch` →
+  `Run.applyExpedition` awards it ("Dusk bloom picked"). Map memory: every `seenEvery` s, fruit / fungus / bloom ids on
+  screen join `scene.state.forage` (= `run.world.forage`, persisted with the run); `markers(out)` → `forage_fruit` /
+  `forage_fungus` / `forage_bloom` dots (`dim` when used today; `JungleMap._markers` passes `dim`). First-time lines per
+  run in `run.forageSeen` (`fungus`, `glint`, `bloom`). `info()` = `debug.forage()` → `{fruit, fungus, bloom, glints,
+  picked, seen}`; `debug.gotoForage(kind, n)` (kind fruit / fungus / bloom / glint).
 - `JungleWorld(game, scene3d, data, cutMask)`: chunk streaming (`update(dt, focusX, focusZ)`, `warm(x, z)`), queries
   (`brushAt solidAt deepAt wetAt opaqueAt blockedAt(x, z, throughBrush) levelAt speedAt(x, z, brushFree) inFern shadeAt
   lineOfSight`), movement

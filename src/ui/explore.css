@@ -4,24 +4,24 @@
 
 .x-panel {
   background: rgba(24, 20, 37, 0.82);
-  border: calc(var(--u) * 2) solid #3a4466;
+  border: round(calc(var(--u) * 2), 1px) solid #3a4466;
   box-shadow: 0 0 0 calc(var(--u) * 1) #181425;
-  border-radius: calc(var(--u) * 3);
-  padding: calc(var(--u) * 6) calc(var(--u) * 8);
-  text-shadow: 1px 1px 0 #000;
+  border-radius: round(calc(var(--u) * 3), 1px);
+  padding: round(calc(var(--u) * 6), 1px) round(calc(var(--u) * 8), 1px);
+  text-shadow: var(--ol);
 }
 
-.x-row { display: flex; align-items: center; gap: calc(var(--u) * 6); margin-bottom: calc(var(--u) * 4); }
+.x-row { display: flex; align-items: center; gap: round(calc(var(--u) * 6), 1px); margin-bottom: round(calc(var(--u) * 4), 1px); }
 .x-lbl { font-weight: bold; color: var(--good); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 
 /* ---- health bar, chips, carried-loot chips (laid out by jungle.css) */
-.x-hpbar { flex: 1; height: calc(var(--u) * 16); }
+.x-hpbar { flex: 1; height: round(calc(var(--u) * 16), 1px); }
 .x-hpbar .barlbl { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 .x-chip { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); white-space: nowrap; }
 
 .x-res {
-  display: flex; align-items: center; gap: calc(var(--u) * 3); color: var(--c); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq)));
-  background: rgba(58, 68, 102, 0.35); border-radius: calc(var(--u) * 2); padding: calc(var(--u) * 2) calc(var(--u) * 4);
+  display: flex; align-items: center; gap: round(calc(var(--u) * 3), 1px); color: var(--c); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq)));
+  background: rgba(58, 68, 102, 0.35); border-radius: round(calc(var(--u) * 2), 1px); padding: round(calc(var(--u) * 2), 1px) round(calc(var(--u) * 4), 1px);
 }
 .x-res b { color: var(--text); }
 .x-res .lbl { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); opacity: 0.9; }
@@ -42,28 +42,28 @@
 
 /* ---- bottom-centre: interaction prompt */
 .x-prompt {
-  position: absolute; left: 50%; bottom: calc(var(--u) * 28); transform: translateX(-50%);
-  display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 4); min-width: calc(var(--u) * 220);
+  position: absolute; left: 50%; bottom: round(calc(var(--u) * 28), 1px); transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: round(calc(var(--u) * 4), 1px); min-width: round(calc(var(--u) * 220), 1px);
 }
 .x-ptext {
-  display: flex; align-items: center; gap: calc(var(--u) * 8);
-  background: rgba(24, 20, 37, 0.88); border: calc(var(--u) * 2) solid var(--amber); border-radius: calc(var(--u) * 3);
-  padding: calc(var(--u) * 4) calc(var(--u) * 10) calc(var(--u) * 4) calc(var(--u) * 5); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 13 - 0.01px), var(--fq))); text-shadow: var(--ol); white-space: nowrap;
+  display: flex; align-items: center; gap: round(calc(var(--u) * 8), 1px);
+  background: rgba(24, 20, 37, 0.88); border: round(calc(var(--u) * 2), 1px) solid var(--amber); border-radius: round(calc(var(--u) * 3), 1px);
+  padding: round(calc(var(--u) * 4), 1px) round(calc(var(--u) * 10), 1px) round(calc(var(--u) * 4), 1px) round(calc(var(--u) * 5), 1px); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 13 - 0.01px), var(--fq))); text-shadow: var(--ol); white-space: nowrap;
 }
 /* Key cap inside a progress ring: the ring fills while E is held. */
 .x-ring {
-  --p: 0; flex: none; width: calc(var(--u) * 26); height: calc(var(--u) * 26); border-radius: 50%; display: grid; place-items: center;
+  --p: 0; flex: none; width: round(calc(var(--u) * 26), 1px); height: round(calc(var(--u) * 26), 1px); border-radius: 50%; display: grid; place-items: center;
   background: #3a4466;
 }
 .x-ring.hold { background: conic-gradient(var(--amber) calc(var(--p) * 360deg), #3a4466 0); }
-.x-ring .key { margin: 0; background: #181425; min-width: calc(var(--u) * 16); text-align: center; }
+.x-ring .key { margin: 0; background: #181425; min-width: round(calc(var(--u) * 16), 1px); text-align: center; }
 .x-ptime { color: var(--amber); font-weight: bold; font-variant-numeric: tabular-nums; }
 .x-ptime:empty { display: none; }
 
 /* ---- off-screen direction arrows */
 .x-edge {
-  position: absolute; left: 0; top: 0; width: calc(var(--u) * 34); height: calc(var(--u) * 34); display: grid; place-items: center;
-  font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 28 - 0.01px), var(--fq))); text-shadow: 0 0 calc(var(--u) * 3) #000, 1px 1px 0 #000; animation: x-pulse 0.9s ease-in-out infinite alternate;
+  position: absolute; left: 0; top: 0; width: round(calc(var(--u) * 34), 1px); height: round(calc(var(--u) * 34), 1px); display: grid; place-items: center;
+  font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 28 - 0.01px), var(--fq))); text-shadow: var(--ol); animation: x-pulse 0.9s ease-in-out infinite alternate;
 }
 .x-edge.obj { color: var(--amber); }
 .x-edge.ext { color: var(--accent); }
@@ -73,21 +73,21 @@
 
 /* ---- big map (Tab) */
 .x-bigmap { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(11, 10, 18, 0.55); z-index: 25; }
-.x-bigbox { padding: calc(var(--u) * 10) calc(var(--u) * 12); }
-.x-bigtitle { display: flex; gap: calc(var(--u) * 6); align-items: baseline; margin-bottom: calc(var(--u) * 6); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 14 - 0.01px), var(--fq))); }
+.x-bigbox { padding: round(calc(var(--u) * 10), 1px) round(calc(var(--u) * 12), 1px); }
+.x-bigtitle { display: flex; gap: round(calc(var(--u) * 6), 1px); align-items: baseline; margin-bottom: round(calc(var(--u) * 6), 1px); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 14 - 0.01px), var(--fq))); }
 .x-bigclose { margin-left: auto; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
-.x-bigcanvas { display: block; width: calc(var(--u) * 636); image-rendering: pixelated; background: rgba(11, 10, 18, 0.8); }
-.x-legend { display: flex; flex-wrap: wrap; gap: calc(var(--u) * 4) calc(var(--u) * 12); margin-top: calc(var(--u) * 6); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
-.x-leg { display: inline-flex; align-items: center; gap: calc(var(--u) * 4); }
+.x-bigcanvas { display: block; width: round(calc(var(--u) * 636), 1px); image-rendering: pixelated; background: rgba(11, 10, 18, 0.8); }
+.x-legend { display: flex; flex-wrap: wrap; gap: round(calc(var(--u) * 4), 1px) round(calc(var(--u) * 12), 1px); margin-top: round(calc(var(--u) * 6), 1px); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
+.x-leg { display: inline-flex; align-items: center; gap: round(calc(var(--u) * 4), 1px); }
 
 /* ---- banners */
 .x-banner {
   position: absolute; left: 50%; top: 22%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; z-index: 22;   /* off the player (critic L §3) */
-  text-shadow: calc(var(--u) * 3) calc(var(--u) * 3) 0 #181425; transition: opacity 0.6s;
+  text-shadow: round(calc(var(--u) * 3), 1px) round(calc(var(--u) * 3), 1px) 0 #181425; transition: opacity 0.6s;
 }
 .x-banner.out { opacity: 0; }
 .x-banner-t { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 36 - 0.01px), var(--fq))); font-weight: 400; letter-spacing: 0; color: var(--amber); animation: x-in 0.35s ease-out; }   /* critic H §5: no wide tracking */
-.x-banner-s { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: var(--text); text-shadow: calc(var(--u) * 1.5) calc(var(--u) * 1.5) 0 #181425; }
+.x-banner-s { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: var(--text); text-shadow: round(calc(var(--u) * 1.5), 1px) round(calc(var(--u) * 1.5), 1px) 0 #181425; }
 /* The small lines keep a one-font-pixel ink outline, so they read over pale paving too (critic H2 §5.1). */
 .x-banner-s, .x-banner-x {
   --fp: max(1px, round(calc(var(--u) * 12 / 8), 1px));
@@ -98,7 +98,7 @@
 @keyframes x-in { from { transform: scale(1.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 /* A banner's follow-up line (a boss kill's rewards): fades in after TEXT_LANE.banner.extraDelay (inline delay). */
 .x-banner-x {
-  margin-top: calc(var(--u) * 5); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: #8ce06a;
+  margin-top: round(calc(var(--u) * 5), 1px); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: #8ce06a;
   opacity: 0; animation: x-late 0.3s steps(3) forwards;
 }
 @keyframes x-late { to { opacity: 1; } }
@@ -112,11 +112,11 @@
 .x-hud.paused .x-prompt, .x-hud.paused .x-edge { opacity: 0.35; animation: none; }
 /* Loot icon flying into its HUD chip. */
 .x-fly { position: absolute; left: 0; top: 0; z-index: 26; pointer-events: none; }
-.x-res .ricon, .x-chip .ricon { margin-right: calc(var(--u) * 1); }
+.x-res .ricon, .x-chip .ricon { margin-right: round(calc(var(--u) * 1), 1px); }
 
 /* Tab map: centred, legend wraps under the map instead of widening the box. */
 .x-bigbox { width: max-content; max-width: 96%; display: flex; flex-direction: column; align-items: center; }
 .x-bigtitle { align-self: stretch; }
-.x-legend { width: calc(var(--u) * 636); justify-content: center; }
+.x-legend { width: round(calc(var(--u) * 636), 1px); justify-content: center; }
 
 .x-banner { width: max-content; max-width: 92%; }

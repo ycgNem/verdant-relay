@@ -37,6 +37,12 @@ Two generations of art live side by side:
   `src/ui/fonts/vr-glyphs.ttf`, and the HUD clock's Silkscreen Bold "4" by `src/ui/fonts/vr-clock.ttf` (both built by
   `tools/make_glyph_font.py` on the 8-unit grid; edit the bitmaps there, re-run, and add new code points to the
   `unicode-range` in style.css). A symbol not in the font falls back to a blurry system glyph: add it to the script.
+  `npm run check:glyphs` (`tools/check_glyphs.py`) fails when a UI string uses a character neither Tiny5 nor the glyph
+  font draws, or when GLYPHS and the unicode-range disagree.
+- **UI text on whole pixels** (critic M2): layout lengths are `round(calc(var(--u) * N), 1px)` (font sizes keep their
+  own formula); equal grid columns `round(down, …)`; never centre text with `translate(-50%)` — pin it (`pinWhole`),
+  nudge a centred panel (`snapBox`) or snap a centred one-line label (`snapLine`, ui.js). Sub-pixel x positions put a
+  half-intensity column beside every glyph stem.
 - **All UI text follows the HUD text grid** (critic M): design size N ≥ 12 everywhere (one font pixel per world texel:
   16 px at 720p, 24 px at 1080p), never below 2 font pixels (16 device px) at any window size; sub-heads N ≥ 19.
   Silkscreen at regular weight only for headlines (its Bold fills the counters: "♥ORKBENCH"). Text over the world has a

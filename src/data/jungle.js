@@ -53,6 +53,8 @@ export const EMISSIVE = {
     seed_carrier: [[25, 40]], ruin_guard: [[185, 200]], seedling: [[25, 45]],
     thorn_stalker: [[40, 60]], bloater: [[40, 60]],
     fx_flare_ember: [[20, 50]],
+    // The open dusk bloom's flower head (Forage.js): its cyan core and violet petals (pixel-art/forage).
+    prop_dusk_bloom_open: [[180, 195], [255, 275]],
   },
   decals: { fungus_glow: 0.5, mushrooms_blue: 0.42 },
   groundAlpha: 200,
@@ -257,10 +259,18 @@ export const SPORES = {
   color: '#c9d65a', color2: '#7f9a3c',   // cloud dither colours (light / dark speckle)
 };
 
-// Foraging (critic N): things the jungle gives back. Generation: JungleGen (world.forage + fungus hosts on
-// world.objects, own RNG stream 'forage' so nothing else in the world moves). Live: src/entities/Forage.js. All of it
-// regrows every morning; nothing persists.
+// Foraging (critic N, N2): things the jungle gives back. Generation: JungleGen (world.forage + fungus hosts on
+// world.objects, own RNG stream 'forage' so nothing else in the world moves; the dusk blooms on 'forage'/'bloom').
+// Live: src/entities/Forage.js. All of it regrows every morning; the map remembers fruit, fungus and blooms you have
+// seen (run.world.forage).
 export const FORAGE = {
+  // No fruit / fungus / bloom under a tree's canopy (critic N2 P1-2): a tree hides what stands up to `depth` tiles
+  // north of its trunk and `half` tiles either side (the ~150 × 150 px canopy cards).
+  canopy: { half: 2.2, depth: 4.5 },
+  // "On screen" round the player (tiles: |dx| ≤ x, up ≤ dz ≤ down; dz > 0 = south): what the map remembers as seen,
+  // and where a glint's reveal / twinkle counts as the player's. `seenEvery`: s between checks.
+  view: { x: 10, up: -5, down: 6.5 },
+  seenEvery: 0.25,
   // Wild fruit bushes beside trails and clearings: hold E to eat (+heal health). Not used up at full health.
   fruit: {
     perRegion: 6, perRegionMult: { canopy_greenhouse: 1.5 },
@@ -268,6 +278,7 @@ export const FORAGE = {
     minRelay: 18, spacing: 12, lairGap: 10, sporeGap: 3,
     siteGap: 4,             // none this close to today's goal / bonus / event props (JungleScene skips them)
     hold: 0.8, heal: 15, radius: 1.3,
+    fullAt: 0.5,            // within this of max health the bush is "not hurt": info prompt, no hold (critic N2 P2-4)
     burst: ['#f77622', '#63c74d'],   // orange fruit + leaf green when eaten
     fullToastEvery: 2.5,    // s between "you are not hurt" toasts while E stays held
   },
@@ -277,6 +288,7 @@ export const FORAGE = {
     logHosts: 0,            // + the nearest-to-trail generated logs (0: on a log the fungus card floated over foliage)
     sporeGap: 3,            // no host this close to a spore pod (a swing at the fungus popped the pod)
     nearOpen: 3, minRelay: 14, spacing: 8,
+    lairGap: 10,            // none this close to a boss lair (= BOSS.clearProps.radius: a harvest woke the boss, critic N2 P1-1)
     yield: 1,               // Biofiber, × Run.lootMults().biofiber, rounded, min 1
     hitRadius: { stump: 0.5, log: 0.7 },   // machete reach on the host (centre 0.2 tiles north of its anchor)
     hint: 1.6,              // the "hit the fungus" prompt shows this close, until the first harvest of the run
@@ -286,13 +298,30 @@ export const FORAGE = {
   },
   // Glints in the brush: a gold sparkle in a thicket / bramble tile is old salvage; cut the plant and it spills Scrap.
   glint: {
-    chance: { thicket: 0.003, bramble: 0.012 },   // per uncut tile, rolled per day
-    scrap: { thicket: [2, 4], bramble: [4, 7] },   // × Run.lootMults().scrap × the JUNGLE.lootDistance multiplier
+    chance: { thicket: 0.0035, bramble: 0.012 },   // per uncut tile, rolled per day
+    scrap: { thicket: [3, 5], bramble: [6, 9] },   // × Run.lootMults().scrap × the JUNGLE.lootDistance multiplier
+    minAmt: 3,              // never less than this after the multipliers (critic N2: "+1 Scrap" taught players to ignore them)
     minReturn: 12,          // none within this of the Relay or an activated pylon
     clear: 2,               // none within this of a container, trail tile or site centre
-    show: 8, every: [1.6, 2.6],   // sparkle range (tiles) and interval (s, random in range)
-    color: '#fee761', size: 7 / 32, life: 0.12, y: 0.35,
+    edge: 8,                // none in the dark map-edge band (critic N2 P2-6)
+    show: 8, every: [1.2, 2.0],   // sparkle range (tiles) and interval (s, random in range)
+    // The sparkle: a gold star at 2× the spark star (18 px: never a 1–2 px firefly blink), then a white glint
+    // `twinkle[0]` s later at `twinkle[1]` size; `y` tiles up.
+    color: '#fee761', size: 18 / 32, life: 0.22, twinkle: [0.1, 9 / 32, '#ffffff'], y: 0.35,
+    sound: 6,               // the soft twinkle (sfx glint_twinkle) plays with a sparkle within this many tiles, on screen
     burst: ['#fee761', '#feae34'],
+  },
+  // Dusk blooms (critic N §rank 4, N2 rec. 3): rare plants in site clearings away from the Relay. Closed by day; they
+  // open (and glow: EMISSIVE.keys.prop_dusk_bloom_open) once `openLeft` s of daylight are left; hold E → +intel
+  // (carried) and +research (counted at the summary, like a bonus task). Back every morning.
+  bloom: {
+    count: 3, minRelay: 30, lairGap: 10, spacing: 24,
+    clear: 3,               // at least this far from a site centre, container, pylon, lore / relic spot, fruit bush or fungus stump
+    openLeft: 70,           // s of daylight left when they open
+    hold: 1, radius: 1.3, intel: 1, research: 5,
+    nearToast: 14,          // the first bloom to open within this many tiles (per run) gets a toast + chime
+    pollen: { every: [0.5, 1.1], range: 12, color: '#b09cf5', color2: '#2ce8f5' },   // drifting motes off an open bloom
+    burst: ['#b09cf5', '#2ce8f5'],
   },
 };
 

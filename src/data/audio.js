@@ -723,6 +723,11 @@ export const SOUNDS = {
     { w: 'triangle', notes: [0, 7], base: 76, step: 0.07, at: 0.25, dur: 0.15, vol: 0.4 }] },
   coins: { vol: 0.12, gap: 0.1, layers: [
     { w: 'fm', f: 2500, ratio: 2.76, index: 1, index2: 0.1, dur: 0.12, n: [4, 6], every: [0.04, 0.07], nvar: 0.2 }] },
+  // A glint in the brush sparkling near you (Forage.js, critic N2): a high, soft two-note tink, panned. Not `glint`
+  // (that is the enemy wind-up tell's low metallic shing).
+  glint_twinkle: { vol: 0.035, near: 6, gap: 0.3, send: 0.4, layers: [
+    { w: 'triangle', f: 2637, dur: 0.05, a: 0.005 },
+    { w: 'triangle', f: 3520, at: 0.045, dur: 0.09, a: 0.005, vol: 0.6 }] },
   push_held: { vol: 0.15, send: 0.35, duck: 0.3, pri: 2, layers: [
     { w: 'sine', f: 110, f2: 55, dur: 0.4, vol: 0.5 },
     { w: 'triangle', notes: [0, 4, 7], base: 57, step: 0.05, dur: 1.1, a: 0.03, hold: 0.2, lp: 2200, vol: 0.4 },

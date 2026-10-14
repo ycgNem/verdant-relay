@@ -25,9 +25,13 @@ export const MAP_MARKERS = {
   relic: { color: '#fee761', core: '#ffffff', shape: 'star', size: 1.5, label: 'Relic (strongbox / shrine)' },
   cache: { color: '#fee761', shape: 'dot', size: 0.75, label: 'Hidden cache (compass)' },
   lore: { color: '#2ce8f5', shape: 'dot', size: 0.7, label: 'Data log' },
+  // Foraging (src/entities/Forage.js, critic N2): what you have seen stays on the map; grey once used today.
+  forage_fruit: { color: '#f77622', shape: 'dot', size: 0.8, label: 'Wild fruit (seen)' },
+  forage_fungus: { color: '#e4a672', shape: 'dot', size: 0.75, label: 'Fungus stump (seen)' },
+  forage_bloom: { color: '#9d8cff', core: '#2ce8f5', shape: 'dot', size: 1.05, label: 'Dusk bloom (seen)' },
 };
 // Draw order: small first, the player last.
-const ORDER = ['container', 'cache', 'lore', 'pylon_off', 'optional', 'relic', 'boss', 'ford', 'pylon_on', 'relay', 'objective', 'player'];
+const ORDER = ['forage_fungus', 'forage_fruit', 'forage_bloom', 'container', 'cache', 'lore', 'pylon_off', 'optional', 'relic', 'boss', 'ford', 'pylon_on', 'relay', 'objective', 'player'];
 // The skull marker (shape 'skull'): 5 × 5 cells, 1 = bone, 2 = eye / tooth gap (left dark).
 const SKULL = ['01110', '11111', '12121', '11111', '01010'];
 // Markers that stick to the minimap rim when they are outside it.
@@ -253,7 +257,7 @@ export class JungleMap {
           edge = true;
         }
       }
-      drawMarker(g, m.type, px, py, unit, { a: m.a, scale: edge ? 0.8 : 1 });
+      drawMarker(g, m.type, px, py, unit, { a: m.a, scale: edge ? 0.8 : 1, dim: m.dim });
     }
   }
 
@@ -322,31 +326,59 @@ export class JungleMap {
     g.drawImage(this.fog, ox, oz, this.W * ppt, this.W * ppt);
     const unit = Math.max(4, Math.min(9, Math.round(ppt * 1.4)), Math.round(Math.min(w, h) / 90));
     const e = unit * 1.5;
-    if (labels?.length) this._labels(g, labels, (mx, mz) => [ox + mx * ppt, oz + mz * ppt], w, h, Math.ceil(e));
     this._markers(g, markers, (mx, mz) => [ox + mx * ppt, oz + mz * ppt], unit, time, { box: [e, e, w - e, h - e] });
+    // Place names after the markers (critic M2 P1-4): placed so they never cover another name or any marker.
+    if (labels?.length) {
+      const toPx = (mx, mz) => [ox + mx * ppt, oz + mz * ppt];
+      this._labels(g, labels, toPx, w, h, Math.ceil(e), markerRects(markers, toPx, unit, [e, e, w - e, h - e]));
+    }
   }
 
   /**
-   * Place names over the map (under the markers): pale text, a one-font-pixel dark outline, whole device pixels.
-   * Critic M: on the UI text grid (N 12 on the 360-unit-high canvas, at least 2 font pixels), lifted above the
-   * marker (`lift` = its half size) so markers never paint over the name, left-aligned at a rounded x (centred
-   * canvas text on an odd width lands on a half pixel).
+   * Place names over the map (over the markers, never on one): pale text, a one-font-pixel dark outline, whole
+   * device pixels. Critic M: on the UI text grid (N 12 on the 360-unit-high canvas, at least 2 font pixels),
+   * left-aligned at a rounded x (centred canvas text on an odd width lands on a half pixel).
+   * Critic M2 P1-4: greedy placement. Labels go in order (`L.first` — e.g. the current goal — then nearest the view
+   * centre); each tries above its anchor, below it, to its right, to its left, clamped inside the canvas, and takes
+   * the first rect (text + one font pixel all round) that overlaps no placed label and no marker rect (`avoid`:
+   * [x0, y0, x1, y1] for every marker drawn, markerRects). No free slot: the name waits for a closer zoom.
    */
-  _labels(g, labels, toPx, w, h, lift = 0) {
+  _labels(g, labels, toPx, w, h, lift = 0, avoid = []) {
     const k = Math.max(2, Math.round(h / 240));
     const fs = 8 * k;
     g.font = `${fs}px 'VR Glyphs', Tiny5, monospace`;
     g.textAlign = 'left';
     g.textBaseline = 'bottom';
-    for (const L of labels) {
-      let [px, py] = toPx(L.x, L.z);
-      px = Math.round(px - g.measureText(L.text).width / 2); py = Math.round(py - lift - k);
-      if (px < -400 || py < 0 || px > w + 100 || py > h + fs) continue;
+    const placed = [];
+    const hit = (r) => avoid.some((a) => r[0] < a[2] && r[2] > a[0] && r[1] < a[3] && r[3] > a[1])
+      || placed.some((a) => r[0] < a[2] && r[2] > a[0] && r[1] < a[3] && r[3] > a[1]);
+    const items = labels.map((L) => { const [ax, ay] = toPx(L.x, L.z); return { L, ax, ay, d: (L.first ? -1e9 : 0) + Math.hypot(ax - w / 2, ay - h / 2) }; })
+      .filter((it) => it.ax > -w * 0.5 && it.ax < w * 1.5 && it.ay > -fs && it.ay < h + fs * 2)
+      .sort((a, b) => a.d - b.d);
+    for (const { L, ax, ay } of items) {
+      const tw = Math.ceil(g.measureText(L.text).width);
+      const slots = [
+        [ax - tw / 2, ay - lift - k],               // above (baseline = text bottom)
+        [ax - tw / 2, ay + lift + k + fs],          // below
+        [ax + lift + k, ay + fs / 2],               // right of it
+        [ax - lift - k - tw, ay + fs / 2],          // left of it
+      ];
+      let spot = null;
+      for (const [sx, sy] of slots) {
+        const px = Math.round(Math.max(k, Math.min(w - tw - k, sx))), py = Math.round(sy);
+        if (py - fs < k || py > h - k) continue;
+        const r = [px - k, py - fs - k, px + tw + k, py + k];
+        if (!hit(r)) { spot = [px, py, r]; break; }
+      }
+      if (!spot) continue;
+      const [px, py, r] = spot;
+      placed.push(r);
       g.fillStyle = INK;
       for (const [dx, dy] of [[-k, 0], [k, 0], [0, -k], [0, k], [k, k], [-k, k], [k, -k], [-k, -k]]) g.fillText(L.text, px + dx, py + dy);
       g.fillStyle = '#ead4aa';
       g.fillText(L.text, px, py);
     }
+    this._labelRects = { placed, avoid };   // (for the layout audit: no placed rect may meet another or a marker)
   }
 
   /** A small legend icon canvas for marker `type` (CSS size `css` px). */
@@ -359,4 +391,29 @@ export class JungleMap {
     drawMarker(g, type, n / 2, n / 2, Math.round(n / 2.4), { a: -Math.PI / 2 });
     return c;
   }
+}
+
+/**
+ * Screen rects [x0, y0, x1, y1] (device px, outline included) of every marker the big map draws — any type in
+ * MAP_MARKERS, so new marker kinds are avoided by the place names too (critic M2 P1-4). Markers outside `box` are
+ * skipped, except the rim kinds, which stick to its edge (as in _markers).
+ */
+function markerRects(markers, toPx, unit, box) {
+  const out = [];
+  const [x0, y0, x1, y1] = box;
+  for (const m of markers || []) {
+    const st = MAP_MARKERS[m.type];
+    if (!st) continue;
+    let [px, py] = toPx(m.x, m.z);
+    let scale = 1;
+    if (px < x0 || py < y0 || px > x1 || py > y1) {
+      if (!RIM.has(m.type)) continue;
+      px = Math.max(x0, Math.min(x1, px)); py = Math.max(y0, Math.min(y1, py));
+      scale = 0.8;
+    }
+    const s = Math.max(2, Math.round(unit * st.size * scale));
+    const half = Math.ceil(s / 2 + 1) + Math.max(1, Math.round(unit / 5));
+    out.push([Math.round(px) - half, Math.round(py) - half, Math.round(px) + half, Math.round(py) + half]);
+  }
+  return out;
 }

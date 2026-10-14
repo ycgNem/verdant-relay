@@ -282,6 +282,14 @@ Wave C — the jungle gets content (critic J M3–M5, M7, N2, N4; critic L UX)
       each day; any cutter spills 2–7 Scrap × finds × distance, via `world.onCut`). Decoys toned down: fern mushroom
       clumps 8% → 3%, district cog / bolt / berry decals halved. Art: `prop_fruit_bush(_bare)`, `prop_stump_fungus` /
       `prop_stump_bare`, `prop_fungus_log_overlay`. Debug: `debug.forage()`, `debug.gotoForage(kind, n)`
+- [x] Foraging round 2 (critic N2, `critique/critic_N2.md`): fungus stumps keep 10 tiles from boss lairs (a harvest
+      woke the Brood Hive); no fruit / fungus / bloom under a tree canopy (`FORAGE.canopy`); whole-number fruit heals
+      and prompt ("+1 health" at 99 HP), an info line with no hold at full health; glints pay 3–5 / 6–9 Scrap (min 3),
+      none in the dark map-edge band, an 18-px gold star + white twinkle, `sfx glint_twinkle` on screen, `coins` on
+      reveal, and a Feral cutting one far away no longer spends your first-glint line; the map remembers fruit, fungus
+      and blooms you have seen (`run.world.forage`, grey once used today). New: **dusk blooms** (3 per jungle in far
+      site clearings, own `forage`/`bloom` stream; open and glow with 70 s of daylight left; hold E 1 s → +1 Intel and
+      +5 Research). Art: `prop_dusk_bloom_closed` / `_open` / `_spent`, `fol_log` repainted without fungus
 - [x] Legibility pass (critic M, `critique/critic_M.md`): the HUD's text grid game-wide (design size N ≥ 12, never
       below 16 px: body 24 px at 1080p, 16 px at 720p, no 8-px text left; sub-heads N 19); the night side panel 200 →
       236 units (`DEFENSE_VIEW.view.x1` 714) with the hint dock, tags and tower names wrapping instead of clipping,
@@ -293,6 +301,28 @@ Wave C — the jungle gets content (critic J M3–M5, M7, N2, N4; critic L UX)
       sits beside the cards; night prep's zap line on night 1 only, readiness in two short lines; map place names
       above their markers; balanced wrapping. A "Large text" setting was tried (×1.5) and left out: the night panel,
       summary and briefing cards overflow at 1280×720 and 1920×945
+- [x] Legibility round 2 (critic M2, `critique/critic_M2.md`; shots `.playwright-mcp/legib2/`): night prep lists each
+      path as icon chips (icon + ×N, name / role / NEW in the tooltip, NEW an amber corner dot) **before** a one-line
+      danger, the coach hint docks under the paths, no subtitle, the night-1 zap line in the body, trades on one row,
+      "Your defense" hidden while picking / placing a tower, build cards' line in the tooltip, a visible "▾ more" cue
+      (every enemy type on both paths visible at 1920×945 / 1280×720 / 1024×600, nights 1, 4, 6); workbench cards'
+      prose in the tooltip (no scroller at 1024); headings a step above body (N 19: card names, `.scr h3`, path heads,
+      boss name, results values, research branch / node names); research nodes name-on-top (no mid-word breaks),
+      branch lines wrap; summary Intel / Research as "You got" chips (no cut line); "Details ▾" / footer labels
+      nowrap; HUD label column auto; the GOAL strip shows the step + count. **Whole pixels:** every layout
+      `calc(var(--u) * N)` in `src/ui/*.css` is `round(…, 1px)` (913 values), equal grids use `round(down)` tracks,
+      centred banners / tags / the GOAL strip are pinned (`pinWhole`), centred panels nudged (`snapBox`), centred
+      one-line labels snapped (`snapLine`): fractional-x text runs at 1920×945 briefing 66/69 → 0, night prep 70/71 →
+      0, summary 71/73 → 6, results 38/38 → 4, title 14/15 → 0, explore 25/26 → 1, workbench 87/93 → 0. Big-map names
+      placed greedily (above / below / right / left, never on another name or any marker kind, drawn over markers).
+      `vr-glyphs.ttf` +34 symbols (the skill / unlock / recipe / tower icons, § ½, 🔒 via a format-12 cmap): CDP finds
+      only Tiny5 / Silkscreen / VR Glyphs on the skill picker and the Codex; `npm run check:glyphs`
+      (`tools/check_glyphs.py`) fails on any UI-string character neither font draws. `--ol` on the boss bar, the
+      briefing head / footer and the other 1-px panel shadows. **Large text still left out** (prototyped as a one-step
+      `--ts` on every font size at 1920×945): the summary card (335 / 175 px) and its bars' labels clip, the workbench
+      (624 / 547) and Collection research (766 / 678) scroll, briefing card rows overprint, the night panel's second
+      path drops below the fold and the trade row overflows. Needs: a two-column summary, workbench tabs, one research
+      branch per tab, label-above-value briefing rows, a wider night panel at Large
 
 ### Next (deferred from the round-2 critics — start here)
 Economy and pacing

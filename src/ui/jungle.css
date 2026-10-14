@@ -12,16 +12,16 @@
 
 /* ---- top-left column: the panel (HP, stamina + med kits, carried loot, carried relics), then the coach line */
 .j-tlcol {
-  position: absolute; left: calc(var(--u) * 8); top: calc(var(--u) * 8); z-index: 21;
-  display: flex; flex-direction: column; align-items: flex-start; gap: calc(var(--u) * 5); pointer-events: none;
+  position: absolute; left: round(calc(var(--u) * 8), 1px); top: round(calc(var(--u) * 8), 1px); z-index: 21;
+  display: flex; flex-direction: column; align-items: flex-start; gap: round(calc(var(--u) * 5), 1px); pointer-events: none;
 }
 .j-tl {
-  position: relative; width: calc(var(--u) * 204);
-  padding: calc(var(--u) * 5) calc(var(--u) * 7); background: rgba(24, 20, 37, 0.74);
+  position: relative; width: round(calc(var(--u) * 204), 1px);
+  padding: round(calc(var(--u) * 5), 1px) round(calc(var(--u) * 7), 1px); background: rgba(24, 20, 37, 0.74);
 }
-.j-row { display: flex; align-items: center; gap: calc(var(--u) * 5); margin-bottom: calc(var(--u) * 4); }
-.j-row .x-lbl { width: calc(var(--u) * 46); flex: none; font-size: var(--hud-f); line-height: 1; }
-.j-tl .x-hpbar { height: calc(var(--u) * 15); min-width: 0; }
+.j-row { display: flex; align-items: center; gap: round(calc(var(--u) * 5), 1px); margin-bottom: round(calc(var(--u) * 4), 1px); }
+.j-row .x-lbl { width: auto; min-width: round(calc(var(--u) * 46), 1px); white-space: nowrap; flex: none; font-size: var(--hud-f); line-height: 1; }
+.j-tl .x-hpbar { height: round(calc(var(--u) * 15), 1px); min-width: 0; }
 /* The HP number: on the text grid, with a one-font-pixel dark outline so it reads on green, yellow or red. */
 .j-tl .x-hpbar .barlbl {
   --fp: calc(var(--hud-f) / 8);
@@ -29,20 +29,20 @@
   text-shadow: var(--fp) 0 0 #181425, calc(var(--fp) * -1) 0 0 #181425, 0 var(--fp) 0 #181425, 0 calc(var(--fp) * -1) 0 #181425,
     var(--fp) var(--fp) 0 #181425, calc(var(--fp) * -1) var(--fp) 0 #181425, var(--fp) calc(var(--fp) * -1) 0 #181425, calc(var(--fp) * -1) calc(var(--fp) * -1) 0 #181425;
 }
-.j-stambar { flex: 1; height: calc(var(--u) * 8); min-width: 0; }
+.j-stambar { flex: 1; height: round(calc(var(--u) * 8), 1px); min-width: 0; }
 .j-st { color: var(--amber); }
-.j-meds { display: inline-flex; align-items: center; gap: calc(var(--u) * 1); font-size: var(--hud-f); }
-.j-lootrow { display: flex; flex-wrap: wrap; gap: calc(var(--u) * 3); }
-.x-res.j-res { padding: calc(var(--u) * 1) calc(var(--u) * 3); gap: calc(var(--u) * 2); font-size: var(--hud-f); }
+.j-meds { display: inline-flex; align-items: center; gap: round(calc(var(--u) * 1), 1px); font-size: var(--hud-f); }
+.j-lootrow { display: flex; flex-wrap: wrap; gap: round(calc(var(--u) * 3), 1px); }
+.x-res.j-res { padding: round(calc(var(--u) * 1), 1px) round(calc(var(--u) * 3), 1px); gap: round(calc(var(--u) * 2), 1px); font-size: var(--hud-f); }
 
 /* ---- top-right corner: round minimap; its ring is the daylight left (--day 1 → 0) */
 .j-tr {
-  position: absolute; right: calc(var(--u) * 8); top: calc(var(--u) * 8); width: calc(var(--u) * 120);
+  position: absolute; right: round(calc(var(--u) * 8), 1px); top: round(calc(var(--u) * 8), 1px); width: round(calc(var(--u) * 120), 1px);
   display: flex; flex-direction: column; align-items: center; text-shadow: var(--ol);
 }
 .j-ring {
-  --day: 1; position: relative; width: calc(var(--u) * 96); height: calc(var(--u) * 96); border-radius: 50%; box-sizing: border-box;
-  padding: calc(var(--u) * 3);
+  --day: 1; position: relative; width: round(calc(var(--u) * 96), 1px); height: round(calc(var(--u) * 96), 1px); border-radius: 50%; box-sizing: border-box;
+  padding: round(calc(var(--u) * 3), 1px);
   background: conic-gradient(#fee761 calc(var(--day) * 360deg), rgba(24, 20, 37, 0.85) 0);
   box-shadow: 0 0 0 calc(var(--u) * 1) #181425;
 }
@@ -53,11 +53,11 @@
   opacity: 0.86; background: rgba(11, 10, 18, 0.55);
 }
 .j-tabkey {
-  position: absolute; left: calc(var(--u) * -8); bottom: calc(var(--u) * -4); margin: 0;
+  position: absolute; left: round(calc(var(--u) * -8), 1px); bottom: round(calc(var(--u) * -4), 1px); margin: 0;
   font-size: var(--hud-f); line-height: 1.1; background: #181425;
 }
 /* the clock: a pixel sun (a moon after sunset) and the time left */
-.j-clock { display: flex; align-items: center; gap: calc(var(--u) * 4); margin-top: calc(var(--u) * 3); }
+.j-clock { display: flex; align-items: center; gap: round(calc(var(--u) * 4), 1px); margin-top: round(calc(var(--u) * 3), 1px); }
 .j-sun {
   flex: none; display: inline-block; width: calc(var(--tx) * 12); height: calc(var(--tx) * 12);
   background-repeat: no-repeat; background-position: 0 0; background-size: calc(var(--tx) * 24) calc(var(--tx) * 12);
@@ -73,7 +73,7 @@
 .j-daylbl.amber { color: var(--amber); }
 .j-daylbl.bad { color: var(--danger); }
 .j-district {
-  max-width: calc(var(--u) * 130); text-align: center; line-height: 1.2; color: var(--text);   /* #a9b6cc was 2.2:1 on dirt */
+  max-width: round(calc(var(--u) * 130), 1px); text-align: center; line-height: 1.2; color: var(--text);   /* #a9b6cc was 2.2:1 on dirt */
   font-size: var(--hud-f);
   text-shadow: var(--ol);
 }
@@ -82,35 +82,35 @@
 
 /* ---- bottom: one slim objective strip */
 .j-strip {
-  position: absolute; left: 50%; bottom: calc(var(--u) * 6); transform: translateX(-50%);
-  display: flex; align-items: center; gap: calc(var(--u) * 8); max-width: calc(var(--u) * 700); white-space: nowrap;
-  padding: calc(var(--u) * 3) calc(var(--u) * 8); background: rgba(24, 20, 37, 0.72);
-  border: calc(var(--u) * 1) solid #3a4466; border-radius: calc(var(--u) * 3);
+  position: absolute; left: 50%; bottom: round(calc(var(--u) * 6), 1px); transform: translateX(-50%);
+  display: flex; align-items: center; gap: round(calc(var(--u) * 8), 1px); max-width: round(calc(var(--u) * 700), 1px); white-space: nowrap;
+  padding: round(calc(var(--u) * 3), 1px) round(calc(var(--u) * 8), 1px); background: rgba(24, 20, 37, 0.72);
+  border: round(calc(var(--u) * 1), 1px) solid #3a4466; border-radius: round(calc(var(--u) * 3), 1px);
   font-size: var(--hud-f); line-height: 1.1; text-shadow: var(--ol);
 }
 .j-objk { color: var(--amber); font-size: var(--hud-f); }
 .j-step { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .j-step .x-step { color: var(--text); }
 .x-step.claim { color: var(--good); text-decoration: none; }
-.j-dir { display: inline-flex; align-items: center; gap: calc(var(--u) * 3); }
+.j-dir { display: inline-flex; align-items: center; gap: round(calc(var(--u) * 3), 1px); }
 .j-dir.obj { color: var(--amber); }
-.j-dir.ford { color: #c8e4f0; padding-left: calc(var(--u) * 8); border-left: 1px solid #3a4466; }
-.j-dir.ext { color: var(--accent); padding-left: calc(var(--u) * 8); border-left: 1px solid #3a4466; }
+.j-dir.ford { color: #c8e4f0; padding-left: round(calc(var(--u) * 8), 1px); border-left: 1px solid #3a4466; }
+.j-dir.ext { color: var(--accent); padding-left: round(calc(var(--u) * 8), 1px); border-left: 1px solid #3a4466; }
 .j-dir .x-dirarrow { font-size: var(--hud-f); color: inherit; }
 .j-opts { color: #c47bff; }
 .j-opts:empty { display: none; }
 
 /* The interaction prompt sits just above the strip. */
-.jungle-ui .x-prompt { bottom: calc(var(--u) * 36); }
+.jungle-ui .x-prompt { bottom: round(calc(var(--u) * 36), 1px); }
 .jungle-ui .x-ptext { font-size: var(--hud-f); }
 
 /* Off-screen arrows: positioned by their top-left corner (JungleScene._edgeArrow). */
-.jungle-ui .x-edge { width: calc(var(--u) * 34); height: calc(var(--u) * 34); }
+.jungle-ui .x-edge { width: round(calc(var(--u) * 34), 1px); height: round(calc(var(--u) * 34), 1px); }
 .x-edge.crate { color: var(--amber); }
 
 /* Banners stay in the upper band (~22% of the height), off the player and clear of the corner HUD: at most 410 units
    wide, so they never reach the top-left column (panel, coach line, toasts: 8 + 260 units) — critic H2 §5.1. */
-.jungle-ui .x-banner { max-width: calc(var(--u) * 410); }
+.jungle-ui .x-banner { max-width: round(calc(var(--u) * 410), 1px); }
 .jungle-ui .x-banner-t { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 30 - 0.01px), var(--fq))); line-height: 1.05; }
 /* An area boss's name: one beat (its HUD bar waits for it, AreaBosses._updateBar), in the bar's red. */
 .jungle-ui .x-banner.boss .x-banner-t { color: #ff6a5a; }
@@ -133,25 +133,25 @@
 
 /* ---- big map (Tab): the day is paused while it is open */
 .jungle-ui .x-bigmap { cursor: default; }
-.jungle-ui .x-bigbox { width: calc(var(--u) * 760); max-width: 96%; padding: calc(var(--u) * 8) calc(var(--u) * 10); box-sizing: border-box; }
-.jungle-ui .x-bigtitle { align-self: stretch; margin-bottom: calc(var(--u) * 5); }
+.jungle-ui .x-bigbox { width: round(calc(var(--u) * 760), 1px); max-width: 96%; padding: round(calc(var(--u) * 8), 1px) round(calc(var(--u) * 10), 1px); box-sizing: border-box; }
+.jungle-ui .x-bigtitle { align-self: stretch; margin-bottom: round(calc(var(--u) * 5), 1px); }
 .jungle-ui .x-bigcanvas {
-  width: 100%; height: calc(var(--u) * 360); image-rendering: pixelated; display: block; cursor: grab; touch-action: none;
-  border: calc(var(--u) * 1) solid #3a4466; box-sizing: border-box;
+  width: 100%; height: round(calc(var(--u) * 360), 1px); image-rendering: pixelated; display: block; cursor: grab; touch-action: none;
+  border: round(calc(var(--u) * 1), 1px) solid #3a4466; box-sizing: border-box;
 }
 .jungle-ui .x-bigcanvas.drag { cursor: grabbing; }
 .j-paused {
   color: var(--amber); font-size: var(--hud-f); letter-spacing: 0;
-  border: 1px solid var(--amber); border-radius: calc(var(--u) * 2); padding: 0 calc(var(--u) * 4);
+  border: 1px solid var(--amber); border-radius: round(calc(var(--u) * 2), 1px); padding: 0 round(calc(var(--u) * 4), 1px);
 }
 .j-bigfoot {
-  align-self: stretch; display: flex; justify-content: space-between; align-items: flex-start; gap: calc(var(--u) * 10);
-  margin-top: calc(var(--u) * 5); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq)));
+  align-self: stretch; display: flex; justify-content: space-between; align-items: flex-start; gap: round(calc(var(--u) * 10), 1px);
+  margin-top: round(calc(var(--u) * 5), 1px); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq)));
 }
 .j-bigsteps { line-height: 1.35; }
 .j-bighelp { text-align: right; white-space: nowrap; }
 .jungle-ui .x-legend { width: auto; align-self: stretch; justify-content: flex-start; }
-.x-legicon { width: calc(var(--u) * 12); height: calc(var(--u) * 12); image-rendering: pixelated; }
+.x-legicon { width: round(calc(var(--u) * 12), 1px); height: round(calc(var(--u) * 12), 1px); image-rendering: pixelated; }
 /* While the big map is open the world is frozen: hide the live overlays that would sit on top of it. */
 .j-mapopen .toasts, .j-mapopen .x-edge, .j-mapopen .x-prompt, .j-mapopen .hint, .j-mapopen .j-mark { visibility: hidden; }
 .j-tl, .j-tr, .j-strip, .j-coach { transition: opacity 0.15s steps(2); }
@@ -162,10 +162,10 @@
 @keyframes j-tired { 50% { box-shadow: 0 0 0 calc(var(--u) * 1) var(--danger); background: rgba(228, 59, 68, 0.35); } }
 .j-coach {
   position: relative;
-  display: flex; align-items: flex-start; gap: calc(var(--u) * 6); width: max-content; max-width: calc(var(--u) * 260); box-sizing: border-box;
-  padding: calc(var(--u) * 5) calc(var(--u) * 10); background: rgba(24, 20, 37, 0.9);
-  border: calc(var(--u) * 2) solid var(--accent); border-radius: calc(var(--u) * 3);
-  font-size: var(--hud-f); line-height: 1.3; text-shadow: 1px 1px 0 #000;
+  display: flex; align-items: flex-start; gap: round(calc(var(--u) * 6), 1px); width: max-content; max-width: round(calc(var(--u) * 260), 1px); box-sizing: border-box;
+  padding: round(calc(var(--u) * 5), 1px) round(calc(var(--u) * 10), 1px); background: rgba(24, 20, 37, 0.9);
+  border: round(calc(var(--u) * 2), 1px) solid var(--accent); border-radius: round(calc(var(--u) * 3), 1px);
+  font-size: var(--hud-f); line-height: 1.3; text-shadow: var(--ol);
   pointer-events: none;
 }
 .j-coach-t { min-width: 0; }
@@ -173,14 +173,14 @@
    HUD text grid; the top centre is the banners' and the boss bar's. */
 .jungle-ui .toasts.j-toasts {
   --max-toasts: 1;
-  position: static; display: flex; flex-direction: column; align-items: flex-start; gap: calc(var(--u) * 4);
+  position: static; display: flex; flex-direction: column; align-items: flex-start; gap: round(calc(var(--u) * 4), 1px);
 }
 .jungle-ui .j-toasts .toast {
-  width: max-content; max-width: calc(var(--u) * 260); box-sizing: border-box;
-  padding: calc(var(--u) * 4) calc(var(--u) * 9); font-size: var(--hud-f); line-height: 1.3;
+  width: max-content; max-width: round(calc(var(--u) * 260), 1px); box-sizing: border-box;
+  padding: round(calc(var(--u) * 4), 1px) round(calc(var(--u) * 9), 1px); font-size: var(--hud-f); line-height: 1.3;
   background: rgba(24, 20, 37, 0.9); transition: opacity 0.4s steps(3), transform 0.4s steps(3);
 }
-.jungle-ui .j-toasts .toast.out { transform: translateX(calc(var(--u) * -8)); }
+.jungle-ui .j-toasts .toast.out { transform: translateX(round(calc(var(--u) * -8), 1px)); }
 .j-coach .x-dirarrow { font-size: inherit; color: var(--amber); }
 .j-coach b { color: var(--amber); }
 .j-coach .accent { color: var(--accent); }
@@ -190,5 +190,5 @@
 .j-coach.tip.warn { border-color: var(--danger); color: #ffd0d0; }
 .j-coach-n {
   flex: none; color: var(--accent); font-size: var(--hud-f); line-height: 1.2;
-  border: 1px solid var(--accent); border-radius: calc(var(--u) * 2); padding: 0 calc(var(--u) * 4);
+  border: 1px solid var(--accent); border-radius: round(calc(var(--u) * 2), 1px); padding: 0 round(calc(var(--u) * 4), 1px);
 }

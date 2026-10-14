@@ -136,9 +136,64 @@ export function bar(cls = '', color = 'var(--good)') {
     node,
     set(frac, text) {
       fill.style.width = `${Math.max(0, Math.min(1, frac)) * 100}%`;
-      if (text != null) label.textContent = text;
+      if (text != null && label.textContent !== text) {
+        label.textContent = text;
+        requestAnimationFrame(() => snapLine(label));   // the centred number on whole pixels (critic M2 P1-3)
+      }
     },
   };
+}
+
+/**
+ * Centred one-line text on whole pixels (critic M2 P1-3): centring an integer-wide line in a box of the other parity
+ * puts every glyph stem on x.5. Measures where the line starts and pads the box's left by twice the shortfall, which
+ * moves the centred line right by exactly that. Only for centred, one-line content; call after layout.
+ */
+export function snapLine(node) {
+  if (!node?.isConnected) return;
+  node.style.paddingLeft = '';
+  const rg = document.createRange();
+  rg.selectNodeContents(node);
+  const rr = [...rg.getClientRects()].filter((r) => r.width > 0);
+  if (!rr.length || rr.some((r) => Math.abs(r.top - rr[0].top) > 1)) return;
+  const x = Math.min(...rr.map((r) => r.x)), f = x - Math.floor(x);
+  if (f > 0.02 && f < 0.98) node.style.paddingLeft = `${(parseFloat(getComputedStyle(node).paddingLeft) + (Math.ceil(x) - x) * 2).toFixed(3)}px`;
+}
+
+/**
+ * A box centred by its container (grid / flex centring: modals, the settings panel, the big map) on whole pixels
+ * (critic M2 P1-3: an odd leftover put the whole panel, and every line in it, on x.5): nudged by the `translate`
+ * property by the fraction it is off, again whenever it or its container changes size.
+ */
+export function snapBox(node) {
+  if (!node) return node;
+  let ro = null;
+  const snap = () => {
+    if (!node.isConnected) { ro?.disconnect(); return; }
+    node.style.translate = '';
+    const r = node.getBoundingClientRect();
+    if (!r.width) return;
+    const dx = Math.round(r.x) - r.x, dy = Math.round(r.y) - r.y;
+    if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) node.style.translate = `${dx.toFixed(3)}px ${dy.toFixed(3)}px`;
+  };
+  requestAnimationFrame(snap);
+  if (typeof ResizeObserver === 'function') {
+    ro = new ResizeObserver(() => requestAnimationFrame(snap));
+    ro.observe(node);
+    if (node.parentElement) ro.observe(node.parentElement);
+  }
+  return node;
+}
+
+/** snapLine for every centred element under `root` that holds text directly (results, menus). */
+export function snapCentred(root) {
+  if (!root?.isConnected) return;
+  for (const e of root.querySelectorAll('*')) {
+    if (![...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()) && !e.querySelector(':scope > span, :scope > b')) continue;
+    const cs = getComputedStyle(e);
+    if (cs.textAlign !== 'center' || cs.display === 'inline') continue;
+    snapLine(e);
+  }
 }
 
 /** The toast host: the first `.toasts` under `ui` (a scene may place its own, e.g. under the jungle HUD panel). */
@@ -228,6 +283,49 @@ export function setToastsHeld(ui, seconds) {
 }
 
 /**
+ * Pin a centred, absolutely positioned node (CSS `left: X; transform: translate(-50%[, -50%])`) to whole pixels
+ * (critic M2 P1-3: translate(-50%) on an odd width put "SUNSET" on a half pixel, every stem a blurred pair). Takes
+ * the CSS layout box (offsetLeft / offsetTop: the anchor, transforms and running animations ignored) and replaces
+ * the centring transform with integer left / top and a whole-pixel width; again whenever its size changes (a
+ * countdown line). opts.cy: the CSS also centres it vertically (translate(-50%, -50%)). Must be in the document.
+ */
+export function pinWhole(node, opts = {}) {
+  let busy = false;
+  const pin = () => {
+    if (busy || !node.offsetParent || !node.isConnected) return;
+    busy = true;
+    const s = node.style;
+    s.left = s.top = s.transform = s.width = s.right = s.bottom = '';
+    // The used (fractional, border-box) width rounded up, so the text never re-wraps.
+    const w = Math.ceil(parseFloat(getComputedStyle(node).width) - 0.01);
+    const x = node.offsetLeft, y = node.offsetTop, h = node.offsetHeight;
+    s.width = `${w}px`;
+    s.left = `${Math.round(x - w / 2)}px`;
+    s.top = `${Math.round(opts.cy ? y - h / 2 : y)}px`;
+    s.right = s.bottom = 'auto';
+    s.transform = 'none';
+    busy = false;
+  };
+  pin();
+  // Again after its content changes (one re-pin per frame) or it is resized / shown; stops once it leaves the page.
+  let queued = false;
+  const later = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      if (!node.isConnected) { mo?.disconnect(); ro?.disconnect(); return; }
+      pin();
+    });
+  };
+  const mo = typeof MutationObserver === 'function' ? new MutationObserver(later) : null;
+  mo?.observe(node, { subtree: true, childList: true, characterData: true });
+  const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(later) : null;
+  ro?.observe(node);
+  return node;
+}
+
+/**
  * A banner in the top-centre band (critic H2 §5.1, TEXT_LANE.banner): one at a time per `parent` (the lane lives on
  * it, so it goes with the scene's HUD). The node is appended to `parent`, gets class `out` for its last `fade` s and
  * is removed. opts:
@@ -259,6 +357,8 @@ function nextBanner(parent) {
   const B = TEXT_LANE.banner;
   L.cur = it;
   parent.append(it.node);
+  // Whole-pixel centring (pinWhole): the jungle's .x-banner is centred both ways, the rest horizontally.
+  pinWhole(it.node, { cy: it.node.classList.contains('x-banner') });
   it.onShow?.();
   if (it.toasts) setToastsHeld(it.toasts, it.time + B.fade);
   it.timers = [
@@ -295,6 +395,7 @@ export function modal(ui, title, body, buttons = [], opts = {}) {
   const box = panel('modal', el('h2', title), body, el('div.row.end', {}, buttons));
   const ov = el('div.overlay.ui-block', {}, box);
   ui.append(ov);
+  snapBox(box);   // whole pixels (critic M2 P1-3)
   if (opts.keys !== false) modalKeys(ui, ov, buttons.filter(Boolean), opts);
   return ov;
 }
