@@ -32,8 +32,16 @@ Two generations of art live side by side:
   has a 1-texel outline — near-black on open ground, cyan `#5fc8d8` only while a card actually covers its body (the body
   box is sampled against the opaque texels of the cards in front, with hysteresis: `ATMOS.playerOutline.body/hits`).
   Night towers get the same outline in their type colour.
-- UI font: Tiny5, with "~", "8" and "9" (a closed loop: Tiny5's open-topped 9 read as "3", critic K2) overridden by `src/ui/fonts/vr-glyphs.ttf`, and the HUD clock's Silkscreen Bold "4"
-  by `src/ui/fonts/vr-clock.ttf` (both built by `tools/make_glyph_font.py` on the 8-unit grid; edit the bitmaps there and re-run).
+- UI font: Tiny5, with the digits 0–9 (4 px wide on a 5-px advance: Tiny5's 3-wide "8", "0", "6" and "9" blobbed
+  together, critic M), `% / + ~` and the UI symbols (▸ ◂ ▾ ▲ ▼ ▶ ♥ → ϟ ○ ● ☠ ⚠ ✓ ✘ ⚙ ➤ ◆ ★ ☂ ≋ ☀ ❚ …) overridden by
+  `src/ui/fonts/vr-glyphs.ttf`, and the HUD clock's Silkscreen Bold "4" by `src/ui/fonts/vr-clock.ttf` (both built by
+  `tools/make_glyph_font.py` on the 8-unit grid; edit the bitmaps there, re-run, and add new code points to the
+  `unicode-range` in style.css). A symbol not in the font falls back to a blurry system glyph: add it to the script.
+- **All UI text follows the HUD text grid** (critic M): design size N ≥ 12 everywhere (one font pixel per world texel:
+  16 px at 720p, 24 px at 1080p), never below 2 font pixels (16 device px) at any window size; sub-heads N ≥ 19.
+  Silkscreen at regular weight only for headlines (its Bold fills the counters: "♥ORKBENCH"). Text over the world has a
+  one-font-pixel (0.125em) 8-direction ink outline; letter-spacing is a whole font pixel or 0. Contrast ≥ 4.5:1 for
+  anything the player must read (disabled and locked text included).
 - **Jungle HUD on the texel grid** (critic H §5): HUD text is one font pixel per world texel (12 design px: 16 px at
   720p, 24 px at 1080p; the clock 2 font pixels per texel), never mixed densities in one panel; HUD pixel icons (the
   daylight sun / moon `ui_daylight.png`, 2 × 12×12, `pixel-art/ui_daylight/build.py`; the in-world ◆ crate marker)

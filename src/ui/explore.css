@@ -12,33 +12,33 @@
 }
 
 .x-row { display: flex; align-items: center; gap: calc(var(--u) * 6); margin-bottom: calc(var(--u) * 4); }
-.x-lbl { font-weight: bold; color: var(--good); font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
+.x-lbl { font-weight: bold; color: var(--good); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 
 /* ---- health bar, chips, carried-loot chips (laid out by jungle.css) */
 .x-hpbar { flex: 1; height: calc(var(--u) * 16); }
-.x-hpbar .barlbl { font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); }
-.x-chip { font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); white-space: nowrap; }
+.x-hpbar .barlbl { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
+.x-chip { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); white-space: nowrap; }
 
 .x-res {
-  display: flex; align-items: center; gap: calc(var(--u) * 3); color: var(--c); font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq)));
+  display: flex; align-items: center; gap: calc(var(--u) * 3); color: var(--c); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq)));
   background: rgba(58, 68, 102, 0.35); border-radius: calc(var(--u) * 2); padding: calc(var(--u) * 2) calc(var(--u) * 4);
 }
 .x-res b { color: var(--text); }
-.x-res .lbl { font-size: max(var(--fq), round(calc(var(--u) * 9 - 0.01px), var(--fq))); opacity: 0.9; }
-.x-res.zero { opacity: 0.72; }
+.x-res .lbl { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); opacity: 0.9; }
+.x-res.zero { opacity: 1; }   /* the muted number is enough (0.72 made the HUD "0" near-invisible, critic M) */
 .x-res.zero b { color: var(--muted); }
 .x-res.bump { animation: x-bump 0.35s ease-out; }
 @keyframes x-bump { 0% { transform: scale(1.35); background: rgba(254, 174, 52, 0.45); } 100% { transform: scale(1); } }
 
 /* ---- clock */
-.x-time { font-size: max(var(--fq), round(calc(var(--u) * 26 - 0.01px), var(--fq))); font-weight: bold; letter-spacing: round(0.05em, var(--fpx)); }
+.x-time { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 26 - 0.01px), var(--fq))); font-weight: bold; letter-spacing: 0; }
 
 /* ---- objective steps and direction arrows */
 .x-step { line-height: 1.35; color: var(--muted); }
 .x-step.cur { color: var(--text); }
 .x-step.done { color: var(--good); text-decoration: line-through; text-decoration-color: rgba(99, 199, 77, 0.5); }
 
-.x-dirarrow { display: inline-block; color: var(--accent); font-size: max(var(--fq), round(calc(var(--u) * 14 - 0.01px), var(--fq))); }
+.x-dirarrow { display: inline-block; color: var(--accent); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 14 - 0.01px), var(--fq))); }
 
 /* ---- bottom-centre: interaction prompt */
 .x-prompt {
@@ -48,7 +48,7 @@
 .x-ptext {
   display: flex; align-items: center; gap: calc(var(--u) * 8);
   background: rgba(24, 20, 37, 0.88); border: calc(var(--u) * 2) solid var(--amber); border-radius: calc(var(--u) * 3);
-  padding: calc(var(--u) * 4) calc(var(--u) * 10) calc(var(--u) * 4) calc(var(--u) * 5); font-size: max(var(--fq), round(calc(var(--u) * 13 - 0.01px), var(--fq))); text-shadow: 1px 1px 0 #000; white-space: nowrap;
+  padding: calc(var(--u) * 4) calc(var(--u) * 10) calc(var(--u) * 4) calc(var(--u) * 5); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 13 - 0.01px), var(--fq))); text-shadow: var(--ol); white-space: nowrap;
 }
 /* Key cap inside a progress ring: the ring fills while E is held. */
 .x-ring {
@@ -63,7 +63,7 @@
 /* ---- off-screen direction arrows */
 .x-edge {
   position: absolute; left: 0; top: 0; width: calc(var(--u) * 34); height: calc(var(--u) * 34); display: grid; place-items: center;
-  font-size: max(var(--fq), round(calc(var(--u) * 28 - 0.01px), var(--fq))); text-shadow: 0 0 calc(var(--u) * 3) #000, 1px 1px 0 #000; animation: x-pulse 0.9s ease-in-out infinite alternate;
+  font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 28 - 0.01px), var(--fq))); text-shadow: 0 0 calc(var(--u) * 3) #000, 1px 1px 0 #000; animation: x-pulse 0.9s ease-in-out infinite alternate;
 }
 .x-edge.obj { color: var(--amber); }
 .x-edge.ext { color: var(--accent); }
@@ -74,10 +74,10 @@
 /* ---- big map (Tab) */
 .x-bigmap { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(11, 10, 18, 0.55); z-index: 25; }
 .x-bigbox { padding: calc(var(--u) * 10) calc(var(--u) * 12); }
-.x-bigtitle { display: flex; gap: calc(var(--u) * 6); align-items: baseline; margin-bottom: calc(var(--u) * 6); font-size: max(var(--fq), round(calc(var(--u) * 14 - 0.01px), var(--fq))); }
-.x-bigclose { margin-left: auto; font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); }
+.x-bigtitle { display: flex; gap: calc(var(--u) * 6); align-items: baseline; margin-bottom: calc(var(--u) * 6); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 14 - 0.01px), var(--fq))); }
+.x-bigclose { margin-left: auto; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 .x-bigcanvas { display: block; width: calc(var(--u) * 636); image-rendering: pixelated; background: rgba(11, 10, 18, 0.8); }
-.x-legend { display: flex; flex-wrap: wrap; gap: calc(var(--u) * 4) calc(var(--u) * 12); margin-top: calc(var(--u) * 6); font-size: max(var(--fq), round(calc(var(--u) * 10.5 - 0.01px), var(--fq))); }
+.x-legend { display: flex; flex-wrap: wrap; gap: calc(var(--u) * 4) calc(var(--u) * 12); margin-top: calc(var(--u) * 6); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 .x-leg { display: inline-flex; align-items: center; gap: calc(var(--u) * 4); }
 
 /* ---- banners */
@@ -86,8 +86,8 @@
   text-shadow: calc(var(--u) * 3) calc(var(--u) * 3) 0 #181425; transition: opacity 0.6s;
 }
 .x-banner.out { opacity: 0; }
-.x-banner-t { font-size: max(var(--fq), round(calc(var(--u) * 36 - 0.01px), var(--fq))); font-weight: bold; letter-spacing: round(0.04em, var(--fpx)); color: var(--amber); animation: x-in 0.35s ease-out; }   /* critic H §5: no wide tracking */
-.x-banner-s { font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: var(--text); text-shadow: calc(var(--u) * 1.5) calc(var(--u) * 1.5) 0 #181425; }
+.x-banner-t { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 36 - 0.01px), var(--fq))); font-weight: 400; letter-spacing: 0; color: var(--amber); animation: x-in 0.35s ease-out; }   /* critic H §5: no wide tracking */
+.x-banner-s { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: var(--text); text-shadow: calc(var(--u) * 1.5) calc(var(--u) * 1.5) 0 #181425; }
 /* The small lines keep a one-font-pixel ink outline, so they read over pale paving too (critic H2 §5.1). */
 .x-banner-s, .x-banner-x {
   --fp: max(1px, round(calc(var(--u) * 12 / 8), 1px));
@@ -98,7 +98,7 @@
 @keyframes x-in { from { transform: scale(1.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 /* A banner's follow-up line (a boss kill's rewards): fades in after TEXT_LANE.banner.extraDelay (inline delay). */
 .x-banner-x {
-  margin-top: calc(var(--u) * 5); font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: #8ce06a;
+  margin-top: calc(var(--u) * 5); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: #8ce06a;
   opacity: 0; animation: x-late 0.3s steps(3) forwards;
 }
 @keyframes x-late { to { opacity: 1; } }

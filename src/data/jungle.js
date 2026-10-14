@@ -209,7 +209,7 @@ export const DAY = {
   // Relay / pylons, then objectives, then containers. Exception (so a crate right next to a pylon is still
   // reachable): standing within interactPointBlank of a lower-ranked one that is at least
   // interactPointBlankLead closer than the winner picks it instead.
-  interactRank: { extract: 0, pylon: 0, primary: 1, optional: 1, event: 1, container: 2 },
+  interactRank: { extract: 0, pylon: 0, primary: 1, optional: 1, event: 1, container: 2, forage: 3, forage_hint: 4 },
   interactPointBlank: 0.8,
   interactPointBlankLead: 0.6,
   pylonHold: 2.5,
@@ -257,6 +257,45 @@ export const SPORES = {
   color: '#c9d65a', color2: '#7f9a3c',   // cloud dither colours (light / dark speckle)
 };
 
+// Foraging (critic N): things the jungle gives back. Generation: JungleGen (world.forage + fungus hosts on
+// world.objects, own RNG stream 'forage' so nothing else in the world moves). Live: src/entities/Forage.js. All of it
+// regrows every morning; nothing persists.
+export const FORAGE = {
+  // Wild fruit bushes beside trails and clearings: hold E to eat (+heal health). Not used up at full health.
+  fruit: {
+    perRegion: 6, perRegionMult: { canopy_greenhouse: 1.5 },
+    nearOpen: 3,            // within this many tiles of a trail or clearing
+    minRelay: 18, spacing: 12, lairGap: 10, sporeGap: 3,
+    siteGap: 4,             // none this close to today's goal / bonus / event props (JungleScene skips them)
+    hold: 0.8, heal: 15, radius: 1.3,
+    burst: ['#f77622', '#63c74d'],   // orange fruit + leaf green when eaten
+    fullToastEvery: 2.5,    // s between "you are not hurt" toasts while E stays held
+  },
+  // Shelf fungus on old stumps and fallen logs at trail / clearing edges: hit it with the machete for Biofiber.
+  fungus: {
+    newStumps: 26,          // old stumps placed near open ground (the 'forage' RNG stream)
+    logHosts: 0,            // + the nearest-to-trail generated logs (0: on a log the fungus card floated over foliage)
+    sporeGap: 3,            // no host this close to a spore pod (a swing at the fungus popped the pod)
+    nearOpen: 3, minRelay: 14, spacing: 8,
+    yield: 1,               // Biofiber, × Run.lootMults().biofiber, rounded, min 1
+    hitRadius: { stump: 0.5, log: 0.7 },   // machete reach on the host (centre 0.2 tiles north of its anchor)
+    hint: 1.6,              // the "hit the fungus" prompt shows this close, until the first harvest of the run
+    overlay: { log: [0.15, 0.06, 12] },   // the fungus card on a log: [x, z] tiles from its anchor, lifted N texels up its flank
+    burst: ['#63c74d', '#e4a672'],
+    hitStop: 0.04,          // a light hit-stop when the fungus breaks off
+  },
+  // Glints in the brush: a gold sparkle in a thicket / bramble tile is old salvage; cut the plant and it spills Scrap.
+  glint: {
+    chance: { thicket: 0.003, bramble: 0.012 },   // per uncut tile, rolled per day
+    scrap: { thicket: [2, 4], bramble: [4, 7] },   // × Run.lootMults().scrap × the JUNGLE.lootDistance multiplier
+    minReturn: 12,          // none within this of the Relay or an activated pylon
+    clear: 2,               // none within this of a container, trail tile or site centre
+    show: 8, every: [1.6, 2.6],   // sparkle range (tiles) and interval (s, random in range)
+    color: '#fee761', size: 7 / 32, life: 0.12, y: 0.35,
+    burst: ['#fee761', '#feae34'],
+  },
+};
+
 // Spore cloud look (src/world/SporeLook.js, critic H #12): `puffs` puff sprites (spore_puff_1..3), one in the
 // middle and the rest on a ring at ring[0] / ring[1] × the cloud radius, floating height[0..1] tiles up; they pop in
 // from the centre over `grow` s, drift up to ±drift/2 tiles/s, bob a texel, and drop out (outer first) after
@@ -295,7 +334,7 @@ export const REGION_LOOK = {
   overgrown_market: {
     ruins: ['ruin_wall', 'ruin_pillar', 'ruin_car', 'ruin_stairs'], hero: 'ruin_kiosk', pave: 0.7, brushBias: 0.0, pond: 0,
     trees: { kapok: 2, fig: 2, palm: 1, dead: 1 },
-    grade: [1.13, 1.02, 0.84], decals: { pot_shards: 3, seed_pod: 2, berries: 2, bones: 1.5, feathers: 2, cog: 1.5 },
+    grade: [1.13, 1.02, 0.84], decals: { pot_shards: 3, seed_pod: 2, berries: 1, bones: 1.5, feathers: 2, cog: 0.75 },
   },
   flooded_transit: {
     ruins: ['ruin_train', 'ruin_pillar', 'ruin_wall', 'ruin_mast'], hero: 'ruin_platform', pave: 0.5, brushBias: -0.04, pond: -0.1,
@@ -315,7 +354,7 @@ export const REGION_LOOK = {
   data_center: {
     ruins: ['ruin_mast', 'ruin_wall', 'ruin_pillar', 'ruin_statue'], hero: 'ruin_server', pave: 0.85, brushBias: -0.02, pond: 0,
     trees: { dead: 2, fig: 2, kapok: 1 },
-    grade: [0.9, 0.95, 1.16], decals: { bolts: 4, cog: 3.5, tin_puddle: 3, concrete_chunks: 3, slab_mossy: 1.5 },
+    grade: [0.9, 0.95, 1.16], decals: { bolts: 2, cog: 1.75, tin_puddle: 3, concrete_chunks: 3, slab_mossy: 1.5 },
   },
 };
 
@@ -437,6 +476,8 @@ export const SOLID = {
     fol_rock_mossy: [-0.5, -0.3, 0.45, 0, 0.32],
     fol_rubble_ivy: [-0.55, -0.45, 0.45, -0.1, 0.35],
     fol_stump: [0, -0.35, 0, -0.35, 0.55],
+    prop_stump_fungus: [0, -0.35, 0, -0.35, 0.55],     // fungus stumps (critic N, Forage.js): same art size / anchor
+    prop_stump_bare: [0, -0.35, 0, -0.35, 0.55],
     ruin_wall: [-1.0, -0.75, 1.05, -0.15, 0.2],
     ruin_pillar: [0.05, -0.4, 0.05, -0.4, 0.48],
     ruin_train_car: [-1.6, -1.3, 1.45, -0.2, 0.15],

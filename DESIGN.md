@@ -221,11 +221,23 @@ telegraph), then bursts into a dithered cloud (radius 1.9, 5 s): 5 damage every 
 stand in it. Any machete hit pops it at once (the heavy chop reaches about as far as the cloud — and launches it).
 **Safe Hands** halves the damage and stops the drain.
 
+**Foraging** (critic N, `FORAGE` in `src/data/jungle.js`, `src/entities/Forage.js`): the jungle gives back on the verbs
+you already use. All of it is back every morning; nothing is marked on the map.
+- **Wild fruit** grows by the trails: hold E to eat it (+15 health). It's back every morning. (About 6 bushes per area,
+  9 in the Canopy Greenhouse; 0.8 s hold; at full health it isn't used up: "You are not hurt: the fruit will keep".)
+- **Glints in the brush:** a gold sparkle in the undergrowth is old salvage. Cut the plant and it spills Scrap (more in
+  brambles). New ones each day. (~0.3% of thickets, 1.2% of brambles, none near home, a trail or loot; 2–4 / 4–7
+  Scrap × the area's finds × the distance multiplier; any cutter finds them, a Razorback crash too.)
+- **Old stumps** grow shelf fungus: hit it with the machete for Biofiber. It grows back by morning. (26 old
+  stumps at trail and clearing edges, none within 3 tiles of a spore pod; 1 Biofiber × the area's multiplier; the
+  stump stays solid; a swing that only takes fungus costs plant stamina.) Cut undergrowth leaves leaf litter only.
+
 **Loot** (carried until you return): base yields below, rolled per container with that district's multipliers and
 a **distance multiplier**: Scrap ×0.45 within 12 m of the Relay or any pylon, rising to ×0.9 beyond 50 m
 (`JUNGLE.lootDistance`); rare caches closer than 28 m become tool chests. Per site: major 2–4 containers, minor 1–2,
 camp/landmark 0–1, +1 at lost sites. **Budget:** a normal day (objective + ~11 containers + ~20 kills) banks ~70–100
-Scrap (offline estimate over 12 worlds: mean 80, p10 62, p90 101; the Market's ×1.3 sits at the top). Med kits heal 25;
+Scrap (offline estimate over 12 worlds: mean 80, p10 62, p90 101; the Market's ×1.3 sits at the top), plus ~10–15 from
+glints in the brush for a player who cuts toward them (critic N). Med kits heal 25;
 carry at most 2.
 
 | Container | Yield | Hold E |

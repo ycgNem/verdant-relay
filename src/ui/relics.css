@@ -7,7 +7,7 @@
 .rl-sil .rl-pend, .rl-sil .vicon-sprite { filter: brightness(0); opacity: 0.55; }
 .rl-sil.rl-obj .rl-pend { filter: none; opacity: 1; }   /* the art's own object silhouette (relics.js silhouetteUrl) */
 
-.rl-rar { font-family: var(--font-label); font-size: max(var(--fq), round(calc(var(--u) * 9 - 0.01px), var(--fq))); letter-spacing: round(0.06em, var(--fpx)); }
+.rl-rar { font-family: var(--font-label); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); letter-spacing: 0; }
 .rl-C { --rc: #c0cbdc; }
 .rl-R { --rc: #62e0f2; }
 .rl-X { --rc: #e05a9a; }
@@ -21,20 +21,20 @@
 .rl-body { min-width: 0; }
 .rl-name { line-height: 1.25; }
 .rl-name b { color: var(--text); }
-.rl-text { color: #c0cbdc; line-height: 1.3; font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); }
-.rl-down { color: #ff6fb0; line-height: 1.3; font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); }
+.rl-text { color: #c0cbdc; line-height: 1.3; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
+.rl-down { color: #ff6fb0; line-height: 1.3; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 
 .rl-tag {
   display: inline-flex; align-items: center; gap: calc(var(--u) * 3); padding: 0 calc(var(--u) * 4) 0 calc(var(--u) * 1);
   border: 1px solid var(--rc); border-radius: calc(var(--u) * 2); color: var(--text); background: rgba(24, 20, 37, 0.6);
-  font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq)));
+  font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq)));
 }
 .rl-tag.lost { opacity: 0.6; text-decoration: line-through; border-color: var(--danger); }
 
 /* ---- jungle: carried relics under the loot row (top-left panel) */
 .j-relics { display: flex; flex-wrap: wrap; align-items: center; gap: calc(var(--u) * 3); margin-top: calc(var(--u) * 3); }
 .j-relics:empty { display: none; }
-.j-relics .rl-k { color: var(--amber); font-size: max(var(--fq), round(calc(var(--u) * 8 - 0.01px), var(--fq))); }
+.j-relics .rl-k { color: var(--amber); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 .j-relics .rl-icon { border: 1px solid var(--rc); border-radius: calc(var(--u) * 2); background: rgba(11, 10, 18, 0.6); }
 .j-relics .rl-icon.new { animation: rl-pop 0.5s steps(4); }
 @keyframes rl-pop { 0% { transform: scale(1.8); } 100% { transform: scale(1); } }
@@ -54,15 +54,15 @@
   animation: x-in 0.35s ease-out;
 }
 .j-place.out { opacity: 0; }
-.j-place-n { font-family: var(--font-display); color: #ead4aa; letter-spacing: round(0.08em, var(--fpx)); font-size: max(var(--fq), round(calc(var(--u) * 16 - 0.01px), var(--fq))); }
-.j-place-s { color: #a9b6cc; font-size: max(var(--fq), round(calc(var(--u) * 9 - 0.01px), var(--fq))); }
+.j-place-n { font-family: var(--font-display); color: #ead4aa; letter-spacing: 0; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 16 - 0.01px), var(--fq))); }
+.j-place-s { color: #a9b6cc; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 
 /* ---- a data log read in the field (bottom-right, clear of the hints bottom-left; fades) */
 .j-lore {
   position: absolute; right: calc(var(--u) * 8); bottom: calc(var(--u) * 40); z-index: 21; pointer-events: none;
   width: calc(var(--u) * 250); padding: calc(var(--u) * 6) calc(var(--u) * 9); background: rgba(13, 26, 30, 0.92);
   border: calc(var(--u) * 1) solid #2ce8f5; border-radius: calc(var(--u) * 2); line-height: 1.35;
-  font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); transition: opacity 0.6s steps(3);
+  font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); transition: opacity 0.6s steps(3);
 }
 .j-lore.out { opacity: 0; }
 .j-lore-h { color: var(--accent); margin-bottom: calc(var(--u) * 3); }

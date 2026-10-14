@@ -1,10 +1,19 @@
-# Builds src/ui/fonts/vr-glyphs.ttf: a tiny pixel font that overrides a few Tiny5 glyphs that read badly
-# (critic F #15): "~" (Tiny5 draws a flat dash), "8" (a diagonal X-shape that reads as a theta), "4", and "9"
-# (critic K2: its open top read as "3").
-# style.css loads it with a unicode-range in front of Tiny5, so only these characters change.
+# Builds src/ui/fonts/vr-glyphs.ttf: a tiny pixel font that overrides the Tiny5 glyphs that read badly and draws the
+# UI symbols Tiny5 lacks, on Tiny5's own pixel grid.
+#   - Digits (critic M): Tiny5's are 3 px wide, so 8/0/B/6/9 blob together ("88" read as two dominoes). Here they are
+#     4 px wide on a 5-px advance ("1" is 3 wide), with "%", "/" and "+" to match. (Before that "8" read as a theta
+#     and the open "9" as "3": critic F #15, K2.)
+#   - "~" (Tiny5 draws a flat dash).
+#   - UI symbols (critic M): arrows, triangles, diamonds, circles, stars, ticks, crosses, heart, zap, skull, warning,
+#     gear, pause bar, leaf, umbrella, waves, sun, and the dashes, minus, dots and times sign. Without them the browser
+#     drew Consolas / Segoe UI Symbol: blurry vector glyphs at the wrong weight and baseline (and different again on
+#     Mac/Linux). A symbol used in UI text that is not here still falls back: add a bitmap below and its code point to
+#     the unicode-range in src/ui/style.css.
+# style.css loads it with a unicode-range in front of Tiny5 (and behind Silkscreen in the label / display stacks), so
+# only these characters change.
 #
 # Metrics match Tiny5 (measured in the browser): 8-unit em (here 1 pixel = 100 units, unitsPerEm 800),
-# ascent 7 px, descent 2 px, cap height 5 px, digits 3 px wide on a 4 px advance.
+# ascent 7 px, descent 2 px, cap height 5 px.
 # Pure standard library (no fontTools): writes a minimal TrueType (glyf) font.
 #
 #   python tools/make_glyph_font.py
@@ -15,30 +24,298 @@ PX = 100
 UPM = 800
 ASC, DESC = 7 * PX, -2 * PX
 
-# Glyph bitmaps: rows from the cap top (5 rows; row 4 sits on the baseline). '#' = ink.
+# Glyph bitmaps: (advance, rows). Rows from the top (5 rows = the cap height; a 6th or 7th row reaches up into
+# Tiny5's ascent); the last row sits on the baseline. '#' = ink.
+# Symbols that sit at mid-height (dots, dashes) keep the full 5-row frame so their height is explicit.
 GLYPHS = {
-    '8': (4, ['###',
-              '#.#',
+    # ---- digits: 4 wide on a 5-px advance (critic M)
+    '0': (5, ['.##.',
+              '#..#',
+              '#..#',
+              '#..#',
+              '.##.']),
+    '1': (5, ['..#.',
+              '.##.',
+              '..#.',
+              '..#.',
+              '.###']),
+    '2': (5, ['.##.',
+              '#..#',
+              '..#.',
+              '.#..',
+              '####']),
+    '3': (5, ['###.',
+              '...#',
+              '.##.',
+              '...#',
+              '###.']),
+    '4': (5, ['#..#',
+              '#..#',
+              '####',
+              '...#',
+              '...#']),
+    '5': (5, ['####',
+              '#...',
+              '###.',
+              '...#',
+              '###.']),
+    '6': (5, ['.##.',
+              '#...',
+              '###.',
+              '#..#',
+              '.##.']),
+    '7': (5, ['####',
+              '...#',
+              '..#.',
+              '.#..',
+              '.#..']),
+    '8': (5, ['.##.',
+              '#..#',
+              '.##.',
+              '#..#',
+              '.##.']),
+    '9': (5, ['.##.',
+              '#..#',
+              '.###',
+              '...#',
+              '.##.']),
+    '%': (6, ['##..#',
+              '##.#.',
+              '..#..',
+              '.#.##',
+              '#..##']),
+    '/': (5, ['...#',
+              '..#.',
+              '..#.',
+              '.#..',
+              '#...']),
+    '+': (4, ['...',
+              '.#.',
               '###',
-              '#.#',
-              '###']),
-    '4': (4, ['#.#',
-              '#.#',
-              '###',
-              '..#',
-              '..#']),
-    # Tiny5's "9" (.#./#.#/.##/..#/##.) has an open top-left and reads as "3" at HUD size ("94" → "34" on the
-    # Relay bar, critic K2 §4): a closed loop like the "8" above.
-    '9': (4, ['###',
-              '#.#',
-              '###',
-              '..#',
-              '###']),
+              '.#.',
+              '...']),
     '~': (5, ['....',
               '.#.#',
               '#.#.',
               '....',
               '....']),
+    # ---- punctuation Tiny5's web subset lacks (or draws off-grid)
+    '·': (3, ['..',      # middle dot
+                   '..',
+                   '.#',
+                   '..',
+                   '..']),
+    '•': (4, ['...',     # bullet
+                   '.##',
+                   '.##',
+                   '...',
+                   '...']),
+    '×': (4, ['...',     # times
+                   '#.#',
+                   '.#.',
+                   '#.#',
+                   '...']),
+    '−': (4, ['...',     # minus
+                   '...',
+                   '###',
+                   '...',
+                   '...']),
+    '–': (5, ['....',    # en dash
+                   '....',
+                   '####',
+                   '....',
+                   '....']),
+    '—': (7, ['......',  # em dash
+                   '......',
+                   '######',
+                   '......',
+                   '......']),
+    '…': (6, ['.....',   # ellipsis
+                   '.....',
+                   '.....',
+                   '.....',
+                   '#.#.#']),
+    # ---- arrows and pointers
+    '→': (6, ['.....',   # right arrow
+                   '...#.',
+                   '#####',
+                   '...#.',
+                   '.....']),
+    '▸': (4, ['#..',     # small right triangle
+                   '##.',
+                   '###',
+                   '##.',
+                   '#..']),
+    '▶': (4, ['#..',     # right triangle
+                   '##.',
+                   '###',
+                   '##.',
+                   '#..']),
+    '◂': (4, ['..#',     # small left triangle
+                   '.##',
+                   '###',
+                   '.##',
+                   '..#']),
+    '◀': (4, ['..#',     # left triangle
+                   '.##',
+                   '###',
+                   '.##',
+                   '..#']),
+    '▾': (6, ['.....',   # small down triangle
+                   '#####',
+                   '.###.',
+                   '..#..',
+                   '.....']),
+    '▼': (6, ['.....',   # down triangle
+                   '#####',
+                   '.###.',
+                   '..#..',
+                   '.....']),
+    '▴': (6, ['.....',   # small up triangle
+                   '..#..',
+                   '.###.',
+                   '#####',
+                   '.....']),
+    '▲': (6, ['.....',   # up triangle
+                   '..#..',
+                   '.###.',
+                   '#####',
+                   '.....']),
+    '➤': (6, ['#....',   # arrowhead
+                   '###..',
+                   '.####',
+                   '###..',
+                   '#....']),
+    # ---- shapes
+    '◆': (6, ['..#..',   # black diamond
+                   '.###.',
+                   '#####',
+                   '.###.',
+                   '..#..']),
+    '◇': (6, ['..#..',   # white diamond
+                   '.#.#.',
+                   '#...#',
+                   '.#.#.',
+                   '..#..']),
+    '◈': (6, ['..#..',   # diamond in diamond
+                   '.#.#.',
+                   '#.#.#',
+                   '.#.#.',
+                   '..#..']),
+    '●': (6, ['.###.',   # black circle
+                   '#####',
+                   '#####',
+                   '#####',
+                   '.###.']),
+    '○': (6, ['.###.',   # white circle
+                   '#...#',
+                   '#...#',
+                   '#...#',
+                   '.###.']),
+    '■': (5, ['....',    # black square
+                   '####',
+                   '####',
+                   '####',
+                   '####']),
+    '★': (6, ['..#..',   # black star
+                   '..#..',
+                   '#####',
+                   '.###.',
+                   '.#.#.']),
+    '✶': (6, ['..#..',   # six-pointed star
+                   '#.#.#',
+                   '.###.',
+                   '#.#.#',
+                   '..#..']),
+    # ---- marks
+    '✓': (6, ['.....',   # check
+                   '....#',
+                   '...#.',
+                   '#.#..',
+                   '.#...']),
+    '✔': (6, ['.....',   # heavy check
+                   '....#',
+                   '...#.',
+                   '#.#..',
+                   '.#...']),
+    '✘': (6, ['#...#',   # heavy ballot x
+                   '.#.#.',
+                   '..#..',
+                   '.#.#.',
+                   '#...#']),
+    '✗': (6, ['#...#',   # ballot x
+                   '.#.#.',
+                   '..#..',
+                   '.#.#.',
+                   '#...#']),
+    '✚': (6, ['..#..',   # heavy cross
+                   '..#..',
+                   '#####',
+                   '..#..',
+                   '..#..']),
+    '☐': (6, ['#####',   # ballot box
+                   '#...#',
+                   '#...#',
+                   '#...#',
+                   '#####']),
+    # ---- icons
+    '♥': (6, ['.#.#.',   # heart
+                   '#####',
+                   '#####',
+                   '.###.',
+                   '..#..']),
+    'ϟ': (4, ['..#',     # koppa: the Relay's zap bolt
+                   '.#.',
+                   '###',
+                   '.#.',
+                   '#..']),
+    '☠': (6, ['.###.',   # skull
+                   '#.#.#',
+                   '#####',
+                   '.###.',
+                   '.#.#.']),
+    '⚠': (8, ['...#...', # warning: 7 rows (Tiny5's ascent), a solid triangle with the "!" cut out
+                   '..###..',
+                   '..#.#..',
+                   '.##.##.',
+                   '.#####.',
+                   '###.###',
+                   '#######']),
+    '⚙': (6, ['.#.#.',   # gear
+                   '#####',
+                   '##.##',
+                   '#####',
+                   '.#.#.']),
+    '❚': (3, ['##',      # heavy vertical bar (pause is two of them)
+                   '##',
+                   '##',
+                   '##',
+                   '##']),
+    '❦': (6, ['...##',   # floral heart: a leaf
+                   '.####',
+                   '####.',
+                   '.##..',
+                   '#....']),
+    '❧': (6, ['...##',   # rotated floral heart: a leaf
+                   '.####',
+                   '####.',
+                   '.##..',
+                   '#....']),
+    '☂': (6, ['.###.',   # umbrella
+                   '#####',
+                   '..#..',
+                   '..#..',
+                   '.##..']),
+    '≋': (6, ['.#..#',   # triple tilde (rain, fog): two waves
+                   '#.##.',
+                   '.....',
+                   '.#..#',
+                   '#.##.']),
+    '☀': (6, ['#.#.#',   # sun
+                   '.###.',
+                   '#####',
+                   '.###.',
+                   '#.#.#']),
 }
 
 # src/ui/fonts/vr-clock.ttf (critic G #10): the HUD clock is Silkscreen Bold, whose "4" is a filled block
@@ -126,7 +403,8 @@ def build(path, glyphs=GLYPHS, family='VR Glyphs'):
     os2 += bytes(10)                                         # panose
     os2 += struct.pack('>IIII', 1, 0, 0, 0)                  # unicode ranges (Basic Latin)
     os2 += b'VRLY'
-    os2 += struct.pack('>HHH', 0x0040, 0x0034, 0x007E)        # fsSelection REGULAR, first/last char
+    cps = [ord(c) for c in glyphs]
+    os2 += struct.pack('>HHH', 0x0040, min(0x0034, *cps), min(max(0x007E, *cps), 0xFFFF))   # fsSelection REGULAR, first/last char
     os2 += struct.pack('>hhhHH', ASC, DESC, 0, ASC, -DESC)    # typo asc/desc/gap, win asc/desc
     os2 += struct.pack('>II', 1, 0)                          # code page ranges (Latin 1)
     os2 += struct.pack('>hhHHH', 4 * PX, 5 * PX, 0, 0x20, 0)  # xHeight, capHeight, default/break char, maxContext

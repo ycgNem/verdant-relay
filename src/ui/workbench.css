@@ -14,19 +14,19 @@
   display: flex; flex-direction: column; gap: calc(var(--u) * 2); padding: calc(var(--u) * 6) calc(var(--u) * 8);
   border: calc(var(--u) * 2) solid var(--panel-edge); border-top: calc(var(--u) * 3) solid var(--c);
   border-radius: calc(var(--u) * 3); background: linear-gradient(#262b44, #1a1c30);
-  font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); line-height: 1.25;
+  font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); line-height: 1.25;
 }
 .wb-card.done { border-color: #3e8948; border-top-color: var(--c); background: linear-gradient(#1f3328, #18241e); }
 .wb-card.blocked:not(.done) .wb-top, .wb-card.blocked:not(.done) .wb-num { opacity: 0.75; }
 .wb-top { display: flex; align-items: center; gap: calc(var(--u) * 5); }
-.wb-glyph { display: inline-block; min-width: 1.2em; text-align: center; color: var(--c); font-size: max(var(--fq), round(calc(var(--u) * 14 - 0.01px), var(--fq))); }
-.wb-name { color: #fff; font-size: max(var(--fq), round(calc(var(--u) * 12.5 - 0.01px), var(--fq))); }
+.wb-glyph { display: inline-block; min-width: 1.2em; text-align: center; color: var(--c); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 14 - 0.01px), var(--fq))); }
+.wb-name { color: #fff; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12.5 - 0.01px), var(--fq))); }
 .wb-num { color: var(--amber); }
 .wb-line { color: var(--text); }
 .wb-have { color: var(--muted); }
 .wb-have.good { color: var(--good); }
 .wb-foot { display: flex; align-items: center; gap: calc(var(--u) * 6); margin-top: auto; padding-top: calc(var(--u) * 3); }
-.wb-craft { padding: calc(var(--u) * 3) calc(var(--u) * 8); font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); white-space: nowrap; }
+.wb-craft { padding: calc(var(--u) * 3) calc(var(--u) * 8); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); white-space: nowrap; }
 .wb-craft .hotkey { margin-left: calc(var(--u) * 5); }
 .wb-craft.wb-done { color: var(--good); }
 .wb-warn { color: var(--amber); border-top: 1px dashed rgba(254, 174, 52, 0.45); padding-top: calc(var(--u) * 2); }
@@ -34,16 +34,16 @@
 .wb-intro { max-width: calc(var(--u) * 420); color: var(--text); }
 
 /* ---------------------------------------------------------------- night prep: the tower's mod socket */
-.df-modrow { display: flex; flex-direction: column; gap: calc(var(--u) * 3); margin: calc(var(--u) * 3) 0; font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); }
+.df-modrow { display: flex; flex-direction: column; gap: calc(var(--u) * 3); margin: calc(var(--u) * 3) 0; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 .df-modline { display: flex; align-items: center; gap: calc(var(--u) * 5); min-width: 0; }
 .df-modbtns { display: flex; flex-wrap: wrap; align-items: center; gap: calc(var(--u) * 4) calc(var(--u) * 6); }
-.df-modk { color: var(--muted); text-transform: uppercase; letter-spacing: round(0.06em, var(--fpx)); font-family: var(--font-label); font-size: max(var(--fq), round(calc(var(--u) * 9.5 - 0.01px), var(--fq))); }
+.df-modk { color: var(--muted); text-transform: uppercase; letter-spacing: 0; font-family: var(--font-label); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 .df-modchip { display: inline-block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 calc(var(--u) * 5); border: 1px solid var(--c); border-radius: calc(var(--u) * 2); color: #fff; background: rgba(0, 0, 0, 0.3); }
 .df-modic { display: inline-block; min-width: 1em; text-align: center; color: var(--c); margin-right: calc(var(--u) * 2); }
 /* Hand-made recipe icons (icon_craft_<key>, workbench.js craftIcon): whole-number scale, tucked into the chip / button line. */
 .df-modchip .vicon, .df-modbtn .vicon { margin: calc(var(--u) * -2) calc(var(--u) * 2) calc(var(--u) * -2) 0; }
 .df-modnum { color: var(--amber); }
-.btn.df-modbtn { padding: calc(var(--u) * 2) calc(var(--u) * 6); font-size: max(var(--fq), round(calc(var(--u) * 10.5 - 0.01px), var(--fq))); }
+.btn.df-modbtn { padding: calc(var(--u) * 2) calc(var(--u) * 6); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 
 /* ---------------------------------------------------------------- Codex (CollectionScene) */
 .codex-branch { border-left: calc(var(--u) * 3) solid var(--c); }

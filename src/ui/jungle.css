@@ -8,7 +8,7 @@
    pixel per world texel, never smaller than 12 CSS px at 720p; the clock is N = 24 (two font pixels per texel).
    Pixel icons scale by --tx, the world's texel size in CSS px (JungleScene._updateHud). */
 
-.jungle-ui { --hud-f: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
+.jungle-ui { --hud-f: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
 
 /* ---- top-left column: the panel (HP, stamina + med kits, carried loot, carried relics), then the coach line */
 .j-tlcol {
@@ -38,7 +38,7 @@
 /* ---- top-right corner: round minimap; its ring is the daylight left (--day 1 → 0) */
 .j-tr {
   position: absolute; right: calc(var(--u) * 8); top: calc(var(--u) * 8); width: calc(var(--u) * 120);
-  display: flex; flex-direction: column; align-items: center; text-shadow: 1px 1px 0 #000;
+  display: flex; flex-direction: column; align-items: center; text-shadow: var(--ol);
 }
 .j-ring {
   --day: 1; position: relative; width: calc(var(--u) * 96); height: calc(var(--u) * 96); border-radius: 50%; box-sizing: border-box;
@@ -65,17 +65,17 @@
 }
 .x-hud { --tx: 2px; }   /* default; JungleScene sets the real texel size on the HUD root */
 .j-sun.moon { background-position: calc(var(--tx) * -12) 0; }
-.j-time { font-size: max(var(--fq), round(calc(var(--u) * 24 - 0.01px), var(--fq))); line-height: 1; }
+.j-time { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 24 - 0.01px), var(--fq))); line-height: 1; text-shadow: var(--ol); }
 .j-daylbl {
   color: #e8d27a; font-size: var(--hud-f); line-height: 1.2;
-  text-shadow: 1px 0 0 #181425, -1px 0 0 #181425, 0 1px 0 #181425, 0 -1px 0 #181425;
+  text-shadow: var(--ol);   /* one font pixel, 8 directions (critic M P1-3) */
 }
 .j-daylbl.amber { color: var(--amber); }
 .j-daylbl.bad { color: var(--danger); }
 .j-district {
-  max-width: calc(var(--u) * 130); text-align: center; line-height: 1.2; color: #a9b6cc;
+  max-width: calc(var(--u) * 130); text-align: center; line-height: 1.2; color: var(--text);   /* #a9b6cc was 2.2:1 on dirt */
   font-size: var(--hud-f);
-  text-shadow: 1px 0 0 #181425, -1px 0 0 #181425, 0 1px 0 #181425, 0 -1px 0 #181425;
+  text-shadow: var(--ol);
 }
 .x-time.amber { color: var(--amber); }
 .x-time.bad { color: var(--danger); }
@@ -86,7 +86,7 @@
   display: flex; align-items: center; gap: calc(var(--u) * 8); max-width: calc(var(--u) * 700); white-space: nowrap;
   padding: calc(var(--u) * 3) calc(var(--u) * 8); background: rgba(24, 20, 37, 0.72);
   border: calc(var(--u) * 1) solid #3a4466; border-radius: calc(var(--u) * 3);
-  font-size: var(--hud-f); line-height: 1.1; text-shadow: 1px 1px 0 #000;
+  font-size: var(--hud-f); line-height: 1.1; text-shadow: var(--ol);
 }
 .j-objk { color: var(--amber); font-size: var(--hud-f); }
 .j-step { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -111,7 +111,7 @@
 /* Banners stay in the upper band (~22% of the height), off the player and clear of the corner HUD: at most 410 units
    wide, so they never reach the top-left column (panel, coach line, toasts: 8 + 260 units) — critic H2 §5.1. */
 .jungle-ui .x-banner { max-width: calc(var(--u) * 410); }
-.jungle-ui .x-banner-t { font-size: max(var(--fq), round(calc(var(--u) * 30 - 0.01px), var(--fq))); line-height: 1.05; }
+.jungle-ui .x-banner-t { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 30 - 0.01px), var(--fq))); line-height: 1.05; }
 /* An area boss's name: one beat (its HUD bar waits for it, AreaBosses._updateBar), in the bar's red. */
 .jungle-ui .x-banner.boss .x-banner-t { color: #ff6a5a; }
 
@@ -141,12 +141,12 @@
 }
 .jungle-ui .x-bigcanvas.drag { cursor: grabbing; }
 .j-paused {
-  color: var(--amber); font-size: var(--hud-f); letter-spacing: round(0.1em, var(--fpx));
+  color: var(--amber); font-size: var(--hud-f); letter-spacing: 0;
   border: 1px solid var(--amber); border-radius: calc(var(--u) * 2); padding: 0 calc(var(--u) * 4);
 }
 .j-bigfoot {
   align-self: stretch; display: flex; justify-content: space-between; align-items: flex-start; gap: calc(var(--u) * 10);
-  margin-top: calc(var(--u) * 5); font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq)));
+  margin-top: calc(var(--u) * 5); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq)));
 }
 .j-bigsteps { line-height: 1.35; }
 .j-bighelp { text-align: right; white-space: nowrap; }

@@ -2100,6 +2100,30 @@
       39
     ]
   },
+  "prop_fruit_bush": {
+    "file": "prop_fruit_bush.png",
+    "ppu": 32,
+    "anchor": [
+      21,
+      31
+    ]
+  },
+  "prop_fruit_bush_bare": {
+    "file": "prop_fruit_bush_bare.png",
+    "ppu": 32,
+    "anchor": [
+      21,
+      31
+    ]
+  },
+  "prop_fungus_log_overlay": {
+    "file": "prop_fungus_log_overlay.png",
+    "ppu": 32,
+    "anchor": [
+      12,
+      19
+    ]
+  },
   "prop_fuse": {
     "file": "prop_fuse.png",
     "ppu": 32,
@@ -2200,6 +2224,22 @@
     "animFps": {
       "on": 6
     }
+  },
+  "prop_stump_bare": {
+    "file": "prop_stump_bare.png",
+    "ppu": 32,
+    "anchor": [
+      30,
+      49
+    ]
+  },
+  "prop_stump_fungus": {
+    "file": "prop_stump_fungus.png",
+    "ppu": 32,
+    "anchor": [
+      30,
+      49
+    ]
   },
   "prop_supply_drop": {
     "file": "prop_supply_drop.png",

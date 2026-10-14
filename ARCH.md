@@ -173,13 +173,32 @@ Module functions (import from `../core/Assets.js`):
   and creatures with `podTrigger` set pods off. Each cloud draws a dithered edge ring at its true damage radius
   (`SPORES.edgeSteps`: it thins in steps); a tick hurts from the cloud's centre (`hurt(dmg, dx, dz, src)`, no tick while
   rolling) and leaves only `SPORES.tickIframes` of immunity.
+- **Foraging** (critic N; tuning `FORAGE` in `src/data/jungle.js`). Generation (`JungleGen.placeForage`, own stream
+  `subSeed(seed, 'forage')`, after the guided route and before `ensureReachable`, so the main stream and every
+  container / site / lair / pylon stay put): `world.forage` `[{id 'f…', kind: 'fruit', x, z, region}]`, and fungus hosts
+  on `world.objects` (`fungus: true`): the `logHosts` generated logs nearest open ground (0 now) + `newStumps` new
+  `{kind: 'rock', type: 'stump'}` objects within `nearOpen` tiles of a trail / clearing (the rock_stump collider). The
+  old random-scatter 'stump' pick now places a log (its pick and its occupancy footprint are unchanged).
+  `returnDist(world, x, z)` / `returnYield(world, x, z)` (JungleGen exports): distance to the Relay / nearest pylon and
+  the `JUNGLE.lootDistance` multiplier (containers' `yield`, glints).
+  Live: `Forage(scene)` (`src/entities/Forage.js`, `scene.forage`, built after `bosses.build()`): fruit bushes are
+  interactables of kind `'forage'` (`DAY.interactRank.forage` 3: never steals a crate's prompt; skipped within
+  `fruit.siteGap` of today's goal / bonus / event props), visuals `prop_fruit_bush` → `prop_fruit_bush_bare`; fungus
+  stumps are drawn here (`prop_stump_fungus` → `prop_stump_bare`; `JungleWorld._buildCards` skips them via
+  `chunkCards(…, skip)`, the night board still draws the atlas stump), logs keep their card + a
+  `prop_fungus_log_overlay` card; `hittables(out)` pushes `{…, forage: true}` (meleeHit calls `hit()` and leaves it
+  out of the creature `hits`, so it costs plant stamina; ExploreShots ignores it); a one-per-run `forage_hint`
+  interactable (hold 0, `noKey`: the prompt hides its E keycap). Glints: `_rollGlints()` per day (hash of tile, seed,
+  `run.night`) over uncut thicket / bramble; `update(dt)` flashes the gold sparkle (`fx.flash`, no depth test: over
+  the foliage) within `glint.show` tiles; `world.onCut` (set by Forage) spills the Scrap. First-time lines per run in
+  `run.forageSeen`. `info()` = `debug.forage()` → `{fruit, fungus, glints}`; `debug.gotoForage(kind, n)`.
 - `JungleWorld(game, scene3d, data, cutMask)`: chunk streaming (`update(dt, focusX, focusZ)`, `warm(x, z)`), queries
   (`brushAt solidAt deepAt wetAt opaqueAt blockedAt(x, z, throughBrush) levelAt speedAt(x, z, brushFree) inFern shadeAt
   lineOfSight`), movement
   `moveBody(p, dx, dz, r, {throughBrush, onBrush, solid, hit, nudge})` (`solid(tx, tz)` replaces the tile test; `hit` gets
   `{obj}` / `{tx, tz}` of what stopped the body — wall splats; `nudge` = `CONFIG.player.nudge`, the player's corner
   nudge round trunks and brush corners), `blockedCircle`, `addCollider(obj)`, the machete
-  `hitBrush(tx, tz, power)` (→ type cut, −1 nicked, 0 nothing), `setPlayer(px, py, z, x, vis)` for the see-through window
+  `hitBrush(tx, tz, power)` (→ type cut, −1 nicked, 0 nothing; every cut calls `onCut?.(tx, tz, type)`: Forage's glints), `setPlayer(px, py, z, x, vis)` for the see-through window
   (and the player's outline; `vis.userData.outlineOverride` forces a colour, e.g. the perfect-dodge rim),
   `shadeTex` (RG canopy density for PostFx: R full for upright cards, G with walkable trail / clearing tiles spared,
   `ATMOS.trailShade`), `gradeTex` (per-district colour grade, `REGION_LOOK[key].grade`, blurred across borders).
@@ -204,7 +223,7 @@ Module functions (import from `../core/Assets.js`):
   enemy shots / lobs carry `owner` (deflects bat globs back). Leading: lunges and the Feral spear aim ahead of the
   player by `def.lead` / `spear.lead` × the time from the lock to impact (velocity capped at walking speed), and a
   melee wind-up also starts when the player *will be* in reach after it (`CONFIG.expedition.attackers.predict`).
-  Exports `makeCardMaterial`, `chunkCards(world, atlas, cut, x0, z0, w, h)`, `cardMesh(cards, atlas, mat)` (the night map reuses them).
+  Exports `makeCardMaterial`, `chunkCards(world, atlas, cut, x0, z0, w, h, skip)`, `cardMesh(cards, atlas, mat)` (the night map reuses them).
   **Trail x-ray** (critic H2 §3): `JungleWorld._buildTrailMask()` → `trailTex` (1 texel per tile: open trail, not brush,
   not deep water); the card shader (`uTrail`, `uTrailK` = [strength, boost, foot, world size], `uTrailT` = [tree strength,
   tree foot]) dithers out the lower part of a brush card (and, weaker, a tree card's foot) wherever the ground just behind
@@ -471,8 +490,10 @@ puts a banner node in `parent`'s lane: one at a time, a higher `prio` cuts a low
 area boss 2, back home 3), queued ones wait at most `wait` s; while one is up the `toasts` host is held; `.out` at `time`,
 removed after the fade. `bannerBusy(parent)`. JungleScene `_banner(title, sub, { prio, cls, time, extra })` builds one
 (`extra` = a follow-up line fading in `extraDelay` s later: a boss kill's rewards). `showHint(…, { parent })` docks a hint
-in a container instead of floating it (night prep: `DefenseScene.hintDock`, top of the side panel).
-CSS sizes: `calc(var(--u) * N)` = N px on a 960×540 stage (scales with the window; JS: `game.u`). Shared classes in `src/ui/style.css`.
+in a container instead of floating it (night prep: `DefenseScene.hintDock`, top of the side panel). `{ host }` floats it in
+a screen step's root instead of `game.ui`, so it goes when the step re-renders (the summary's skill hint).
+CSS sizes: `calc(var(--u) * N)` = N px on a 960×540 stage (scales with the window; JS: `game.u`). Shared classes in `src/ui/style.css`. Font sizes follow the
+pixel-font grid in style.css (`max(calc(var(--fq) * 2), round(calc(var(--u) * N - 0.01px), var(--fq)))`, N ≥ 12; critic M).
 
 ## Run (`src/core/Run.js`) — the single source of truth
 

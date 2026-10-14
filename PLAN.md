@@ -271,6 +271,29 @@ Wave C — the jungle gets content (critic J M3–M5, M7, N2, N4; critic L UX)
       Colossus slam 8, Relay zap range ring, readiness "strong" only ≤ −2 + the weakest path's top leaker, two-tone
       Relay digits + a closed "9" glyph; HEALTH_MULT N4 7.4 → 6.8 (DESIGN §5 table)
 
+### Stage 8: Legibility and foraging (2026-10-14)
+- [x] Foraging and stump fix (critic N, `critique/critic_N.md`): the sawn-stump pop-in on cut brush is gone (leaf
+      litter only) and the random-scatter stumps are fallen logs now (same main-stream draws: every seed keeps its
+      containers, sites, lairs and pylons). New, from their own `forage` stream (`FORAGE` in `src/data/jungle.js`, live
+      in `src/entities/Forage.js`): **wild fruit** (~6 bushes per area, ×1.5 in the Greenhouse, beside trails: hold E
+      0.8 s for +15 health, kept at full health, back every morning), **shelf fungus** on 26 old stumps at trail edges
+      (logs dropped as hosts: the card floated over foliage; none near spore pods; a machete hit → Biofiber × the area's multiplier, the host stays solid, plant
+      stamina; regrows by morning), **glints in the brush** (gold sparkles in ~0.3% of thickets / 1.2% of brambles, new
+      each day; any cutter spills 2–7 Scrap × finds × distance, via `world.onCut`). Decoys toned down: fern mushroom
+      clumps 8% → 3%, district cog / bolt / berry decals halved. Art: `prop_fruit_bush(_bare)`, `prop_stump_fungus` /
+      `prop_stump_bare`, `prop_fungus_log_overlay`. Debug: `debug.forage()`, `debug.gotoForage(kind, n)`
+- [x] Legibility pass (critic M, `critique/critic_M.md`): the HUD's text grid game-wide (design size N ≥ 12, never
+      below 16 px: body 24 px at 1080p, 16 px at 720p, no 8-px text left; sub-heads N 19); the night side panel 200 →
+      236 units (`DEFENSE_VIEW.view.x1` 714) with the hint dock, tags and tower names wrapping instead of clipping,
+      bars as tall as their labels; `vr-glyphs.ttf` grows 4-wide digits, `% / +` and 42 pixel UI symbols and punctuation (no Consolas
+      / Segoe fallbacks); damage numbers pop in font-grid steps (`JUICE.text.popSteps`) at whole-pixel positions; the
+      stage centred on whole device pixels (a 945-px window had it on a half pixel); one-font-pixel ink outline
+      (`--ol`) on text over the world; Silkscreen headlines at regular weight; contrast fixes (bar labels, hotkey chips
+      on green, disabled 0.7, locked research, the danger box, zero chips); the summary hint lives in its step and
+      sits beside the cards; night prep's zap line on night 1 only, readiness in two short lines; map place names
+      above their markers; balanced wrapping. A "Large text" setting was tried (×1.5) and left out: the night panel,
+      summary and briefing cards overflow at 1280×720 and 1920×945
+
 ### Next (deferred from the round-2 critics — start here)
 Economy and pacing
 - [ ] A median-player economy: real players banked ~17–40 Scrap a day in critic runs vs the sim's 85; re-tune the
@@ -294,6 +317,7 @@ Art
 - [ ] Workbench/Codex/briefing postcards of each district's hero ruin (critic H2 §5); the Flooded platform hero ruin
       reads as a broken wall
 - [ ] Listen pass on the synthesized audio by ear (levels were set by measurement only)
+- [ ] Dusk bloom (critic N rank 4: a rare plant that opens at sunset for +1 Intel): closed / open-with-glowing-core sprite
 
 ## Acceptance checklist
 

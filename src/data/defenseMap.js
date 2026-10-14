@@ -179,7 +179,7 @@ export function laneForAngle(map, angle, deg = false) {
 export const DEFENSE_VIEW = {
   res: [1280, 720],           // legacy fixed internal size (unused once NightCamera drives the zoom)
   woodPlinths: [],            // legacy (maps list their own woodPads)
-  view: { x0: 0, y0: 46, x1: 750, y1: 540 },
+  view: { x0: 0, y0: 46, x1: 714, y1: 540 },   // left of the 236-unit side panel (defense.css .df-side)
   zoom: {
     // Default zoom: the largest k at which the whole field fits the map viewport. When that is only ×1 on a
     // window whose day view is ×3 or more (a browser window on a 1080p screen), ×2 is used if it still

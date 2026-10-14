@@ -182,9 +182,15 @@ export class BriefingScene {
           'This is today\'s trip. Do the <b>goal</b>, open crates for <b>Scrap</b>, then come home. Tonight enemies attack your base, the <b style="color:#2ce8f5">Relay</b>: the Scrap you bring back builds its towers.',
           { style: this._hintSpot(), time: 16 });
       } else {
-        showHint(game, 'briefing_districts',
+        const n = showHint(game, 'briefing_districts',
           'Pick where to go today. Finish an area\'s <b>goal</b> for a <b style="color:#63c74d">reward</b> tonight; every area also adds its <b style="color:#ff6b6b">danger</b> to tonight\'s attack.',
           { style: this._hintSpot(), time: 14 });
+        // Never over the footer (critic M: with the larger type the cards are taller and it covered "Menu").
+        const foot = n && this.root.querySelector('.scr-foot');
+        if (foot) {
+          const over = n.getBoundingClientRect().bottom - (foot.getBoundingClientRect().top - 6 * game.u);
+          if (over > 0) n.style.top = `${Math.round(parseFloat(n.style.top) - over)}px`;
+        }
       }
     }, 500);
   }

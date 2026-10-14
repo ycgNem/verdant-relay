@@ -447,6 +447,7 @@ export class JungleWorld {
     }
     this.cut[i] = 1;
     this._dirty(tx, tz);
+    this.onCut?.(tx, tz, b);   // every cutter comes through here (swings, the thrown machete, Ferals, Razorbacks): Forage's glints
     return b;
   }
 
@@ -690,7 +691,8 @@ export class JungleWorld {
   /** (Re)build the merged card mesh for a chunk. */
   _buildCards(ch) {
     ch.dirtyCards = false;
-    const cards = chunkCards(this.w, this.atlas, this.cut, ch.cx * C, ch.cz * C, C, C);
+    // (fungus stumps are drawn by src/entities/Forage.js: their look changes once harvested)
+    const cards = chunkCards(this.w, this.atlas, this.cut, ch.cx * C, ch.cz * C, C, C, (o) => o.fungus && o.type === 'stump');
     ch.cards?.removeFromParent();
     ch.cards?.geometry.dispose();
     ch.cards = cards.length ? cardMesh(cards, this.atlas, this.cardMat) : null;
@@ -816,8 +818,9 @@ export class JungleWorld {
 /**
  * The cards (undergrowth, cut debris, trees, ruins, rocks) whose ground point lies in the tile rect
  * [x0, x0 + w) × [z0, z0 + h) of a world. Deterministic: the same tile always gets the same sprites.
+ * `skip(o)`: world objects drawn elsewhere (the day's fungus stumps; they keep their collider).
  */
-export function chunkCards(world, A, cut, x0, z0, w, h) {
+export function chunkCards(world, A, cut, x0, z0, w, h, skip = null) {
   const W = world.size;
   const cards = [];
   const snap = (v) => Math.round(v * 32) / 32;
@@ -829,13 +832,13 @@ export function chunkCards(world, A, cut, x0, z0, w, h) {
       if (!base) continue;
       const b = cut && cut[i] ? 0 : base;
       if (!b) {
-        // Cut: leaf debris and a stub where it stood.
+        // Cut: leaf debris (no sawn stump: a machete through a plant leaves leaves, critic N §2B).
         const r = hash2(tx, tz, 71);
-        if (r < 0.06 && base >= BRUSH.thicket) cards.push({ e: A.pick('cutstump', tx, tz, 1), x: snap(tx + 0.3 + hash2(tx, tz, 72) * 0.4), z: snap(tz + 0.55 + hash2(tx, tz, 73) * 0.3), sway: 0, flip: hash2(tx, tz, 74) < 0.5 });
-        else if (r < 0.5) cards.push({ e: A.pick('debris', tx, tz, 1), x: snap(tx + 0.5 + (hash2(tx, tz, 72) - 0.5) * 0.4), z: snap(tz + 0.1 + hash2(tx, tz, 73) * 0.3), sway: 0, flip: hash2(tx, tz, 74) < 0.5 });
+        if (r < 0.5) cards.push({ e: A.pick('debris', tx, tz, 1), x: snap(tx + 0.5 + (hash2(tx, tz, 72) - 0.5) * 0.4), z: snap(tz + 0.1 + hash2(tx, tz, 73) * 0.3), sway: 0, flip: hash2(tx, tz, 74) < 0.5 });
         continue;
       }
-      const fam = b === BRUSH.fern ? (hash2(tx, tz, 5) < 0.08 ? 'mushroom' : 'fern') : b === BRUSH.bramble ? 'bramble' : (hash2(tx, tz, 6) < 0.18 ? 'vine' : 'thicket');
+      // (few decoy mushroom clumps: the shelf fungus on stumps and logs is the real forage, critic N)
+      const fam = b === BRUSH.fern ? (hash2(tx, tz, 5) < 0.03 ? 'mushroom' : 'fern') : b === BRUSH.bramble ? 'bramble' : (hash2(tx, tz, 6) < 0.18 ? 'vine' : 'thicket');
       const n = b === BRUSH.fern ? (hash2(tx, tz, 9) < 0.35 ? 2 : 1) : b === BRUSH.thicket ? 2 : 1 + (hash2(tx, tz, 9) < 0.5 ? 1 : 0);
       for (let k = 0; k < n; k++) {
         const e = A.pick(fam, tx * 7 + k, tz, 13);
@@ -847,7 +850,7 @@ export function chunkCards(world, A, cut, x0, z0, w, h) {
     }
   }
   for (const o of world.objects) {
-    if (o.x < x0 || o.x >= x0 + w || o.z < z0 || o.z >= z0 + h) continue;
+    if (o.x < x0 || o.x >= x0 + w || o.z < z0 || o.z >= z0 + h || skip?.(o)) continue;
     const e = objectEntry(o, A);
     if (!e) continue;
     cards.push({ e, x: o.x, z: o.z, sway: o.kind === 'tree' ? 0.6 : 0, flip: o.flip && o.kind !== 'ruin', phase: o.x * 0.5, kind: o.kind === 'tree' ? 2 : 3 });

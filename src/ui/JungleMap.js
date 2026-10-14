@@ -322,23 +322,28 @@ export class JungleMap {
     g.drawImage(this.fog, ox, oz, this.W * ppt, this.W * ppt);
     const unit = Math.max(4, Math.min(9, Math.round(ppt * 1.4)), Math.round(Math.min(w, h) / 90));
     const e = unit * 1.5;
-    if (labels?.length) this._labels(g, labels, (mx, mz) => [ox + mx * ppt, oz + mz * ppt], w, h);
+    if (labels?.length) this._labels(g, labels, (mx, mz) => [ox + mx * ppt, oz + mz * ppt], w, h, Math.ceil(e));
     this._markers(g, markers, (mx, mz) => [ox + mx * ppt, oz + mz * ppt], unit, time, { box: [e, e, w - e, h - e] });
   }
 
-  /** Place names over the map (under the markers): pale text, dark outline, whole device pixels. */
-  _labels(g, labels, toPx, w, h) {
-    const k = Math.max(1, Math.round(h / 360));
+  /**
+   * Place names over the map (under the markers): pale text, a one-font-pixel dark outline, whole device pixels.
+   * Critic M: on the UI text grid (N 12 on the 360-unit-high canvas, at least 2 font pixels), lifted above the
+   * marker (`lift` = its half size) so markers never paint over the name, left-aligned at a rounded x (centred
+   * canvas text on an odd width lands on a half pixel).
+   */
+  _labels(g, labels, toPx, w, h, lift = 0) {
+    const k = Math.max(2, Math.round(h / 240));
     const fs = 8 * k;
-    g.font = `${fs}px Tiny5, monospace`;
-    g.textAlign = 'center';
+    g.font = `${fs}px 'VR Glyphs', Tiny5, monospace`;
+    g.textAlign = 'left';
     g.textBaseline = 'bottom';
     for (const L of labels) {
       let [px, py] = toPx(L.x, L.z);
-      px = Math.round(px); py = Math.round(py);
-      if (px < -100 || py < 0 || px > w + 100 || py > h + fs) continue;
+      px = Math.round(px - g.measureText(L.text).width / 2); py = Math.round(py - lift - k);
+      if (px < -400 || py < 0 || px > w + 100 || py > h + fs) continue;
       g.fillStyle = INK;
-      for (const [dx, dy] of [[-k, 0], [k, 0], [0, -k], [0, k], [k, k]]) g.fillText(L.text, px + dx, py + dy);
+      for (const [dx, dy] of [[-k, 0], [k, 0], [0, -k], [0, k], [k, k], [-k, k], [k, -k], [-k, -k]]) g.fillText(L.text, px + dx, py + dy);
       g.fillStyle = '#ead4aa';
       g.fillText(L.text, px, py);
     }

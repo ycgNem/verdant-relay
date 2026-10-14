@@ -173,7 +173,7 @@ export class Shots {
         }
         if (s.team === 'player') {
           for (const t of sc.hittables()) {
-            if (t.dead) continue;
+            if (t.dead || t.forage) continue;   // (shelf fungus: the machete in hand only)
             const r = s.radius + t.radius;
             if ((t.x - s.x) ** 2 + (t.z - s.z) ** 2 < r * r) {
               t.hit(s.damage, s.dx, s.dz, s.knockback || 0, 'shot');
@@ -408,7 +408,7 @@ export class Shots {
     const dm = sc.relicsCtl?.meleeMult?.() ?? 1;
     const onHit = sc.player?.bleeds?.onHit;
     for (const t of sc.hittables()) {
-      if (t.dead) continue;
+      if (t.dead || t.forage) continue;   // (shelf fungus: the machete in hand only)
       const key = t.def ? t : `${t.x.toFixed(2)},${t.z.toFixed(2)}`;
       if (set.has(key)) continue;
       const r = b.spec.radius + (t.radius || 0.3);

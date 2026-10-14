@@ -8,6 +8,8 @@ import { el } from './ui.js';
  * opts.style = { left, top, … } places it explicitly (overrides pos).
  * opts.parent = a container to dock it in (class `docked`: it flows in that container instead of floating over
  * the play area — the night map's side panel, critic H2 §5.1).
+ * opts.host = a container to float in instead of game.ui (a screen step's root: the hint goes when the step is
+ * re-rendered or left, so it never lingers over the next step — critic M P1-5).
  * Returns the node, or null if the hint was already seen.
  */
 export function showHint(game, id, html, opts = {}) {
@@ -28,7 +30,7 @@ export function showHint(game, id, html, opts = {}) {
   }[opts.pos || 'top-right'];
   const n = el(`div.hint.ui-block${opts.parent ? '.docked' : ''}`, { html: `${html}<div class="small muted" style="margin-top:4px">click to dismiss</div>`, style: pos });
   n.addEventListener('click', () => n.remove());
-  (opts.parent || game.ui).append(n);
+  (opts.parent || opts.host || game.ui).append(n);
   setTimeout(() => n.remove(), (opts.time ?? 10) * 1000);
   return n;
 }

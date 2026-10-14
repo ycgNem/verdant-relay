@@ -336,6 +336,7 @@ export const JUICE = {
     pop: 0.12,            // seconds of the 1.45 → 1 pop-in
     popScale: 1.45,
     critScale: 1.8,
+    popSteps: [1, 1.5, 2],   // the pop snaps to these font-size multiples (then to the 8-px font grid): crisp glyphs, critic M
     mergeWindow: 0.5,    // repeated damage on one target within this merges into one number
     stackPx: 13,          // vertical step (stage units) when numbers would overlap
   },

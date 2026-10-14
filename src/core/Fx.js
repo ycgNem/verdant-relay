@@ -1290,6 +1290,7 @@ export class Fx {
         live.n.textContent = `${o.prefix || ''}${Math.round(live.value)}`;
         live.t = Math.min(live.t, 0.02);
         live.popT = 0;
+        live.fs = 0;   // re-measure the base size (text and class may have changed)
         if (o.cls) live.n.className = `float ${o.cls}`;
         return live.n;
       }
@@ -1505,7 +1506,21 @@ export class Fx {
       const pk = Math.min(1, t.popT / T.pop);
       const sc = 1 + (t.pop - 1) * (1 - pk);
       t.sx = p.x; t.sy = p.y - t.dy;
-      t.n.style.transform = `translate(${p.x.toFixed(0)}px, ${(p.y - t.dy).toFixed(0)}px) translate(-50%, -50%) scale(${sc.toFixed(2)})`;
+      // Pixel-exact pop (critic M P0-3): the pop is a font-size step on the pixel-font grid (T.popSteps, each size a
+      // whole multiple of --fq), never a fractional scale() that re-samples the glyphs, and the label is centred by
+      // whole pixels from its measured size, never translate(-50%) (half a pixel on an odd width).
+      if (!t.fs) {
+        t.n.style.fontSize = '';
+        t.fs = parseFloat(getComputedStyle(t.n).fontSize) || 16;
+        t.w0 = t.n.offsetWidth; t.h0 = t.n.offsetHeight;
+        t.fsNow = t.fs;
+      }
+      const step = (T.popSteps || [1]).reduce((a, b) => (Math.abs(b - sc) < Math.abs(a - sc) ? b : a));
+      const fq = parseFloat(this.game.stage?.style.getPropertyValue('--fq')) || t.fs / 2;
+      const fs = Math.max(t.fs, Math.round((t.fs * step) / fq) * fq);
+      if (fs !== t.fsNow) { t.fsNow = fs; t.n.style.fontSize = fs === t.fs ? '' : `${fs}px`; }
+      const r = fs / t.fs;
+      t.n.style.transform = `translate(${Math.round(p.x - (t.w0 * r) / 2)}px, ${Math.round(p.y - t.dy - (t.h0 * r) / 2)}px)`;
       t.n.style.opacity = String(1 - Math.max(0, (k - 0.65) / 0.35));
     }
   }

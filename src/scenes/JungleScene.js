@@ -12,7 +12,7 @@
 // (scene.meleeHit). Cutting is noisy: wildlife nearby comes to look.
 //
 // Testers: `vr.game.scene.debug` → teleport(x, z), completeObjective(), giveLoot(), killAll(), timeLeft(s),
-// extract(), die(), reveal(), info().
+// extract(), die(), reveal(), info(), forage(), gotoForage(kind, n).
 
 import * as THREE from 'three';
 import '../ui/explore.css';
@@ -38,6 +38,7 @@ import { Player } from '../entities/Player.js';
 import { ExploreEnemy } from '../entities/ExploreEnemy.js';
 import { Shots } from '../entities/ExploreShots.js';
 import { SporePods } from '../entities/SporePods.js';
+import { Forage } from '../entities/Forage.js';
 import { JungleMap, MAP_MARKERS, drawMarker } from '../ui/JungleMap.js';
 import { MAP_VIEW, HUD, TEXT_LANE } from '../data/hud.js';
 import { el, button, bar, toast, modal, fmtTime, resChip, resIcon, resIconHtml, setToastsPaused, showBanner } from '../ui/ui.js';
@@ -163,6 +164,7 @@ export class JungleScene {
     this._setupOptionals();
     this._setupEvents();
     this.bosses.build();
+    this.forage = new Forage(this);       // wild fruit, shelf fungus, glints in the brush (critic N; after the day's sites)
     this.map = new JungleMap(this.data, this.state.explored);
     this.map.reveal(c.x, c.z, JUNGLE.relayClearing + 6);
     for (const p of this.data.pylons) if (this.state.pylons.has(p.id)) this.map.reveal(p.x, p.z, 6);
@@ -806,6 +808,7 @@ export class JungleScene {
     this.spores?.hittables(out);   // a hit pops a spore pod
     this.bosses?.hittables(out);   // the stationary area bosses
     this.goals?.hittables(out);    // the bloom's spore nests (Purge the bloom)
+    this.forage?.hittables(out);   // shelf fungus on old stumps and logs (`forage`: not a creature hit)
     return out;
   }
 
@@ -831,6 +834,7 @@ export class JungleScene {
     for (const t of this.hittables()) {
       const h = inArc(t.x, t.z, t.radius || 0.3);
       if (!h) continue;
+      if (t.forage) { t.hit(); continue; }   // shelf fungus (Forage.js): a plant, so the swing costs plant stamina
       t.hit(spec.damage * dm, h.dx, h.dz, spec.knockback, src, spec.stagger || 0);
       spec.onHit?.(t);   // the machete kit (src/entities/BladeKit.js): Serrated Edge bleeding
       hits++;
@@ -1295,13 +1299,13 @@ export class JungleScene {
       const run = this.game.run;
       const dawn = run.dawnHp ? run.dawnHp(CONFIG.expedition.deathReturnHp) : CONFIG.expedition.deathReturnHp;
       const body = el('div.col', {},
-        el('p', 'You collapse in the undergrowth, and a Relay drone drags you home.'),
+        el('p.small.muted', 'You collapse in the undergrowth, and a Relay drone drags you home.'),
         lost.length ? el('div', {}, el('p.bad', 'Carried loot lost:'), el('div.resrow', {}, lost)) : el('p.muted', 'You weren\'t carrying anything.'),
         kept.length ? el('div', {}, el('p.good', 'The drone salvaged:'), el('div.resrow', {}, kept)) : null,
         this.relicsCtl?.lostLines(),   // relics you carried are lost (never salvaged)
         this.objectiveDone ? el('p', {}, el('span.good', this.objDef.rewardAtDelivery ? 'Your goal keeps its skill point and its reward (the drone already has it).' : 'Your goal still earns its skill point'),
           this.objDef.rewardAtDelivery ? null : el('span.bad', this.objDef.boon ? ', but its reward tonight needed you home.' : '.')) : null,
-        el('p.muted.small', `You start tomorrow with ${dawn} health. Everything stored at base, and your towers, are safe.`));
+        el('p', `You start tomorrow with ${dawn} health. Everything stored at base, and your towers, are safe.`));   // the consequence: body text (critic M P2-5)
       // Keys too (critic L §2.3): Enter / Space / E / Esc, after a short guard so a key mashed in the fight can't skip it.
       const ov = modal(this.game.ui, 'You went down', body, [button('Back to base', () => this._finish('died'), { cls: 'primary', hotkey: 'Enter' })], { guard: 0.6, extraKeys: [this.game.input.keyFor('interact')] });
       ov.querySelector('h2')?.classList.add('bad');
@@ -1608,6 +1612,7 @@ export class JungleScene {
     this.bosses?.update(dt);    // area bosses and their HP bar
     this.weather?.update(dt);   // rain ripples
     this.spores.update(dt);
+    this.forage?.update(dt);    // glint sparkles
     this.shots.update(dt);
     this._updatePickups(dt);
     this.relicsCtl?.update(dt);   // relics on the ground, shrines, place names
@@ -2154,6 +2159,7 @@ export class JungleScene {
       const verb = typeof t.verb === 'function' ? t.verb() : t.verb;
       const en = t.enabled();
       this._set('pt', h.promptText, 'text', en ? (hold > 0 ? `Hold: ${verb}` : verb) : `${verb} (not yet)`);
+      h.promptRing.style.display = t.noKey ? 'none' : '';   // (a line with no E: the shelf-fungus hint, Forage.js)
       this._set('ptt', h.promptTime, 'text', hold > 0 ? `${Math.max(0, hold - t.progress).toFixed(1)}s` : '');
       const f = hold > 0 ? t.progress / hold : 0;
       h.promptRing.style.background = `conic-gradient(var(--amber) ${Math.round(f * 360)}deg, rgba(58,68,102,0.6) 0deg)`;
@@ -2553,6 +2559,29 @@ export class JungleScene {
       },
       event: () => (this.events || []).map((it) => ({ key: it.key, x: it.x, z: it.z, done: it.done })),
       weather: () => this.weather?.key || null,
+      // Foraging (critic N): today's fruit / fungus hosts / glints; gotoForage stands you 1.5 tiles south of one (fruit: 1)
+      // (a glint: the nearest open tile to that).
+      forage: () => this.forage?.info(),
+      gotoForage: (kind = 'fruit', n = 0) => {
+        const f = this.forage?.info();
+        const t = f?.[kind === 'glint' ? 'glints' : kind]?.[n];
+        if (!t) return null;
+        const x = t.tx != null ? t.tx + 0.5 : t.x, z = t.tz != null ? t.tz + 0.5 : t.z;
+        let p = { x, z: z + (kind === 'fruit' ? 1 : 1.5) };   // (inside the fruit's E radius)
+        if (kind === 'glint') {
+          const W = this.world;
+          let best = null;
+          for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
+            const tx = Math.floor(x) + dx, tz = Math.floor(z) + dz;
+            if ((!dx && !dz) || W.blockedAt(tx, tz, false)) continue;
+            const d = Math.hypot(dx, dz) + (dz > 0 ? 0 : 0.5);   // (south of it first: the camera sees it)
+            if (!best || d < best.d) best = { d, x: tx + 0.5, z: tz + 0.5 };
+          }
+          if (best) p = best;
+        }
+        this.player.pos.set(p.x, 0, p.z); this._placeCamera(0, true);
+        return { kind, x, z, at: { x: p.x, z: p.z } };
+      },
       info: () => ({ pos: { ...this.player.pos }, enemies: this.enemies.length, chunks: this.world.chunks.size, day: this.dayT, objective: this.objKey, target: this._objectiveTarget() }),
     };
   }
@@ -2576,6 +2605,7 @@ export class JungleScene {
     this.bosses?.dispose();
     this.weather?.dispose();
     this.spores?.dispose();
+    this.forage?.dispose();
     this.shots.dispose();
     this.fx.dispose();
     this.ambience.dispose();

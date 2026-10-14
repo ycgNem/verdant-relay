@@ -14,6 +14,9 @@
 //     containers      [{ id, type, x, z, site, hidden, yield }] world loot (opened ones persist in the run);
 //                     yield = Scrap multiplier by distance from the nearest return point
 //     spores          [{ id, x, z, region }]                    spore pods (a hazard; they regrow every day)
+//     forage          [{ id, kind: 'fruit', x, z, region }]     wild fruit bushes (critic N; own 'forage' stream);
+//                     objects with `fungus: true` (old stumps near trails + the nearest-to-trail logs) are
+//                     shelf-fungus hosts (src/entities/Forage.js)
 //     pylons          [{ id, x, z, region }]                    extraction relays (activated ones persist)
 //     relicCaches / shrines / loreSpots   site features (siteFeatures: relic strongboxes at lost majors, a
 //                     shrine per landmark, data logs); sites[].name / .kind = place names (src/data/lore.js)
@@ -29,7 +32,7 @@
 
 import { makeRng, subSeed } from '../core/rng.js';
 import { makeNoise, hash2 } from './noise.js';
-import { JUNGLE, LEVEL, BRUSH, REGION_LOOK, SPORES, GROUND, DAY } from '../data/jungle.js';
+import { JUNGLE, LEVEL, BRUSH, REGION_LOOK, SPORES, GROUND, DAY, FORAGE } from '../data/jungle.js';
 import { footprint, inFootprint } from './Solid.js';
 import { PLACE_NAMES, LANDMARK_NAMES, LORE_SPOTS } from '../data/lore.js';
 import { GUIDE } from '../data/guide.js';
@@ -516,10 +519,14 @@ export function generateWorld(seed, districtKeys, opts = {}) {
     const tx = Math.floor(x), tz = Math.floor(z), i = tz * W + tx;
     if (world.trail[i] || world.site[i] >= 0 || occupied[i] || tileLevelMin(tx, tz) <= LEVEL.mud) continue;
     if (Math.hypot(x - cx, z - cz) < J.relayClearing + 2) continue;
-    const type = rng.pick(['boulder', 'boulder', 'log', 'stump']);
+    // A lone stump deep in the brush read as forage that did nothing (critic N §2): the pick stays (the main stream
+    // draws the same numbers, so every seed keeps its world) but a 'stump' becomes a fallen log. Old stumps now
+    // stand at trail and clearing edges and carry shelf fungus (placeForage).
+    const picked = rng.pick(['boulder', 'boulder', 'log', 'stump']);
+    const type = picked === 'stump' ? 'log' : picked;
     objects.push({ id: `o${oid++}`, kind: 'rock', type, x: Math.round(x * 32) / 32, z: Math.round(z * 32) / 32, r: type === 'log' ? 0.5 : 0.45, flip: rng.chance(0.5) });
     markCircle(x, z, 0.8);
-    markFoot(objects[objects.length - 1], 0.4);
+    markFoot({ ...objects[objects.length - 1], type: picked }, 0.4);   // (the picked footprint: later placements don't shift)
     B[i] = BRUSH.none;
   }
 
@@ -659,18 +666,19 @@ export function generateWorld(seed, districtKeys, opts = {}) {
   clearLairProps(world, seed, occupied, B, (tx, tz) => tileLevelMin(tx, tz) <= LEVEL.mud);
   world.occupied = occupied;
   // Far from a return point (the Relay or any pylon) = richer: `yield` multiplies a container's Scrap.
-  const LD = J.lootDistance;
   for (const c of world.containers) {
-    const d = Math.min(Math.hypot(c.x - cx, c.z - cz), ...world.pylons.map((p) => Math.hypot(c.x - p.x, c.z - p.z)));
-    const k = Math.max(0, Math.min(1, (d - LD.near) / (LD.far - LD.near)));
-    c.yield = Math.round((LD.mult[0] + (LD.mult[1] - LD.mult[0]) * k) * 100) / 100;
-    if (c.type === 'cache' && d < LD.cacheMin) c.type = 'chest';
+    c.yield = returnYield(world, c.x, c.z);
+    if (c.type === 'cache' && returnDist(world, c.x, c.z) < J.lootDistance.cacheMin) c.type = 'chest';
   }
 
   // The guided first run (critic L §2.1, the guided day must pay): pick the guided goal site (GUIDE.district's
   // region, a trail-side major/minor site GUIDE.objectiveDist from the Relay; JungleScene prefers it) and line the
   // trail there with a few crates (GUIDE.routeCrates), each in a cleared nook beside the trail.
   if (opts.guided) guidedRoute(world, sites, districtKeys, occupied, makeRng(subSeed(seed, 'guided')));
+
+  // Foraging (critic N, FORAGE): shelf-fungus hosts and wild fruit, from their own stream after everything else is
+  // placed (nothing above moves) and before reachability (so a new stump never walls a site off).
+  placeForage(world, makeRng(subSeed(seed, 'forage')), { occupied, openDist, markFoot, nextId: () => `o${oid++}`, wet: (tx, tz) => tileLevelMin(tx, tz) <= LEVEL.mud });
 
   // Make sure the Relay clearing and every site/pylon are clear of brush at their centres.
   for (const s of sites) clearDisc(world, s.x, s.z, s.type === 'pylon' ? 1.6 : 1.2);
@@ -698,7 +706,7 @@ export function generateWorld(seed, districtKeys, opts = {}) {
   // Spore pods too (a hazard you should see coming), but only the near clearing.
   const props = [...world.containers.map((c) => ({ x: c.x, z: c.z, hidden: !!c.hidden })), ...world.pylons.map((p) => ({ x: p.x, z: p.z, hidden: false })),
     ...(world.spores || []).map((p) => ({ x: p.x, z: p.z, hidden: true })),
-    ...[...(world.relicCaches || []), ...(world.shrines || []), ...(world.loreSpots || [])].map((p) => ({ x: p.x, z: p.z, hidden: false }))];
+    ...[...(world.relicCaches || []), ...(world.shrines || []), ...(world.loreSpots || []), ...(world.forage || [])].map((p) => ({ x: p.x, z: p.z, hidden: false }))];
   for (const p of props) {
     const R = p.hidden ? PF.clear : PF.low;
     for (let tz = Math.floor(p.z - 0.5); tz <= Math.floor(p.z + R); tz++) for (let tx = Math.floor(p.x - R); tx <= Math.floor(p.x + R); tx++) {
@@ -711,6 +719,97 @@ export function generateWorld(seed, districtKeys, opts = {}) {
   }
   world.objects = world.objects.filter((o) => o.kind !== 'tree' || !props.some((p) => o.z > p.z && o.z < p.z + PF.tree && Math.abs(o.x - p.x) < PF.treeX));
   return world;   // (world.lairs: chosen above, after the site features)
+}
+
+/** Distance (tiles) from (x, z) to the nearest return point: the Relay or any pylon. */
+export function returnDist(world, x, z) {
+  return Math.min(Math.hypot(x - world.center.x, z - world.center.z), ...world.pylons.map((p) => Math.hypot(x - p.x, z - p.z)));
+}
+
+/** Loot distance multiplier at (x, z) (JUNGLE.lootDistance): far from a return point = richer. Containers' `yield`, glints. */
+export function returnYield(world, x, z) {
+  const LD = JUNGLE.lootDistance;
+  const k = Math.max(0, Math.min(1, (returnDist(world, x, z) - LD.near) / (LD.far - LD.near)));
+  return Math.round((LD.mult[0] + (LD.mult[1] - LD.mult[0]) * k) * 100) / 100;
+}
+
+/**
+ * Foraging (critic N, FORAGE in src/data/jungle.js), from its own RNG stream `rng`:
+ *   - fungus hosts: the FORAGE.fungus.logHosts generated logs nearest a trail / clearing, plus newStumps old stumps
+ *     ({ kind: 'rock', type: 'stump' }: the rock_stump collider) on free ground within nearOpen tiles of a trail or
+ *     clearing (not on it); all marked `fungus: true`, at least `spacing` apart. Forage.js draws the stumps.
+ *   - world.forage: wild fruit bushes per district region (perRegion × perRegionMult), open ground within nearOpen
+ *     of a trail or clearing (not on it), away from the Relay, each other and the boss lairs.
+ */
+function placeForage(world, rng, { occupied, openDist, markFoot, nextId, wet }) {
+  const W = world.size, B = world.brush, cx = world.center.x, cz = world.center.z;
+  const F = FORAGE.fungus, R = FORAGE.fruit;
+  const hosts = [];
+  const farFromHosts = (x, z) => hosts.every((o) => Math.hypot(o.x - x, o.z - z) >= F.spacing);
+  const nearSpore = (x, z, r) => (world.spores || []).some((p) => Math.hypot(p.x - x, p.z - z) < r);
+  // Logs nearest open ground first (deterministic: by distance, then generation order).
+  const logs = world.objects.filter((o) => o.kind === 'rock' && o.type === 'log' && Math.hypot(o.x - cx, o.z - cz) >= F.minRelay)
+    .map((o) => ({ o, d: openDist[Math.floor(o.z) * W + Math.floor(o.x)] }))
+    .sort((a, b) => a.d - b.d);
+  for (const { o } of logs) {
+    if (hosts.length >= F.logHosts) break;
+    if (!farFromHosts(o.x, o.z)) continue;
+    o.fungus = true;
+    hosts.push(o);
+  }
+  // New old stumps: the whole footprint (+ half a tile) on free, dry ground off the trails and clearings.
+  const stumpOk = (o) => {
+    const f = footprint(o);
+    for (let tz = Math.floor(f.z0 - f.rr - 0.5); tz <= Math.floor(f.z1 + f.rr + 0.5); tz++) for (let tx = Math.floor(f.x0 - f.rr - 0.5); tx <= Math.floor(f.x1 + f.rr + 0.5); tx++) {
+      if (tx < 1 || tz < 1 || tx >= W - 1 || tz >= W - 1) return false;
+      const i = tz * W + tx;
+      if (!inFootprint(f, tx + 0.5, tz + 0.5, 0.5)) continue;
+      if (occupied[i] || world.trail[i] || world.site[i] >= 0 || world.deep[i] || wet(tx, tz)) return false;
+    }
+    return true;
+  };
+  // Candidate tiles: a band beside the trails and clearings (not on them), shuffled by the forage stream.
+  const band = (near, minRelay) => {
+    const out = [];
+    for (let tz = 3; tz < W - 3; tz++) for (let tx = 3; tx < W - 3; tx++) {
+      const i = tz * W + tx;
+      if (openDist[i] >= 1 && openDist[i] <= near && Math.hypot(tx + 0.5 - cx, tz + 0.5 - cz) >= minRelay) out.push(i);
+    }
+    return rng.shuffle(out);
+  };
+  for (const i of band(F.nearOpen, F.minRelay)) {
+    if (hosts.length >= F.logHosts + F.newStumps) break;
+    const tx = i % W, tz = (i - tx) / W;
+    const o = { id: '', kind: 'rock', type: 'stump', x: tx + 0.5, z: tz + 0.5, r: 0.45, flip: hash2(tx, tz, 61) < 0.5, fungus: true };
+    if (!farFromHosts(o.x, o.z) || !stumpOk(o) || nearSpore(o.x, o.z, F.sporeGap)) continue;
+    o.id = nextId();
+    world.objects.push(o);
+    markFoot(o, 0.4);
+    // A little clearing round it (an old logging edge), so no plant card hides the fungus on its flanks.
+    for (let dz = -1; dz <= 0; dz++) for (let dx = -1; dx <= 1; dx++) B[(tz + dz) * W + tx + dx] = BRUSH.none;
+    hosts.push(o);
+  }
+  // Wild fruit.
+  world.forage = [];
+  const lairs = (world.lairs || []).map((i) => world.sites[i]).filter(Boolean);
+  const fruitBand = band(R.nearOpen, R.minRelay);
+  for (let ri = 0; ri < world.districts.length; ri++) {
+    const want = Math.round(R.perRegion * (R.perRegionMult[world.districts[ri]] ?? 1));
+    let k = 0;
+    for (const i of fruitBand) {
+      if (k >= want) break;
+      const tx = i % W, tz = (i - tx) / W;
+      if (world.region[i] !== ri || occupied[i] || world.trail[i] || world.site[i] >= 0 || world.deep[i] || wet(tx, tz) || B[i] === BRUSH.bramble) continue;
+      const px = tx + 0.5, pz = tz + 0.5;
+      if (lairs.some((s) => Math.hypot(px - s.x, pz - s.z) < R.lairGap)) continue;
+      if (nearSpore(px, pz, R.sporeGap)) continue;
+      if (world.forage.some((f) => Math.hypot(f.x - px, f.z - pz) < R.spacing)) continue;
+      occupied[i] = 1;
+      B[i] = BRUSH.none;   // (and GROUND.propFront keeps the ground in front of it low)
+      world.forage.push({ id: `f${world.forage.length}`, kind: 'fruit', x: px, z: pz, region: ri });
+      k++;
+    }
+  }
 }
 
 /**

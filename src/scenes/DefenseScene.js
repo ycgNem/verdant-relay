@@ -1107,7 +1107,7 @@ export class DefenseScene {
     // tooltip), no "WAVE" label, and the controls never shrink (critic K §5.1: 2× was off-screen).
     this.top = el('div.df-top.ui-block', {},
       this.topNight,
-      el('div.df-relay', {}, el('span.df-lbl', { title: 'Relay Core health. The run ends at 0.' }, '♥ RELAY'), this.relayBar.node),
+      el('div.df-relay', { title: `Relay Core health. The run ends at 0. ${RELAY_ZAP.hint}` }, el('span.df-lbl', '♥ RELAY'), this.relayBar.node),
       this.resHost,
       el('div.grow'),
       this.waveStat,
@@ -1803,8 +1803,9 @@ export class DefenseScene {
       pair.append(button(label, () => this._patch(), { disabled: !!reason, reason, cls: halves ? 'df-half' : 'df-wide', title: `Emergency Patch: ${SKILLS.emergency_patch.desc}` }));
     }
     if (halves) foot.append(pair);
-    if (prep && !this.game.meta.hints?.relay_zap) {
-      // The Relay's own zap (RELAY_ZAP), said once: the line goes after the first wave starts.
+    if (prep && run.night <= 1 && !this.game.meta.hints?.relay_zap) {
+      // The Relay's own zap (RELAY_ZAP), said once on night 1 (critic M P1-6: the side panel is dense; after that
+      // it lives in the Relay bar's tooltip): the line goes after the first wave starts.
       foot.append(el('div.small.df-zapline', {}, el('span.df-zapglyph', 'ϟ '), RELAY_ZAP.hint));
     }
     if (prep) {
@@ -1818,9 +1819,9 @@ export class DefenseScene {
         strong: 'Looks strong',
       }[r.level];
       const dots = (n) => '●'.repeat(n) + '○'.repeat(3 - n);
-      const expect = r.hi <= 0 ? 'expect no Relay damage'
-        : r.hi >= run.relayHp ? `expect −${Math.min(r.lo, Math.round(run.relayHp))} or worse: the Relay may fall`
-        : r.lo <= 0 ? `expect up to −${r.hi} Relay health` : `expect −${r.lo} to −${r.hi} Relay health`;
+      const expect = r.hi <= 0 ? 'Expect no Relay damage'
+        : r.hi >= run.relayHp ? `Expect −${Math.min(r.lo, Math.round(run.relayHp))} or worse: the Relay may fall`
+        : r.lo <= 0 ? `Expect up to −${r.hi} Relay health` : `Expect −${r.lo} to −${r.hi} Relay health`;
       foot.append(el(`div.df-rd-line.${r.level}`, {
         title: `Forecast: tonight's pushes replayed against your towers' damage, the stretch of path each one covers, slows and tanks, and the Relay's own zap (${RELAY_ZAP.range} tiles round it)${this.protocols.keys.length ? ', counting your Relay Protocols' : ''}. Predicted Relay loss ~${r.lost}.`,
       },
@@ -1828,11 +1829,16 @@ export class DefenseScene {
       el('span.df-meter', {}, [0, 1, 2].map((n) => el(`i${n <= ({ weak: 0, risky: 1, strong: 2 })[r.level] ? '.on' : ''}`))),
       el('span.df-rd-t', say)));
       // The weakest path names what gets through it (critic K2 #8: the forecast's top leaker; every path's in its tooltip).
+      // Two short lines (critic M P1-6, was one run-on): the weakest path, its dots and what gets through it (else every
+      // path's dots), then the expected Relay loss. Every path's dots and damage stay in the tooltips.
       const worst = r.lanes.reduce((w, l) => (l.top && l.dots <= 1 && (!w || l.lost > w.lost) ? l : w), null);
+      const laneTip = (l) => `${l.name}: about ${l.lost} Relay damage from this path${l.top ? `, most of it from ${leakName(l.top, true)}` : ''}`;
       foot.append(el('div.small.df-rd-lanes', {},
-        r.lanes.map((l, i) => el('span.df-rd-lane', { title: `${l.name}: about ${l.lost} Relay damage from this path${l.top ? `, most of it from ${leakName(l.top, true)}` : ''}` }, i ? ' · ' : '', `${l.short} `, el(`b.df-rd-dots.d${l.dots}`, dots(l.dots)),
-          l === worst ? el('span.bad', ` ${leakName(l.top, true)}`) : null)),
-        el('span.muted', ` · ${expect}`)));
+        worst
+          ? el('div.df-rd-lane', { title: r.lanes.map((l) => `${l.short} ${dots(l.dots)}`).join(' · ') + `\n${laneTip(worst)}` },
+            `${worst.short} `, el(`b.df-rd-dots.d${worst.dots}`, dots(worst.dots)), el('span.bad', ` ${leakName(worst.top, true)}`))
+          : el('div', {}, r.lanes.map((l, i) => el('span.df-rd-lane', { title: laneTip(l) }, i ? ' · ' : '', `${l.short} `, el(`b.df-rd-dots.d${l.dots}`, dots(l.dots))))),
+        el('div.muted', expect)));
       foot.append(button(el('span', {}, armed ? '▶ Start anyway' : '▶ Start Wave'), () => this._tryStartWave('button'), { hotkey: armed ? 'Shift+Space' : 'Space', cls: `primary big df-wide df-start${armed ? ' df-armed' : ''}` }));
     } else if (this.phase === 'lull') {
       // Between pushes: the countdown, and the call-early button (+Scrap for the time skipped).

@@ -79,13 +79,19 @@ export class SummaryScene {
         // sit top-left, over the loot it wasn't about).
         // In the skill panel's header row, between "Pick 1 of 3" and "Save point for later": next to
         // the cards it explains, covering neither the cards nor the expedition checklist.
+        // Critic M P1-5: above the skill panel in the free corner beside the summary card (never over the cards or
+        // the picker's title), and in this step's root, so it goes with the step (it lingered over the Workbench).
         const panel = this.root.querySelector('.sum-skills');
-        const ui = game.ui.getBoundingClientRect();
-        const r = panel?.getBoundingClientRect();
-        const style = r ? { left: `${r.left - ui.left + r.width * 0.33}px`, top: `${r.top - ui.top + 4}px`, maxWidth: `${r.width * 0.46}px` } : null;
+        const card = this.root.querySelector('.sum-card');
+        const ui = this.root.getBoundingClientRect();
+        const r = panel?.getBoundingClientRect(), c = card?.getBoundingClientRect();
+        const gap = 8 * game.u, room = r && c ? r.right - c.right - 2 * gap : 0;
+        const style = !r ? null : room >= 110 * game.u
+          ? { right: `${Math.round(ui.right - r.right)}px`, bottom: `${Math.round(ui.bottom - r.top + gap)}px`, maxWidth: `${Math.floor(room)}px` }
+          : { left: `${Math.round(r.left - ui.left + r.width * 0.33)}px`, bottom: `${Math.round(ui.bottom - r.top + gap)}px`, maxWidth: `${Math.floor(r.width * 0.46)}px` };
         showHint(game, 'summary_skills',
           'Pick a card <b>▼</b> (keys 1–3) to spend your <b>skill point</b>, or save it for later.',
-          { pos: 'top-left', style, time: 12 });
+          { pos: 'top-left', style, time: 12, host: this.root });
       }, 600);
     }
   }

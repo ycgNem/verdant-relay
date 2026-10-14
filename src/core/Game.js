@@ -237,6 +237,14 @@ export class Game {
     const sw = L.sw, sh = L.sh;
     this.stage.style.width = `${sw}px`;
     this.stage.style.height = `${sh}px`;
+    // Centre on whole device pixels (critic M): flex-centring an odd leftover (944 px in a 945-px window) put the
+    // stage, and every composited layer in it (the damage numbers), on a half pixel, smearing the pixel font.
+    {
+      const d = window.devicePixelRatio || 1;
+      this.stage.style.position = 'absolute';
+      this.stage.style.left = `${Math.max(0, Math.floor((Math.floor(window.innerWidth * d) - Math.round(sw * d)) / 2)) / d}px`;
+      this.stage.style.top = `${Math.max(0, Math.floor((Math.floor(window.innerHeight * d) - Math.round(sh * d)) / 2)) / d}px`;
+    }
     // UI scales with the stage so layouts look the same at every window size; the stage aspect varies a
     // little (see _layout), so the unit is sized for a 960×540-unit layout to fit either way.
     this.stage.style.setProperty('--u', `${this.u.toFixed(4)}px`);
