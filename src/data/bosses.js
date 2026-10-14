@@ -11,6 +11,8 @@
 //   hp × CONFIG.expedition.byNight.eliteHp · aggro: tiles at which the fight starts · phase2: health share at which
 //   it roars (`roar` s, taking `roarTaken` damage) and turns to its second phase (tint2, faster, nastier moves)
 //   arena: brush cleared round a stationary boss · hurtFrame: s its hurt frame shows after a blow
+//   camPull: while the fight is on and the boss is within camRange tiles, the camera moves this share of the way
+//   from you toward it (so it stays in view)
 // Per boss (BOSSES[area]): name, sprite (strip: idle 0–3, attack 4–5, hurt 6, dead 7), kind (its behaviour), radius
 // (hit / collision radius in tiles), `intro` (the line under its name when the fight starts), then its moves. A
 // value [a, b] is [phase 1, phase 2]. Every move is telegraphed (rings, lines, lanes) and every hit can be rolled.
@@ -25,6 +27,8 @@ export const BOSS = {
   roarTaken: 0.3,
   arena: 3.2,
   hurtFrame: 0.14,
+  camPull: 0.45,
+  camRange: 16,
   tint2: '#ffb0a0',
   barColor: '#e43b44',
   reward: { research: 30, relic: 'R', fallback: { scrap: 30, circuits: 2, biofiber: 2 } },

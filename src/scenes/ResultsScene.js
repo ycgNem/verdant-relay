@@ -129,7 +129,7 @@ export class ResultsScene {
 
     // Play again in the same mode (Overgrowth level and Long Night / Daily kept).
     const again = { mode: r.mode || 'normal', overgrowth: Math.min(r.overgrowth || 0, overgrowthMax(meta)) };
-    const newRun = sbtn(game, long ? 'Long Night again' : daily ? 'Daily again' : 'New Run', () => startNewRun(game, again), { cls: 'primary big', hotkey: 'Enter', sfx: 'done' });
+    const newRun = sbtn(game, long ? 'Long Night again' : daily ? 'Daily again' : 'New Run', () => startNewRun(game, again), { cls: 'primary big', hotkey: 'Enter', sfx: 'run_start' });
     const coll = sbtn(game, 'Collection', () => game.go('collection', { from: 'title' }), { cls: 'big' + (affordable.length ? ' glow' : ''), hotkey: 'K' });
     const title = sbtn(game, 'Title', () => game.go('title'), { cls: 'big', hotkey: 'Esc' });
     this.buttons = [newRun, coll, title];

@@ -423,7 +423,7 @@ export class JungleScene {
     if (step.type === 'pickup') {
       this._removeVis(it);
       this.toast(`Got the ${step.prop}`, 'good');
-      this.game.sfx.play('pickup');
+      this.game.sfx.play('item_get');
     } else if (it.vis && step.prop === 'cell_cache') {
       // The cracked power-cell cache goes dark (its cell is gone), instead of glowing on.
       const k = this.game.assets.spentVariant(this._propKey('cell_cache'), 'dark');
@@ -545,7 +545,9 @@ export class JungleScene {
     this.state.used.add(s.id);
     clearDisc(this.data, s.x, s.z, 2);
     for (const ch of this.world.chunks.values()) ch.dirtyCards = true;
-    const p = this._spotNear(s, 0, 1.2);
+    // A spot clear of the site's crates (so their prompts don't crowd the event's).
+    let p = this._spotNear(s, 0, 1.2);
+    for (let t = 0; t < 8 && this.data.containers.some((c) => Math.hypot(c.x - p.x, c.z - p.z) < 2); t++) p = this._spotNear(s, 0.5, 2.5);
     const night = run.night;
     const it = this._addInteractable({
       kind: 'event', key, x: p.x, z: p.z, site: s, radius: 1.5, hold: def.hold || 1.5, keepProgress: true,
@@ -568,7 +570,7 @@ export class JungleScene {
     this.eventsDone.push(rec);
     if (def.reward) this._spill(def.reward, it.x, it.z, true);
     this.fx.burst({ x: it.x, z: it.z }, { color: '#feae34', color2: '#ffffff', count: 22, speed: 2.6, up: 3.2, life: 0.7, y: 0.5 });
-    this.game.sfx.play('bonus_done');
+    this.game.sfx.play('event_done');
     this.toast(`${def.name}: done`, 'good', 3);
     if (def.flag) this.later(0.4, () => this.toast(def.flag.text, 'amber', 3.4));
   }
@@ -1611,6 +1613,9 @@ export class JungleScene {
     const al = Math.hypot(ax, az);
     const k = al > 0.01 ? (Math.min(1, al / 7) * 1.6) / al : 0;
     let tx = p.x + ax * k, tz = p.z - 0.6 + az * k * 0.8;
+    // An area boss fight leans the view toward the boss so it stays on screen (AreaBoss.js focus, BOSS.camPull).
+    const bf = this.bosses?.focus();
+    if (bf) { tx += (bf.x - p.x) * bf.k; tz += (bf.z - p.z) * bf.k; }
     // Arrival at the Relay (critic G #10): frame the Relay + player (clear of the arrival toast) until
     // the player walks off or DAY.spawnFrame.time passes.
     const SF = DAY.spawnFrame, R = this.relayPos;
@@ -1686,7 +1691,7 @@ export class JungleScene {
       if (it.done || this.seen.has(it) || Math.hypot(it.x - p.x, it.z - p.z) > (it.kind === 'pylon' ? TIPS.beacon.range : it.kind === 'event' ? EVENT_RULES.announce : 9)) continue;
       this.seen.add(it);
       if (it.kind === 'optional') this.toast(`Bonus task: ${OPTIONAL[it.key].name}`, 'amber', 3);
-      if (it.kind === 'event') { this.toast(`${EVENTS[it.key].name}: ${EVENTS[it.key].prompt.replace(/ \(\d+ s\)$/, '')}`, 'amber', 4.5); this.game.sfx.play('glint'); }
+      if (it.kind === 'event') { this.toast(`${EVENTS[it.key].name}: ${EVENTS[it.key].prompt}`, 'amber', 4.5); this.game.sfx.play('event_found'); }
       if (it.kind === 'pylon' && !this._tip('beacon')) this.toast(`A ${WORDS.pylon} nearby: switch it on (hold ${keyLabel(this.game.input.keyFor('interact'))}) and you can head home from it`, '', 3.5);
     }
     for (const n of this.nests) {
@@ -1834,7 +1839,7 @@ export class JungleScene {
     // Beacons join the legend once you have met one (no unexplained terms on day 1).
     const metPylon = this.data.pylons.some((p) => this.map.isExplored(p.x, p.z));
     const legendKeys = ['player', 'relay', this.state.pylons.size ? 'pylon_on' : null, metPylon ? 'pylon_off' : null, 'objective', 'optional', 'container',
-      this.game.run.isGuidedDay() ? null : 'relic', 'ford'].filter(Boolean);   // relics: strongboxes / shrines (not on the guided day); ford: the crossing to use
+      this.game.run.isGuidedDay() ? null : 'relic', 'ford', this.bosses?.lairs.length ? 'boss' : null].filter(Boolean);   // relics: strongboxes / shrines (not on the guided day); ford: the crossing to use; ☠ area bosses (day 3+)
     const legend = el('div.x-legend', {}, legendKeys.map((k) =>
       el('span.x-leg', {}, JungleMap.legendIcon(k, 12 * this.game.u), MAP_MARKERS[k].label)));
     h.bigSteps = el('div.j-bigsteps');
@@ -2475,7 +2480,7 @@ export class JungleScene {
       killAll: () => {
         let killed = 0, cleared = 0;
         for (const e of [...this.enemies]) {
-          if (e.dead) continue;
+          if (e.dead || e.lordOf) continue;   // (not an area boss: that would count as a kill)
           try {
             if (e.state === 'spawn') e.state = 'chase';
             e.hit(99999, 1, 0);

@@ -8,13 +8,16 @@
 //                       heartbeat under 30% HP; a breathy huff when stamina runs out; a rising tick (and,
 //                       on beacons / the way home, a rising hum) while E is held; a tension swell while a
 //                       heavy chop charges; the music's combat layer while an alerted creature is close
+//                       (not over moods with their own drums); the thrown machete's whirr; the uplink's
+//                       boot chatter while it runs; today's weather on the bed (AMBIENCE.weather)
 //   night ('defense')   calmer night bed (lower during waves); Relay-critical alarm under 30% (throttled,
-//                       only while it is still being hit)
+//                       only while it is still being hit); the hiss of burning Flares
 //   menus               a quiet distant bed
 
 import { AMBIENCE, AUDIO_DIRECTOR as D } from '../data/audio.js';
 import { DAY, LEVEL } from '../data/jungle.js';
 import { CONFIG } from '../data/config.js';
+import { GOALS } from '../data/objectives.js';
 import { noiseBuffers } from './synth.js';
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
@@ -43,6 +46,9 @@ export class AudioDirector {
     this.relayHp = null;
     this.relayHitAt = -99;
     this.alarmAt = -99;
+    this.bladeT = 0;
+    this.uplinkT = 0;
+    this.flareT = 0;
   }
 
   update(dt) {
@@ -56,6 +62,7 @@ export class AudioDirector {
     }
     const amb = this.e.ambient;
     const name = game.sceneName;
+    amb.setWeather?.(name === 'explore' ? sc?.weather?.key : null);
     if (name === 'explore' && sc?.player) this._jungle(dt, sc, amb);
     else if (name === 'defense') this._defense(dt, sc, amb);
     else amb.setProfile(AMBIENCE.profiles.menu, AMBIENCE.level.menu);
@@ -94,6 +101,26 @@ export class AudioDirector {
     if (pl.exhausted && !this.wasExhausted) this.e.play('huff');
     this.wasExhausted = !!pl.exhausted;
     this._combat(dt, sc, pl);
+    this._jungleLoops(dt, sc);
+  }
+
+  /** The thrown machete's whirr (follows the blade) and the uplink's boot chatter (faster as it boots). */
+  _jungleLoops(dt, sc) {
+    const L = D.loops;
+    this.bladeT -= dt;
+    const b = sc.shots?.blades?.[0];
+    if (b && this.bladeT <= 0 && Number.isFinite(b.x)) {
+      this.bladeT = L.bladeEvery;
+      this.e.playAt('blade_whirr', b.x, b.z, { rate: b.phase === 'out' ? 1.1 : 0.9 });
+    }
+    const u = sc.goals?.uplink;
+    if (!u?.running) { this.uplinkT = 0; return; }
+    const k = clamp01(u.t / (GOALS.uplink?.time || 60));
+    this.uplinkT -= dt;
+    if (this.uplinkT <= 0) {
+      this.uplinkT = lerp(L.uplinkEvery[0], L.uplinkEvery[1], k);
+      this.e.playAt('uplink_loop', u.x, u.z, { rate: lerp(L.uplinkRate[0], L.uplinkRate[1], k) });
+    }
   }
 
   /** Loudness / pan of water around the player (shallow + deep tiles within the radius). */
@@ -271,7 +298,8 @@ export class AudioDirector {
       if (dx * dx + dz * dz <= r2) { near = true; break; }
     }
     this.calmT = near ? 0 : this.calmT + dt;
-    this.game.music?.setCombat?.(this.calmT < C.calm);
+    const own = C.ownDrums.includes(this.game.music?.mood);
+    this.game.music?.setCombat?.(!own && this.calmT < C.calm);
   }
 
   // ================================================================== night defense
@@ -281,6 +309,13 @@ export class AudioDirector {
     amb.setProfile(AMBIENCE.profiles.defense, (wave ? AMBIENCE.level.defenseWave : AMBIENCE.level.defensePrep) * (sc?.paused ? AMBIENCE.duck.paused : 1));
     const run = this.game.run;
     if (!run || !wave || sc.paused) { this.relayHp = run?.relayHp ?? null; return; }
+    this.flareT -= dt;
+    const flares = sc.protocols?.flares;
+    if (flares?.length && this.flareT <= 0) {
+      this.flareT = D.loops.flareEvery;
+      const f = flares[(this.flareI = (this.flareI || 0) + 1) % flares.length];   // one hiss per tick, round-robin
+      this.e.playAt('flare_fizzle', f.x, f.z);
+    }
     const A = D.relayAlarm;
     const now = this.game.time;
     if (this.relayHp != null && run.relayHp < this.relayHp) this.relayHitAt = now;

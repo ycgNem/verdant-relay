@@ -93,14 +93,14 @@ export class TitleScene {
       const of = save.mode === 'long' ? '' : ` of ${CONFIG.nights}`;
       add('KeyC', sbtn(game, el('span.mbtn', {}, el('span.mlabel', 'Continue'), el('span.msub', `${mode}Night ${save.night}${of} · ${where}`)), () => {
         if (!continueRun(game)) { toast(game.ui, 'That save could not be loaded.', 'bad'); this.rebuild(); }
-      }, { cls: 'primary menu-btn', sfx: 'done', hotkey: 'C' }));
+      }, { cls: 'primary menu-btn', sfx: 'run_start', hotkey: 'C' }));
     }
     this.newSub = el('span.msub');
-    add('KeyN', sbtn(game, el('span.mbtn', {}, el('span.mlabel', 'New Run'), this.newSub), () => this.newRun(save, { mode: 'normal', overgrowth: this.og }), { cls: save ? 'menu-btn' : 'primary menu-btn', sfx: 'done', hotkey: 'N' }));
+    add('KeyN', sbtn(game, el('span.mbtn', {}, el('span.mlabel', 'New Run'), this.newSub), () => this.newRun(save, { mode: 'normal', overgrowth: this.og }), { cls: save ? 'menu-btn' : 'primary menu-btn', sfx: 'run_start', hotkey: 'N' }));
     if (won) {
       const lb = meta.longNight?.best || 0;
       this.longSub = el('span.msub');
-      add('KeyL', sbtn(game, el('span.mbtn', {}, el('span.mlabel', 'Long Night'), this.longSub), () => this.newRun(save, { mode: 'long', overgrowth: this.og }), { cls: 'menu-btn', sfx: 'done', hotkey: 'L' }));
+      add('KeyL', sbtn(game, el('span.mbtn', {}, el('span.mlabel', 'Long Night'), this.longSub), () => this.newRun(save, { mode: 'long', overgrowth: this.og }), { cls: 'menu-btn', sfx: 'run_start', hotkey: 'L' }));
       this.longBest = lb;
     }
     // Overgrowth (after the first win): one row under the run buttons, ◂ ▸ or Left / Right.
@@ -121,7 +121,7 @@ export class TitleScene {
       const mods = dailyMods(today).map((k) => OVERGROWTH.mods[k].name).join(' + ');
       const best = d && (d.nights || d.victory) ? ` · best ${d.victory ? 'won' : `${d.nights} night${d.nights === 1 ? '' : 's'}`}` : '';
       add('KeyD', sbtn(game, el('span.mbtn', {}, el('span.mlabel', 'Daily Run'), el('span.msub', `${best ? '' : 'Today: '}${mods}${best}`)), () => this.newRun(save, { mode: 'daily' }),
-        { cls: 'menu-btn', sfx: 'done', hotkey: 'D', title: dailyMods(today).map((k) => `${OVERGROWTH.mods[k].name}: ${OVERGROWTH.mods[k].text}`).join('\n') }));
+        { cls: 'menu-btn', sfx: 'run_start', hotkey: 'D', title: dailyMods(today).map((k) => `${OVERGROWTH.mods[k].name}: ${OVERGROWTH.mods[k].text}`).join('\n') }));
     }
     add('KeyK', sbtn(game, el('span.mbtn', {}, el('span.mlabel', 'Collection'), el('span.msub', won || dailyOpen ? 'Research, codex' : 'Research, records, codex')), () => game.go('collection', { from: 'title' }), { cls: 'menu-btn', hotkey: 'K' }));
     add('KeyO', sbtn(game, el('span.mbtn', {}, el('span.mlabel', 'Settings'), el('span.msub', won || dailyOpen ? 'Sound, display' : 'Sound, display, hints')), () => game.go('settings', { from: 'title' }), { cls: 'menu-btn', hotkey: 'O' }));

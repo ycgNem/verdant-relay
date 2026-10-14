@@ -170,7 +170,7 @@ export class SummaryScene {
         el('div.small.muted', `${DISTRICTS[k]?.name || k} sends no danger at night for the rest of the run`))));
     }
     const t = run.tonight || {};
-    if (t.threat) rows.push(el('div.sum-row', {}, el('span.sum-k.bad', 'Danger'), el('div', {}, el('span.sum-danger', t.threat.text),
+    if (t.threat) rows.push(el('div.sum-row', {}, el(`span.sum-k.${t.threat.cleared ? 'good' : 'bad'}`, 'Danger'), el('div', {}, el(t.threat.cleared ? 'span.good' : 'span.sum-danger', t.threat.text),   // (cleared: its area boss is dead)
       t.threat2 ? el('div.sum-danger.small', `+ ${t.threat2.text} (Restless jungle)`) : null)));
     const pts = x.skillPointsEarned || 0;
     if (pts) rows.push(el('div.sum-row', {}, el('span.sum-k.amber', 'Skill'), el('span', `+${pts} skill point${pts === 1 ? '' : 's'}: pick a skill below`)));
@@ -216,7 +216,7 @@ export class SummaryScene {
     // Before the Workbench step the button says where it goes next.
     const toBench = this.step === 'summary' && showBench(this.game.run);
     const label = toBench ? 'Workbench ' : 'Prepare for the night ';
-    return sbtn(this.game, el('span', {}, label, el('span.arrow', '▶')), () => this.next(), { cls: 'primary continue-btn', hotkey: 'Enter', sfx: toBench ? 'ui_confirm' : 'done' });
+    return sbtn(this.game, el('span', {}, label, el('span.arrow', '▶')), () => this.next(), { cls: 'primary continue-btn', hotkey: 'Enter', sfx: toBench ? 'ui_confirm' : 'to_night' });
   }
 
   /**

@@ -7,8 +7,8 @@
 // `killed`), a skill point on top of the trip's, and Run.clearBoss → that area sends no danger at night for the
 // rest of the run (persisted in run.bosses, so it never comes back).
 //
-//   AreaBosses (the scene's manager): lairSites() · build() · update(dt) · hittables(out) · markers(out) ·
-//   onEnemyKilled(e) · killed[] · dispose()
+//   AreaBosses (the scene's manager): lairSites() · inLair(x, z) · build() · update(dt) · hittables(out) ·
+//   markers(out) · focus() (camera) · onEnemyKilled(e) · killed[] · dispose()
 //   StationaryBoss → ThornMother, BroodHive, Warden, DrownedEngine: sprite strips (idle 0–3, attack 4–5, hurt 6,
 //     dead 7), a solid collider, timed moves with ground telegraphs; act(dt) picks the next move.
 //   PackLordEnemy: the mobile one — a Feral Chief (ExploreEnemy) with boss health, a war cry and a pack.
@@ -115,9 +115,9 @@ export class AreaBosses {
       this._toldReward = true;
       sc.later(3.2, () => sc.toast(`Kill it and the ${DISTRICTS[L.area].name} sends no danger at night for the rest of the run`, 'amber', 4));
     }
-    sfxAt(this.game, b.x, b.z, 'boss_roar', 'boss_cue');
+    sfxAt(this.game, b.x, b.z, `boss_wake_${L.def.kind}`, 'boss_roar', 'boss_cue');
     this.game.shake(4, 0.3);
-    this.game.music?.play('boss');
+    this.game.music?.play('lair');
   }
 
   _disengage(L, recover = true) {
@@ -151,7 +151,7 @@ export class AreaBosses {
     sc.fx.hitStop(JUICE.hitStop.bossDeath ?? 0.14);
     this.game.shake(10, 0.6);
     this.game.flash('#ffffff', 0.3);
-    sfxAt(this.game, x, z, 'boss_die', 'death_big');
+    sfxAt(this.game, x, z, `boss_death_${L.def.kind}`, 'boss_die', 'death_big');
     if (!sc.ending) this.game.music?.play(sc.duskK > 0 ? 'dusk' : 'day');
   }
 
@@ -163,6 +163,15 @@ export class AreaBosses {
       out.push({ x: b.x, z: b.z, radius: b.radius, dead: false, boss: true, hit: (dmg, dx, dz, kb, src) => b.hurt(dmg, dx, dz, src) });
     }
     return out;
+  }
+
+  /** While a fight is on: a point for the camera to lean toward (JungleScene._placeCamera), or null. */
+  focus() {
+    const L = this.active, p = this.scene.player.pos;
+    if (!L || L.dead || !L.boss?.engaged) return null;
+    const b = L.boss;
+    if (Math.hypot(b.x - p.x, b.z - p.z) > BOSS.camRange) return null;
+    return { x: b.x, z: b.z, k: BOSS.camPull };
   }
 
   markers(out) {
@@ -285,7 +294,7 @@ class StationaryBoss {
     fx.ring({ x: this.x, z: this.z }, { color: '#ff0044', radius: 4, life: 0.6 });
     fx.burst({ x: this.x, y: 1, z: this.z }, { color: '#ff0044', color2: '#feae34', count: 30, speed: 3.5, up: 3, life: 0.7, size: 2 / 32 });
     this.game.shake(8, 0.5);
-    sfxAt(this.game, this.x, this.z, 'boss_roar', 'boss_cue');
+    sfxAt(this.game, this.x, this.z, 'boss_phase2', 'boss_roar'); sfxAt(this.game, this.x, this.z, `boss_wake_${this.def.kind}`);
     this.scene.toast(`The ${this.def.name} is enraged!`, 'bad', 2.6);
     this.atkT = 0.35;
     this.onPhase2?.();
@@ -443,7 +452,7 @@ class ThornMother extends StationaryBoss {
   whip() {
     const W = this.def.whip, n = pv(W.fan, this.phase), base = this.aimAt();
     this.playAttack(W.windup + 0.2);
-    sfxAt(this.game, this.x, this.z, 'windup', 'glint');
+    sfxAt(this.game, this.x, this.z, 'vine_whip_windup', 'windup');
     for (let i = 0; i < n; i++) {
       const a = base + (i - (n - 1) / 2) * W.spread;
       const dir = { x: Math.cos(a), z: Math.sin(a) };
@@ -454,7 +463,7 @@ class ThornMother extends StationaryBoss {
         fx.bolt(new THREE.Vector3(ox, 0.35, oz), new THREE.Vector3(ox + dir.x * W.range, 0.2, oz + dir.z * W.range), { color: '#4b8139', width: 3 / 32, core: 1 / 32, jag: 0.25, life: 0.18 });
         for (let s = 0.6; s < W.range; s += 0.9) fx.burst({ x: ox + dir.x * s, y: 0.2, z: oz + dir.z * s }, { color: '#2a5628', color2: '#c23a3a', count: 2, speed: 1.4, up: 1.4, life: 0.35, size: 2 / 32 });
         this.hitLane(ox, oz, dir, W.range, W.width, W.damage, W.knock, true);
-        sfxAt(this.game, ox + dir.x * W.range * 0.5, oz + dir.z * W.range * 0.5, 'crack', 'lunge');
+        sfxAt(this.game, ox + dir.x * W.range * 0.5, oz + dir.z * W.range * 0.5, 'vine_whip', 'crack');
       });
     }
   }
@@ -464,7 +473,7 @@ class ThornMother extends StationaryBoss {
     const B = this.def.barrage, n = pv(B.count, this.phase), clouds = pv(B.clouds, this.phase);
     const p = this.p, v = p.vel || { x: 0, z: 0 };
     this.playAttack(0.5);
-    sfxAt(this.game, this.x, this.z, 'lob', 'spit');
+    sfxAt(this.game, this.x, this.z, 'spore_barrage', 'lob');
     for (let i = 0; i < n; i++) {
       let x = p.pos.x + v.x * B.fuse * 0.5, z = p.pos.z + v.z * B.fuse * 0.5;
       if (i > 0) { const a = Math.random() * Math.PI * 2, r = 1.2 + Math.random() * (B.spread - 1.2); x += Math.cos(a) * r; z += Math.sin(a) * r; }
@@ -498,7 +507,7 @@ class BroodHive extends StationaryBoss {
     if (this.liveMinions() < pv(D.spawn.max, ph) && this.ready('spawn', pv(D.spawn.every, ph))) {
       this.playAttack();
       this.spawnMinion(D.spawn.type);
-      sfxAt(this.game, this.x, this.z, 'roots_burst', 'nest_burst');
+      sfxAt(this.game, this.x, this.z, 'hive_spawn', 'nest_burst');
     }
     if (dist < D.burst.radius + 3 && this.ready('burst', pv(D.burst.every, ph))) this.burst();
     if (ph === 2 && dist < D.eggs.range && this.ready('eggs', D.eggs.every)) this.eggs();
@@ -516,13 +525,13 @@ class BroodHive extends StationaryBoss {
   burst() {
     const B = this.def.burst;
     this.playAttack(B.windup + 0.3);
-    sfxAt(this.game, this.x, this.z, 'boss_cue', 'windup');
+    sfxAt(this.game, this.x, this.z, 'hive_swell', 'windup');
     this.ringAt(this.x, this.z, B.radius, B.windup, '#ff0044', '#b55088', () => {
       const fx = this.scene.fx;
       fx.burst({ x: this.x, y: 0.5, z: this.z }, { color: '#b55088', color2: '#feae34', count: 40, speed: 4.5, up: 3, life: 0.6, size: 2 / 32 });
       fx.ring({ x: this.x, z: this.z }, { color: '#feae34', radius: B.radius, life: 0.35 });
       this.game.shake(5, 0.25);
-      sfxAt(this.game, this.x, this.z, 'nest_burst', 'boom');
+      sfxAt(this.game, this.x, this.z, 'egg_burst', 'nest_burst');
       this.hitCircle(this.x, this.z, B.radius, B.damage, B.knock);
       if (this.phase === 2) for (let i = 0; i < B.hatch2.n; i++) this.spawnMinion(B.hatch2.type, 0.8, 2.6);
     });
@@ -532,6 +541,7 @@ class BroodHive extends StationaryBoss {
   eggs() {
     const E = this.def.eggs, p = this.p;
     this.playAttack(0.4);
+    sfxAt(this.game, this.x, this.z, 'egg_lob');
     for (let i = 0; i < E.n; i++) {
       const a = Math.random() * Math.PI * 2, r = i ? 1 + Math.random() * 1.8 : 0;
       const x = p.pos.x + Math.cos(a) * r, z = p.pos.z + Math.sin(a) * r;
@@ -540,6 +550,7 @@ class BroodHive extends StationaryBoss {
         this.hitCircle(lx, lz, E.radius, E.damage, 2);
         this.scene.fx.burst({ x: lx, y: 0.3, z: lz }, { color: '#b55088', color2: '#ead4aa', count: 10, speed: 2, up: 2, life: 0.4, size: 2 / 32 });
         const e = this.scene.spawnEnemy(E.hatch, lx, lz, { spawnIn: true, alerted: true });
+        sfxAt(this.game, lx, lz, 'egg_hatch');
         this.minions.push(e);
       }, '#e890c0');
     }
@@ -558,7 +569,7 @@ class Warden extends StationaryBoss {
     else if (this.dist() < D.laser.length + 3 && this.ready('laser', pv(D.laser.every, ph))) this.laser();
     if (ph === 2 && this.liveMinions() < D.drones.max && this.ready('drones', D.drones.every)) {
       for (let i = 0; i < D.drones.n; i++) this.spawnMinion(D.drones.type, 1, 3, D.drones.tint);
-      sfxAt(this.game, this.x, this.z, 'alarm', 'boss_cue');
+      sfxAt(this.game, this.x, this.z, 'drones_deploy', 'alarm');
       this.scene.toast('Security drones!', 'bad', 2);
     }
   }
@@ -566,11 +577,12 @@ class Warden extends StationaryBoss {
   stomp() {
     const S = this.def.stomp;
     this.playAttack(S.windup + 0.2);
+    sfxAt(this.game, this.x, this.z, 'stomp_windup', 'windup');
     this.ringAt(this.x, this.z, S.radius, S.windup, '#ff0044', '#feae34', () => {
       this.scene.fx.ring({ x: this.x, z: this.z }, { color: '#feae34', radius: S.radius, life: 0.3 });
       this.scene.fx.crack?.({ x: this.x, z: this.z });
       this.game.shake(5, 0.25);
-      sfxAt(this.game, this.x, this.z, 'crash', 'boom');
+      sfxAt(this.game, this.x, this.z, 'warden_stomp', 'crash');
       this.hitCircle(this.x, this.z, S.radius, S.damage, S.knock);
     });
   }
@@ -584,7 +596,7 @@ class Warden extends StationaryBoss {
     const aim = this.aimAt(), sign = Math.random() < 0.5 ? -1 : 1;
     const half = ((Lz.sweep / 2) * Math.PI) / 180;
     this.playAttack(Lz.warn);
-    sfxAt(this.game, this.x, this.z, 'alarm', 'boss_cue');
+    sfxAt(this.game, this.x, this.z, 'laser_charge', 'alarm');
     for (let i = 0; i < n; i++) {
       const a0 = aim - sign * half + i * Math.PI;
       this.beams.push({ a: a0, end: a0 + sign * 2 * half, sign, t: -Lz.warn, meshes: this._beamMeshes(), hitT: 0 });
@@ -633,7 +645,7 @@ class Warden extends StationaryBoss {
       if (Math.random() < dt * 30) this.scene.fx.burst({ x: this.x + dir.x * Lz.length, y: 0.1, z: this.z + dir.z * Lz.length }, { color: '#ff6a3d', color2: '#fee761', count: 2, speed: 1.6, up: 1.5, life: 0.3, size: 2 / 32 });
       b.hitT -= dt;
       if (b.hitT <= 0 && this.hitLane(this.x, this.z, dir, Lz.length + 0.3, Lz.width, Lz.damage, 4)) b.hitT = 0.5;
-      if (Math.random() < dt * 6) sfxAt(this.game, this.x, this.z, 'zap');
+      if (Math.random() < dt * 6) sfxAt(this.game, this.x + dir.x * Lz.length * 0.5, this.z + dir.z * Lz.length * 0.5, 'laser_sweep', 'zap');
       if (done) { for (const m of b.meshes) { m.removeFromParent(); m.geometry.dispose(); m.material.dispose(); } this.beams.splice(i, 1); }
     }
   }
@@ -664,7 +676,7 @@ class DrownedEngine extends StationaryBoss {
   vents() {
     const V = this.def.vents, n = pv(V.n, this.phase), p = this.p, v = p.vel || { x: 0, z: 0 };
     this.playAttack(0.4);
-    sfxAt(this.game, this.x, this.z, 'boss_cue', 'windup');
+    sfxAt(this.game, this.x, this.z, 'steam_build', 'windup');
     for (let i = 0; i < n; i++) {
       let x = p.pos.x + v.x * V.windup * 0.4, z = p.pos.z + v.z * V.windup * 0.4;
       if (i > 0) { const a = Math.random() * Math.PI * 2, r = 1.4 + Math.random() * (V.spread - 1.4); x += Math.cos(a) * r; z += Math.sin(a) * r; }
@@ -672,7 +684,7 @@ class DrownedEngine extends StationaryBoss {
       this.later(Math.random() * 0.25, () => {
         this.ringAt(x, z, V.radius, V.windup, '#e8f0f4', '#5f9a86', () => {
           this._steam(x, z, 14);
-          this.game.sfx.playAt('spore_burst', x, z);
+          this.game.sfx.playAt('steam_vent', x, z);
           this.hitCircle(x, z, V.radius, V.damage, 3);
         });
       });
@@ -683,7 +695,7 @@ class DrownedEngine extends StationaryBoss {
   surge() {
     const S = this.def.surge, n = pv(S.lanes, this.phase), aim = this.aimAt();
     this.playAttack(S.windup);
-    sfxAt(this.game, this.x, this.z, 'boss_roar', 'snort');
+    sfxAt(this.game, this.x, this.z, 'water_surge', 'boss_roar');
     for (let i = 0; i < n; i++) {
       const a = aim + (n > 1 ? (i - 0.5) * 2 * S.spread : 0);
       const dir = { x: Math.cos(a), z: Math.sin(a) };
@@ -721,10 +733,11 @@ class DrownedEngine extends StationaryBoss {
   blast() {
     const B = this.def.blast;
     this.playAttack(B.windup + 0.2);
+    sfxAt(this.game, this.x, this.z, 'steam_build', 'windup');
     this.ringAt(this.x, this.z, B.radius, B.windup, '#e8f0f4', '#ff0044', () => {
       for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; this._steam(this.x + Math.cos(a) * B.radius * 0.7, this.z + Math.sin(a) * B.radius * 0.7, 4); }
       this.game.shake(5, 0.25);
-      sfxAt(this.game, this.x, this.z, 'boom', 'crash');
+      sfxAt(this.game, this.x, this.z, 'steam_blast', 'crash');
       this.hitCircle(this.x, this.z, B.radius, B.damage, B.knock);
     });
   }
@@ -769,7 +782,7 @@ class PackLordEnemy extends FeralChief {
     setSpeedBuff(this, 'rage', L.speed2, Infinity);
     sc.fx.ring({ x: this.x, z: this.z }, { color: '#ff0044', radius: 4, life: 0.6 });
     this.game.shake(7, 0.4);
-    sfxAt(this.game, this.x, this.z, 'boss_roar', 'boss_cue');
+    sfxAt(this.game, this.x, this.z, 'boss_phase2', 'boss_roar'); sfxAt(this.game, this.x, this.z, 'boss_wake_pack_lord');
     sc.toast(`The ${L.name} is enraged!`, 'bad', 2.6);
     this.cryCd = 0.5;
   }
@@ -800,7 +813,7 @@ class PackLordEnemy extends FeralChief {
       this.cryCd = pv(C.every, this.phase);
       const sc = this.scene;
       sc.fx.ringTele({ x: this.x, z: this.z }, { radius: Math.min(C.radius, 6), color: '#feae34', color2: '#f0c040', time: C.windup, fade: 0.1 });
-      sfxAt(this.game, this.x, this.z, 'boss_cue', 'snort');
+      sfxAt(this.game, this.x, this.z, 'war_cry', 'boss_cue');
       sc.fx.text({ x: this.x, z: this.z }, 'WAR CRY', { color: '#f0c040', cls: 'big', y: this.vis.userData.vis.height + 0.4, life: 0.9 });
       this.ctl.later(C.windup, () => {
         if (this.dead) return;

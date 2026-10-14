@@ -10,16 +10,26 @@
 // (variantFor). Nights past 6 (the "Long Night" endless mode) come from waveFor's generator.
 //
 // Scaling: enemy health × healthMult(night) (HEALTH_MULT; past night 6 it grows ×1.2 a night), counts are
-// authored. Total wave HP (no district threat), variant A: N1 ≈ 530, N2 ≈ 1340, N3 ≈ 2720, N4 ≈ 3860,
-// N5 ≈ 5340, N6 ≈ 3870 support + the 2244-HP Colossus (1020 × 2.2; its enraged bark no longer hardens).
+// authored. Fewer, tougher enemies from night 2 (a leak costs its own Relay damage however weak the defense,
+// so a thin build's worst case stays bounded while a good one still feels the tanks). Total wave HP (no
+// district threat), variant A: N1 ≈ 530, N2 ≈ 1510, N3 ≈ 4900 (tank-heavy: Razorbacks), N4 ≈ 8900,
+// N5 ≈ 13900 (Ruin Guards, now 1 per group), N6 ≈ 9700 support + the 4590-HP Colossus (1020 × BOSS_HP 4.5),
+// then × the map's hpMult (defenseMap.js: Twin Paths 0.86, Crossing 1.07, Ford 1.18).
 // Relay damage per leak: Crawler 5, Skitter 3, Razorback 9, Spitter 4 (+ up to 8 × 2 sap), Burrower 6,
 // Seed Carrier 6, Seedling 1, Ruin Guard 10. The Colossus never "leaks": it besieges the Relay from the plaza
 // (5 per slam every 3 s, at most 8 slams) until it is killed.
 //
-// Balance (Stage 7 sim of the real DefenseScene, .playwright-mcp/nightmech/campaign.mjs; numbers in DESIGN §5):
-// see the table in DESIGN.md §5 — newcomer / typical / strong profiles over full runs.
+// Balance (Stage 7 sim of the real DefenseScene, .playwright-mcp/nightmech/campaign.mjs, 36 full runs per
+// profile over the three maps; table in DESIGN §5), mean Relay HP lost per night:
+//   newcomer (≈45 Scrap/day, 2 picks, L1 only near the Relay)   N1 −7, N2 −23, N3 −58 (28/36 hold, ending ~36) · falls N3 (8), N4 (28)
+//   typical  (≈85/day, ~3 night skills + a lens, wide L1, Snare)  29/36 wins (75–81% over repeats) · 0 / −3 / −3 / −37 / −42 / −51
+//                                                                 · falls N5 4, N6 3 · boss killed 27/32 · maps 11 / 9 / 9 of 12
+//   strong   (typical + 5 skills, 2 mods, branches, all Protocols) 36/36 wins · N4 −14, N5 −7, N6 −10
+// Typical's nights 2–3 stay light (−3 / −3): more pressure there kills the newcomer on night 3 (typical has
+// ~2× the newcomer's towers by then, and HP scaling keeps that ratio).
+// The brief's first curve [1.0, 1.4, 1.8, 2.1, 2.35, 2.5] left a typical run untouched (0 Relay HP lost on every night).
 
-export const HEALTH_MULT = [1.0, 1.75, 2.6, 3.7, 6.4, 6.8];
+export const HEALTH_MULT = [1.0, 2.4, 3.3, 6.0, 6.2, 7.0];
 
 /** Enemy health multiplier for a night (past night 6: ×1.2 per extra night, for the Long Night). */
 export function healthMult(night) {
@@ -50,12 +60,12 @@ export const DEFENSE = {
   // wave or push starts (so start-then-pause can't happen on a double-tap).
   startGuard: { confirm: 8, pauseGrace: 0.6 },
   callEarly: { every: 2, scrap: 1 },
-  // Late-game Scrap sink (critic K §2.3): in prep / lulls, trade `scrap` Scrap for 1 Circuit or 1 Biofiber,
+  // Late-game Scrap sink (critic K §2.3): in prep (not lulls), trade `scrap` Scrap for 1 Circuit or 1 Biofiber,
   // at most `max` times a night from night `fromNight`, shown once you hold at least `showAt` Scrap.
   exchange: { scrap: 35, max: 2, showAt: 60, fromNight: 2, gives: ['circuits', 'biofiber'] },
   // The Long Night (endless mode, nights past 6): health ×hpGrowth a night, counts ×(1 + countGrowth ×
   // nights past 6), a Colossus every `bossEvery` nights (its health × bossHp × that night's growth).
-  longNight: { hpGrowth: 1.2, countGrowth: 0.1, bossEvery: 3, bossHp: 2.8 },
+  longNight: { hpGrowth: 1.2, countGrowth: 0.1, bossEvery: 3, bossHp: 4.5 },
   // End-of-night banner: with bannerWait it stays until a click / Enter / Space (accepted after bannerMinTime s);
   // without, it auto-advances after endBanner / defeatBanner seconds.
   bannerWait: true,
@@ -89,12 +99,12 @@ export const SALVAGE = {
 
 // Shorthand for authoring: g(push, at, lane, type, count, gap, extra).
 const g = (push, at, lane, type, count, gap, extra = {}) => ({ push, at, lane, type, count, gap, ...extra });
-const BOSS_HP = { hpMult: 2.8 };   // N6 Colossus: 1020 × 2.8 = 2856 (instead of the night's ×6.8); = DEFENSE.longNight.bossHp
+const BOSS_HP = { hpMult: 4.5 };   // N6 Colossus: 1020 × 4.5 = 4590 (instead of the night's ×7.0); = DEFENSE.longNight.bossHp
 
 // WAVE_VARIANTS[night − 1] = [A, B, C]: { key, name, groups }. Lane 0 = the first map lane (North on the
 // default map), lane 1 the second; a 3-lane map takes them % 3.
 export const WAVE_VARIANTS = [
-  // ---- Night 1: Crawlers and Skitters, two pushes. Two towers by the Relay hold it; one turret bleeds ~15–30.
+  // ---- Night 1: Crawlers and Skitters, two pushes. Two towers by the Relay hold it (a newcomer loses ~5).
   [
     { key: 'A', name: 'Crawler column', groups: [
       g(0, 0, 0, 'crawler', 3, 1.8), g(0, 5, 1, 'crawler', 3, 1.8), g(0, 12, 0, 'skitter', 2, 1.2),
@@ -109,61 +119,61 @@ export const WAVE_VARIANTS = [
       g(1, 0, 0, 'crawler', 3, 1.5), g(1, 2, 1, 'crawler', 2, 1.5), g(1, 7, 0, 'skitter', 4, 0.6),
     ] },
   ],
-  // ---- Night 2: the first Razorbacks.
+  // ---- Night 2: the first Razorbacks (one per variant: the tank is the test).
   [
     { key: 'A', name: 'First Razorbacks', groups: [
-      g(0, 0, 0, 'crawler', 5, 1.3), g(0, 4, 1, 'skitter', 4, 0.7), g(0, 10, 1, 'crawler', 3, 1.3),
-      g(1, 0, 0, 'razorback', 2, 6), g(1, 2, 1, 'crawler', 4, 1.2), g(1, 10, 0, 'skitter', 4, 0.65),
+      g(0, 0, 0, 'crawler', 4, 1.3), g(0, 4, 1, 'skitter', 3, 0.7), g(0, 10, 1, 'crawler', 2, 1.3),
+      g(1, 0, 0, 'razorback', 1, 6), g(1, 2, 1, 'crawler', 3, 1.2), g(1, 10, 0, 'skitter', 3, 0.65),
     ] },
     { key: 'B', name: 'Razorback escort', groups: [
-      g(0, 0, 1, 'crawler', 5, 1.3), g(0, 3, 0, 'crawler', 4, 1.3), g(0, 9, 0, 'skitter', 3, 0.7),
-      g(1, 0, 1, 'razorback', 1, 1), g(1, 3, 1, 'crawler', 4, 1.2), g(1, 6, 0, 'skitter', 4, 0.6), g(1, 10, 0, 'crawler', 3, 1.3),
+      g(0, 0, 1, 'crawler', 4, 1.3), g(0, 3, 0, 'crawler', 3, 1.3), g(0, 9, 0, 'skitter', 2, 0.7),
+      g(1, 0, 1, 'razorback', 1, 1), g(1, 3, 1, 'crawler', 3, 1.2), g(1, 6, 0, 'skitter', 3, 0.6), g(1, 10, 0, 'crawler', 2, 1.3),
     ] },
     { key: 'C', name: 'Fast pack', groups: [
-      g(0, 0, 0, 'skitter', 5, 0.6), g(0, 2, 1, 'crawler', 4, 1.3), g(0, 8, 0, 'crawler', 3, 1.3),
-      g(1, 0, 0, 'razorback', 1, 1), g(1, 4, 1, 'razorback', 1, 1), g(1, 8, 1, 'skitter', 5, 0.55), g(1, 9, 0, 'crawler', 3, 1.3),
+      g(0, 0, 0, 'skitter', 4, 0.6), g(0, 2, 1, 'crawler', 3, 1.3), g(0, 8, 0, 'crawler', 2, 1.3),
+      g(1, 0, 0, 'razorback', 1, 1), g(1, 4, 1, 'razorback', 1, 1), g(1, 8, 1, 'skitter', 4, 0.55), g(1, 9, 0, 'crawler', 2, 1.3),
     ] },
   ],
-  // ---- Night 3: Spitters; three pushes (the old 9 + 9 opening crush is split across them).
+  // ---- Night 3: Spitters and Razorbacks; three pushes (the old 9 + 9 opening crush is split across them).
   [
     { key: 'A', name: 'Spitter line', groups: [
-      g(0, 0, 0, 'crawler', 4, 1.0), g(0, 3, 1, 'crawler', 4, 1.0), g(0, 9, 1, 'skitter', 6, 0.5),
-      g(1, 0, 0, 'crawler', 3, 1.0), g(1, 2, 1, 'crawler', 3, 1.0), g(1, 5, 0, 'spitter', 2, 2.5), g(1, 6, 1, 'razorback', 1, 1),
-      g(2, 0, 0, 'razorback', 2, 4), g(2, 3, 1, 'spitter', 2, 2.5), g(2, 9, 0, 'spitter', 1, 1), g(2, 10, 1, 'skitter', 4, 0.5),
+      g(0, 0, 0, 'crawler', 3, 1.0), g(0, 3, 1, 'crawler', 3, 1.0), g(0, 9, 1, 'skitter', 4, 0.5),
+      g(1, 0, 0, 'crawler', 2, 1.0), g(1, 2, 1, 'crawler', 2, 1.0), g(1, 5, 0, 'spitter', 2, 2.5), g(1, 6, 1, 'razorback', 1, 1),
+      g(2, 0, 0, 'razorback', 3, 4), g(2, 3, 1, 'spitter', 2, 2.5), g(2, 9, 0, 'spitter', 1, 1), g(2, 10, 1, 'skitter', 3, 0.5),
     ] },
     { key: 'B', name: 'Crawler tide', groups: [
-      g(0, 0, 0, 'crawler', 5, 0.9), g(0, 2, 1, 'crawler', 5, 0.9), g(0, 10, 0, 'skitter', 3, 0.5),
-      g(1, 0, 1, 'crawler', 5, 0.9), g(1, 2, 0, 'crawler', 5, 0.9), g(1, 6, 1, 'spitter', 2, 2.5), g(1, 8, 0, 'razorback', 1, 1),
-      g(2, 0, 1, 'razorback', 1, 1), g(2, 2, 0, 'spitter', 1, 1), g(2, 4, 1, 'skitter', 3, 0.5), g(2, 6, 0, 'crawler', 2, 1.0),
+      g(0, 0, 0, 'crawler', 4, 0.9), g(0, 2, 1, 'crawler', 4, 0.9), g(0, 10, 0, 'skitter', 2, 0.5),
+      g(1, 0, 1, 'crawler', 4, 0.9), g(1, 2, 0, 'crawler', 4, 0.9), g(1, 6, 1, 'spitter', 2, 2.5), g(1, 8, 0, 'razorback', 1, 1),
+      g(2, 0, 1, 'razorback', 1, 1), g(2, 2, 0, 'spitter', 1, 1), g(2, 4, 1, 'skitter', 2, 0.5), g(2, 6, 0, 'crawler', 1, 1.0),
     ] },
     { key: 'C', name: 'Armoured', groups: [
-      g(0, 0, 0, 'crawler', 4, 1.0), g(0, 3, 1, 'crawler', 3, 1.0), g(0, 6, 1, 'razorback', 1, 1),
-      g(1, 0, 0, 'razorback', 1, 1), g(1, 2, 1, 'skitter', 6, 0.5), g(1, 5, 0, 'spitter', 2, 2.5), g(1, 6, 1, 'crawler', 3, 1.0),
-      g(2, 0, 1, 'razorback', 2, 5), g(2, 4, 0, 'spitter', 1, 1), g(2, 6, 0, 'crawler', 3, 1.0),
+      g(0, 0, 0, 'crawler', 3, 1.0), g(0, 3, 1, 'crawler', 2, 1.0), g(0, 6, 1, 'razorback', 1, 1),
+      g(1, 0, 0, 'razorback', 1, 1), g(1, 2, 1, 'skitter', 4, 0.5), g(1, 5, 0, 'spitter', 2, 2.5), g(1, 6, 1, 'crawler', 2, 1.0),
+      g(2, 0, 1, 'razorback', 3, 5), g(2, 4, 0, 'spitter', 1, 1), g(2, 6, 0, 'crawler', 2, 1.0),
     ] },
   ],
   // ---- Night 4: Burrowers and Seed Carriers.
   [
     { key: 'A', name: 'Tunnels', groups: [
-      g(0, 0, 0, 'crawler', 5, 0.85), g(0, 2, 1, 'burrower', 4, 1.5), g(0, 9, 1, 'skitter', 4, 0.45),
-      g(1, 0, 0, 'razorback', 2, 4), g(1, 2, 1, 'seed_carrier', 3, 2.2), g(1, 5, 0, 'burrower', 3, 1.4), g(1, 8, 1, 'crawler', 5, 0.9),
-      g(2, 0, 1, 'razorback', 1, 1), g(2, 2, 0, 'spitter', 3, 1.8), g(2, 6, 1, 'skitter', 4, 0.45),
+      g(0, 0, 0, 'crawler', 4, 0.85), g(0, 2, 1, 'burrower', 3, 1.5), g(0, 9, 1, 'skitter', 3, 0.45),
+      g(1, 0, 0, 'razorback', 2, 4), g(1, 2, 1, 'seed_carrier', 2, 2.2), g(1, 5, 0, 'burrower', 2, 1.4), g(1, 8, 1, 'crawler', 4, 0.9),
+      g(2, 0, 1, 'razorback', 1, 1), g(2, 2, 0, 'spitter', 2, 1.8), g(2, 6, 1, 'skitter', 3, 0.45),
     ] },
     { key: 'B', name: 'Seed swarm', groups: [
-      g(0, 0, 1, 'crawler', 4, 0.85), g(0, 2, 0, 'seed_carrier', 3, 2.0), g(0, 8, 1, 'skitter', 3, 0.45),
-      g(1, 0, 1, 'razorback', 2, 4), g(1, 2, 0, 'seed_carrier', 2, 2.0), g(1, 4, 1, 'burrower', 3, 1.4), g(1, 8, 0, 'crawler', 4, 0.9),
-      g(2, 0, 0, 'razorback', 1, 1), g(2, 2, 1, 'seed_carrier', 2, 2.0), g(2, 4, 0, 'spitter', 3, 1.8), g(2, 7, 1, 'skitter', 3, 0.45),
+      g(0, 0, 1, 'crawler', 3, 0.85), g(0, 2, 0, 'seed_carrier', 2, 2.0), g(0, 8, 1, 'skitter', 2, 0.45),
+      g(1, 0, 1, 'razorback', 2, 4), g(1, 2, 0, 'seed_carrier', 2, 2.0), g(1, 4, 1, 'burrower', 2, 1.4), g(1, 8, 0, 'crawler', 3, 0.9),
+      g(2, 0, 0, 'razorback', 1, 1), g(2, 2, 1, 'seed_carrier', 2, 2.0), g(2, 4, 0, 'spitter', 2, 1.8), g(2, 7, 1, 'skitter', 2, 0.45),
     ] },
     { key: 'C', name: 'Razorback herd', groups: [
-      g(0, 0, 0, 'crawler', 5, 0.85), g(0, 3, 1, 'razorback', 2, 4), g(0, 8, 1, 'skitter', 4, 0.45),
-      g(1, 0, 0, 'razorback', 2, 4), g(1, 2, 1, 'burrower', 3, 1.5), g(1, 6, 0, 'seed_carrier', 3, 2.2), g(1, 8, 1, 'crawler', 5, 0.9),
-      g(2, 0, 1, 'razorback', 1, 1), g(2, 2, 0, 'spitter', 2, 1.8), g(2, 5, 1, 'skitter', 4, 0.45),
+      g(0, 0, 0, 'crawler', 4, 0.85), g(0, 3, 1, 'razorback', 2, 4), g(0, 8, 1, 'skitter', 3, 0.45),
+      g(1, 0, 0, 'razorback', 2, 4), g(1, 2, 1, 'burrower', 2, 1.5), g(1, 6, 0, 'seed_carrier', 2, 2.2), g(1, 8, 1, 'crawler', 4, 0.9),
+      g(2, 0, 1, 'razorback', 1, 1), g(2, 2, 0, 'spitter', 2, 1.8), g(2, 5, 1, 'skitter', 3, 0.45),
     ] },
   ],
-  // ---- Night 5: Ruin Guards.
+  // ---- Night 5: Ruin Guards (one per group: tanks decide this night, critic K).
   [
     { key: 'A', name: 'Ruin Guard march', groups: [
-      g(0, 0, 0, 'crawler', 8, 0.8), g(0, 2, 1, 'crawler', 8, 0.8), g(0, 8, 0, 'ruin_guard', 2, 4),
+      g(0, 0, 0, 'crawler', 8, 0.8), g(0, 2, 1, 'crawler', 8, 0.8), g(0, 8, 0, 'ruin_guard', 1, 4),
       g(1, 0, 1, 'burrower', 5, 1.1), g(1, 3, 1, 'seed_carrier', 4, 1.6), g(1, 6, 0, 'skitter', 10, 0.4), g(1, 8, 1, 'ruin_guard', 1, 1),
       g(2, 0, 0, 'ruin_guard', 1, 1), g(2, 2, 0, 'spitter', 3, 1.5), g(2, 4, 1, 'crawler', 4, 0.8),
     ] },
@@ -178,22 +188,22 @@ export const WAVE_VARIANTS = [
       g(2, 0, 0, 'ruin_guard', 1, 1), g(2, 2, 1, 'skitter', 7, 0.4), g(2, 4, 0, 'spitter', 3, 1.5),
     ] },
   ],
-  // ---- Night 6: the Canopy Colossus in the last push, after two support pushes.
+  // ---- Night 6: the Canopy Colossus in the last push, after two thin support pushes.
   [
     { key: 'A', name: 'The Colossus (south)', groups: [
-      g(0, 0, 0, 'crawler', 6, 0.9), g(0, 2, 1, 'skitter', 5, 0.6), g(0, 6, 0, 'razorback', 1, 1), g(0, 8, 1, 'seed_carrier', 2, 2),
-      g(1, 0, 0, 'burrower', 3, 1.2), g(1, 2, 1, 'ruin_guard', 1, 1), g(1, 5, 0, 'spitter', 2, 2), g(1, 6, 1, 'crawler', 4, 0.6),
-      g(2, 0, 1, 'colossus', 1, 1, BOSS_HP), g(2, 2, 0, 'skitter', 4, 0.5), g(2, 12, 0, 'crawler', 4, 0.6), g(2, 22, 0, 'spitter', 1, 1),
+      g(0, 0, 0, 'crawler', 5, 0.9), g(0, 2, 1, 'skitter', 4, 0.6), g(0, 6, 0, 'razorback', 1, 1), g(0, 8, 1, 'seed_carrier', 2, 2),
+      g(1, 0, 0, 'burrower', 3, 1.2), g(1, 2, 1, 'ruin_guard', 1, 1), g(1, 5, 0, 'spitter', 2, 2), g(1, 6, 1, 'crawler', 3, 0.6),
+      g(2, 0, 1, 'colossus', 1, 1, BOSS_HP), g(2, 2, 0, 'skitter', 3, 0.5), g(2, 12, 0, 'crawler', 3, 0.6), g(2, 22, 0, 'spitter', 1, 1),
     ] },
     { key: 'B', name: 'The Colossus (north)', groups: [
-      g(0, 0, 1, 'crawler', 6, 0.9), g(0, 2, 0, 'skitter', 5, 0.6), g(0, 6, 1, 'razorback', 1, 1), g(0, 8, 0, 'seed_carrier', 2, 2),
-      g(1, 0, 1, 'burrower', 3, 1.2), g(1, 2, 0, 'ruin_guard', 1, 1), g(1, 5, 1, 'spitter', 2, 2), g(1, 6, 0, 'crawler', 4, 0.6),
-      g(2, 0, 0, 'colossus', 1, 1, BOSS_HP), g(2, 2, 1, 'skitter', 4, 0.5), g(2, 12, 1, 'crawler', 4, 0.6), g(2, 22, 1, 'spitter', 1, 1),
+      g(0, 0, 1, 'crawler', 5, 0.9), g(0, 2, 0, 'skitter', 4, 0.6), g(0, 6, 1, 'razorback', 1, 1), g(0, 8, 0, 'seed_carrier', 2, 2),
+      g(1, 0, 1, 'burrower', 3, 1.2), g(1, 2, 0, 'ruin_guard', 1, 1), g(1, 5, 1, 'spitter', 2, 2), g(1, 6, 0, 'crawler', 3, 0.6),
+      g(2, 0, 0, 'colossus', 1, 1, BOSS_HP), g(2, 2, 1, 'skitter', 3, 0.5), g(2, 12, 1, 'crawler', 3, 0.6), g(2, 22, 1, 'spitter', 1, 1),
     ] },
     { key: 'C', name: 'The Colossus and its guard', groups: [
-      g(0, 0, 0, 'crawler', 5, 0.9), g(0, 2, 1, 'crawler', 5, 0.9), g(0, 7, 0, 'seed_carrier', 2, 2),
-      g(1, 0, 1, 'ruin_guard', 1, 1), g(1, 2, 0, 'burrower', 3, 1.2), g(1, 5, 1, 'skitter', 5, 0.5), g(1, 8, 0, 'spitter', 2, 2),
-      g(2, 0, 1, 'colossus', 1, 1, BOSS_HP), g(2, 3, 0, 'ruin_guard', 1, 1), g(2, 12, 0, 'crawler', 4, 0.6),
+      g(0, 0, 0, 'crawler', 4, 0.9), g(0, 2, 1, 'crawler', 4, 0.9), g(0, 7, 0, 'seed_carrier', 2, 2),
+      g(1, 0, 1, 'ruin_guard', 1, 1), g(1, 2, 0, 'burrower', 3, 1.2), g(1, 5, 1, 'skitter', 4, 0.5), g(1, 8, 0, 'spitter', 2, 2),
+      g(2, 0, 1, 'colossus', 1, 1, BOSS_HP), g(2, 3, 0, 'ruin_guard', 1, 1), g(2, 12, 0, 'crawler', 3, 0.6),
     ] },
   ],
 ];

@@ -534,6 +534,7 @@ export class DefenseEnemy {
         // Slam loop: a ring telegraph closes on the Relay for `windup` s, then the slam lands.
         if (!this._slamTele && this.stateT <= S.windup) {
           this._slamTele = true;
+          scene.game.sfx?.playAt?.('siege_windup', this.pos.x, this.pos.z);
           this.tele = scene.fx.telegraph(scene.corePos, { radius: scene.coreRadius + 0.6, color: '#e43b44', time: Math.max(0.1, this.stateT) });
           setAnim(this.visual, 'windup', true);
         }

@@ -168,9 +168,23 @@ Wave B — the night becomes a game (critic K + J M1/M2)
       jungle PostFx night grade with emissive eyes/crystal and lamp light pools, worn trails, quiet pads/rings, wet-lane
       and glint rewards, compact build list + Upgrade/Sell row + styled tooltips, leak feed / banner line /
       `run.lastNight`. Readiness content is the mechanics stream's (laid out here)
-- [ ] Night mechanics: **Relay Protocols** (active abilities during waves), **mid-night pushes** with build lulls and
+- [x] Night mechanics: **Relay Protocols** (active abilities during waves), **mid-night pushes** with build lulls and
       call-early, **L3 branches** + upgrade economics, tank counters, **killable boss siege**, Seed Carrier/Mortar fix,
-      **wave variants**, smoothed HEALTH_MULT (no N3 cliff), Relay stipend, post-night salvage pick, 3× speed
+      **wave variants**, smoothed HEALTH_MULT (no N3 cliff), Relay stipend, post-night salvage pick, 3× speed.
+      Done: `src/data/protocols.js` + `DefenseProtocols` (Q Vine Snare free 28 s, 2 charges from N4, cancels the boss's
+      charge; W Arc Discharge 1 C + 10 S; E Flare 1 Intel; research unlocks), 2–3 pushes a night with 12 s lulls,
+      Call next push (N, +1 Scrap / 2 s), two L3 branches per tower (`rec.branch`, `_3a/_3b` sprites), L2 ≈ +70% DPS
+      for ≈ 0.9× cost, surcharge 6, Scrap→component exchange (prep, from N2), Piercer / Root big / RG 190 HP, the
+      Colossus besieges the plaza (5 per slam / 3 s, 8 slams) and is killable, Seed Carrier blast tag 3 s, Mortar
+      1.9 s / 28, three variants per night + the Long Night generator, HEALTH_MULT 1.0 / 2.4 / 3.3 / 6.0 / 6.2 / 7.0
+      with fewer, tougher enemies from night 2 and a per-map hpMult (Twin 0.86, Crossing 1.07, Ford 1.18), two pads per
+      map moved to see both trails, stipend +10…30, salvage pick (3 / 2 / 1 options by Relay lost), 1× / 2× / 3×,
+      truthful per-path readiness (`DefenseForecast`, calibrated on the sim), weak-start confirm needs its button or
+      Shift+Space, no Space-pause for 0.6 s after a push starts. Balance: full-run sim of the real scene
+      (`.playwright-mcp/nightmech`, DESIGN §5 table): newcomer 0/36 (N3 holds 78%, falls N4), typical 75–81% wins with
+      falls on N5–N6 and 0 / −3 / −3 / −37 / −42 / −51, strong 36/36; tall vs wide within ~4 HP on N4.
+      Not done: typical's nights 2–3 stay light (−3 each; more would kill newcomers on N3), and its N4–N6 losses run
+      ~5–10 above the 15–30 / 25–40 targets at a 75–81% win rate
 - [x] Run systems: death rules (salvage ≤ carried, dawn HP, reward needs extraction, home confirm, mid-day quit =
       abandon), honest area cards, **research tree** (21 nodes in 3 branches + 3 hidden future towers), **Overgrowth
       1–10**, **Long Night** endless, daily seed, clean title, Results "what got through". (Camp crafting landed with
@@ -183,12 +197,27 @@ Wave C — the jungle gets content (critic J M3–M5, M7, N2, N4; critic L UX)
       jungle), a pick-of-two shrine at every landmark (5), 12% of hidden caches, `scene.dropRelic` for area bosses;
       carried on the HUD, banked on getting home, lost on going down; summary Found / Lost, night prep lines, Codex
       Relics N/24 with silhouettes (`meta.relicsSeen`). Icons `relic_<id>` (pixel-art `manifest.v3relics.json`)
-- [ ] **Events wired** + 5 new goal types (Escort, Hold the uplink, Track the Alpha, Haul, Purge the bloom)
-- [ ] **Area bosses** (one per area from day 3; a kill removes that area's danger for the run), later-day creatures
+- [x] **Events wired** + 5 new goal types (Escort, Hold the uplink, Track the Alpha, Haul, Purge the bloom): one event a
+      day from day 2 (Abandoned Workshop / Power Surge / Infested Cache) at a camp or minor site, announced with its
+      reward and risk at 10 tiles, then marked; goals from day 2 (`minNight`), run by `src/scenes/JungleGoals.js`
+      (`GOALS` tuning): a 60-HP engineer who follows your trail (half the nearby attackers go for him; he can die →
+      goal failed), a 45 s uplink you stay within 7 m of (3 waves; hits cost it 3 s; turns on the area's beacon), a
+      3-clue trail 20–30 m a leg to an Alpha (×1.5 elite HP, rare relic), a carried core (×0.75 speed, no roll or
+      swing, E drops it), 3 spore nests within 60 s (they puff, regrow if you're slow). Rewards: 2 free upgrades /
+      15% fewer enemies / relic + towers +10% / +30 Scrap +2 Circuits / enemies 10% slower
+- [x] **Area bosses** (one per area from day 3; a kill removes that area's danger for the run), later-day creatures:
+      `src/data/bosses.js`, `src/entities/AreaBoss.js`. Thorn Mother (vine whips, spore barrage, crawler brood), Brood
+      Hive (crawler shield, burst ring, skitter eggs), Security Warden (sweeping laser, stomp, drones), Drowned Engine
+      (steam vents, surge wave lanes, blast), Pack Lord (a Feral Chief with 4 Ferals and a war cry). 450 × elite HP,
+      phase 2 at 50%, leash reset, HUD bar, ☠ on map + briefing card; kill = rare relic, +30 Research, a skill point,
+      that area's night danger gone (`run.bosses`). Bloater from day 4 (swells and bursts into spores; a chop
+      launches it), Feral Chief leading camps from day 5 (Ferals +20% speed near it)
 - [x] Named landmarks + lore logs: every major site and landmark named (`src/data/lore.js`; big map once mapped, a
       banner on first entry), landmark extras (radio mast maps 40 tiles, glasshouse heals 40), 20 data logs read in
       story order (~10 spots a jungle, ~3–4 a run), kept in `meta.lore` and re-readable in the Codex
-- [ ] **Weather / day modifiers**
+- [x] **Weather / day modifiers**: from day 2, 35% of days (`src/data/weather.js`, `src/world/Weather.js`): Rain
+      (sight −30%, cutting noise −40%, no rustle; 1-px rain streaks + ripples, rain bed), Fog (light −35%, containers
+      +20% Scrap; dithered veil), Heat (stamina refill −25%, ×1.5 spore pods; warm haze). Briefing line + HUD tag
 - [x] Skill rework (machete branch, keystones, weighted offers) + **camp crafting**: 22 skills in 4 branches (Scavenger,
       **Machete**: Riposte Master / Second Wind / Brush Dancer / Cleaver / Hunter, Engineer, Warden), one ★ keystone each
       (Salvage King, Duelist, Chain Reaction, Grove Warden) after 2 of its branch, offers 60% toward owned branches,
@@ -196,8 +225,15 @@ Wave C — the jungle gets content (critic J M3–M5, M7, N2, N4; critic L UX)
       removed → refunded point). The **Workbench** step after the summary (`src/data/crafting.js`): 4 tower mods (one
       socket per tower, fitted in night prep), 3 machete upgrades, med kit, Relay plating; Codex sections (critic J §3,
       §8, M7, M9)
-- [ ] UX: teach every verb in context, HUD legibility, keyboard parity, settings (rebinding, fullscreen), river/beacon
-      wayfinding, a guided day that pays
+- [x] UX: teach every verb in context, HUD legibility, keyboard parity, settings (rebinding, fullscreen), river/beacon
+      wayfinding, a guided day that pays. Verb tips once per profile (`TIPS` in `src/data/guide.js`: roll, deflect,
+      bramble chop, throw, med kit, beacon, sunset; never stacked); guided day routes 4 trail-side crates
+      (`GUIDE.routeCrates`, JungleGen `guidedRoute`) + a reachable coached crate (◆ + edge arrow), measured 63 Scrap
+      banked; HUD on the texel grid (16 px @720p, 24 px @1080p), HP green/yellow/red + low-HP pulse, daylight clock
+      (`ui_daylight` sun/moon), hudFade 0.5; every `ui.modal` keyboard-driven (focus, arrows, Enter/Space/E, Esc);
+      Settings tabs (Sound / Game / Controls): key rebinding (`src/data/controls.js`, `meta.settings.keys`,
+      `Input.useBindings`), fullscreen; ford ◇ on the maps + "cross at the stepping stones"; creature icons use the
+      cropped side frame
 - [ ] Fresh critic round on the result
 
 ## Acceptance checklist

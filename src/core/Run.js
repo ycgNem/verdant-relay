@@ -958,7 +958,7 @@ export class Run {
     return Math.max(0, DEFENSE.exchange.max - (this.tonight.exchanged || 0));
   }
 
-  /** Trade DEFENSE.exchange.scrap Scrap for 1 Circuit or 1 Biofiber (prep / lulls). */
+  /** Trade DEFENSE.exchange.scrap Scrap for 1 Circuit or 1 Biofiber (night prep). */
   exchange(kind) {
     const X = DEFENSE.exchange;
     if (!X.gives.includes(kind) || this.exchangeLeft() <= 0 || !this.spend({ scrap: X.scrap })) return false;

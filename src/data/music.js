@@ -80,6 +80,18 @@ export const MUSIC = {
       perc: { kick: [0, 3, 4], kickVol: 0.22, hat: [1, 2, 3, 5, 6, 7], hatVol: 0.02 },
       delay: { time: 0.43, feedback: 0.3, wet: 0.22 },
     },
+    // Jungle area bosses (src/entities/AreaBoss.js): F# minor with a flat-II, war drums (toms on the off-beats,
+    // a doubled kick), a low drone and a sparse high arp. Ritual, not mechanical like the Colossus siege.
+    lair: {
+      bpm: 92, root: 42, barsPerChord: 1,
+      chords: [[0, 3, 7, 12], [0, 3, 7, 12], [1, 5, 8, 13], [-2, 3, 7, 10], [0, 3, 7, 12], [0, 3, 6, 10], [1, 5, 8, 13], [-1, 2, 7, 11]],
+      pad: { wave: 'sawtooth', vol: 0.038, cutoff: 800, sweep: 360, attack: 0.8, release: 1.6, detune: 12 },
+      bass: { wave: 'sawtooth', vol: 0.08, steps: [0, 3, 6], decay: 0.4, cutoff: 420 },
+      arp: { wave: 'triangle', vol: 0.022, chance: 0.2, octaves: [24, 36], decay: 0.6 },
+      perc: { kick: [0, 1, 4], kickVol: 0.17, tom: [2, 3, 6, 7], tomVol: 0.09, tomPitch: 2, shaker: [1, 3, 5, 7], shakerVol: 0.014 },
+      drone: { vol: 0.03, wave: 'sawtooth' },
+      delay: { time: 0.49, feedback: 0.32, wet: 0.24 },
+    },
     // Victory / results: warm, reflective F major.
     results: {
       bpm: 64, root: 53, barsPerChord: 2,

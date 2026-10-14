@@ -41,3 +41,4 @@
 .brief-weather.fog b { color: #c4d0cc; }
 .dc-line.dc-boss .dc-k { color: #ff6a5a; }
 .dc-line.dc-cleared .dc-k { color: var(--good); }
+.dc-line.dc-threat.dc-cleared > span:last-child { color: var(--good); }

@@ -155,7 +155,7 @@ export function ask(game, opts) {
       resolve(v);
     };
     const cancel = sbtn(game, opts.cancel || 'Cancel', () => close(false), { hotkey: 'Esc' });
-    const ok = sbtn(game, opts.confirm || 'Confirm', () => close(true), { cls: opts.danger ? 'danger' : 'primary', sfx: opts.danger ? 'sell' : 'done' });
+    const ok = sbtn(game, opts.confirm || 'Confirm', () => close(true), { cls: opts.danger ? 'danger' : 'primary', sfx: opts.danger ? 'sell' : 'ui_confirm' });
     const body = opts.body || el('p', opts.text || '');
     const ov = modal(game.ui, opts.title || 'Are you sure?', body, [cancel, ok], { keys: false });   // KeyNav below
     ov.classList.add('scr-modal');
@@ -361,7 +361,7 @@ export function skillPicker(game, opts = {}) {
   const take = (id) => {
     const run = game.run;
     if (!run || !run.takeSkill(id)) { game.sfx.play('error'); return; }
-    game.sfx.play('skill');
+    game.sfx.play(SKILLS[id].keystone ? 'skill_keystone' : 'skill');
     toast(game.ui, `Learned ${SKILLS[id].name}`, 'good', 2);
     refresh();
     opts.onChange?.(id);

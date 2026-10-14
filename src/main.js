@@ -62,6 +62,7 @@ async function boot() {
     // (pylons p0…) count as switched on, for the night's forward pads.
     if (q.has('map')) game.run.mapKey = q.get('map');
     if (q.has('beacons')) game.run.world.pylons = Array.from({ length: Math.max(0, Number(q.get('beacons')) || 0) }, (_, i) => `p${i}`);
+    if (q.has('variant')) game.run.waveVariant = Math.max(0, Math.min(2, Number(q.get('variant')) || 0));   // &variant=0|1|2: tonight's wave A/B/C
     // &relics=whetstone,pylon_coil: relics already brought home (src/data/relics.js) · &found=a,b (with
     // debug=summary): relics carried home on the debug trip (the summary's "Found" row)
     if (q.has('relics')) {

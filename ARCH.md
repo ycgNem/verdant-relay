@@ -13,8 +13,13 @@ How the engine pieces fit together. `DESIGN.md` says what the game is; `PLAN.md`
 - **Debug URLs** (for testing): `?debug=explore&district=flooded_transit&night=2` (the jungle; `vr.game.scene.debug` has teleport, god, reveal, timeLeft, extract…), `?debug=defense&night=4&scrap=400&circuits=10&biofiber=10`,
   `?debug=summary`, `?debug=briefing`, `?debug=results&victory=1`. Optional `&skills=a,b&points=2` (old skill ids map),
   `&mods=focusing_lens,uplink` (tower mods on the Workbench bench), `&blade=serrated_edge,heavy_spine` (machete upgrades). `window.vr.game` is the Game.
+  Stage 7 days: `&objective=<PRIMARY key>` and `&event=<EVENTS key>` (today's goal / event in the jungle),
+  `&weather=rain|fog|heat|none` (every day's weather, `run.weatherKey`), `&bosses=canopy_greenhouse,…` (area bosses already
+  killed). The jungle's `debug` also has `goals()`, `bosses()` (lairs: area, x, z, hp, phase, engaged, dead), `boss(area?)`
+  (stand 6 tiles from a lair), `event()`, `weather()`; `killAll()` spares area bosses.
   Run modes: `&mode=long|daily` (Long Night / Daily; a long run accepts `&night=` up to 99, e.g. `?debug=defense&night=6&mode=long`
-  then win → night 7) and `&og=N` (Overgrowth level). The defense scene's `vr.game.scene.debug` has `win()`, `lose()`, `spawn(type, lane)`.
+  then win → night 7) and `&og=N` (Overgrowth level). The defense scene's `vr.game.scene.debug` has `win()`, `lose()`, `spawn(type, lane)`,
+  `state()`, `callNext()`, `cast(protocol, x, z)`; `&variant=0|1|2` forces tonight's wave variant (A/B/C).
   Night board: `&map=twin|crossing|ford` (else picked from the seed), `&beacons=N` (pylons p0…p(N−1) count as switched on → forward pads).
   Relics: `&relics=whetstone,pylon_coil` (already brought home), with `debug=summary` `&found=a,b` (carried home on the
   debug trip). In the jungle `vr.game.scene.relicsCtl.debug` has `carry(id)`, `drop({ rarity })`, `goto('cache'|'shrine'|'lore', n)`, `info()`.
@@ -50,27 +55,36 @@ Everything is synthesized on WebAudio at runtime (no sample files); tuning in `s
 - `game.sfx.play(name, { vol, pan, rate, delay, more })` → a voice when it plays, `true` if the sound exists but was
   skipped (no audio yet, muted, throttled, voice cap), `null` for an unknown name — so `play(newName) || play(oldName)`
   falls back only on unknown names. Every play varies pitch/level a little (`pitch`, `vary`); `gap`, `max` per sound
-  and `MIX.voices` overall keep fights from piling up; `send` = reverb, `duck` = dip the music (stings).
+  and `MIX.voices` overall keep fights from piling up (a `pri: 2` cue steals the oldest ordinary voice, and may go
+  `MIX.priExtra` over only when every voice is a cue); `send` = reverb, `duck` = dip the music (stings).
 - `game.sfx.playAt(name, x, z, opts)`: world sounds — pans by the point's screen x (the scene's camera) and, when the
-  scene has a `player`, fades and dulls with distance from it (`MIX.positional`). Use it for anything that happens
+  scene has a `player`, fades and dulls with distance from it (`MIX.positional`; a sound's own `near` keeps tells such
+  as wind-ups full-volume further out). Use it for anything that happens
   somewhere in the world (creatures, towers, impacts); plain `play` for the player's own actions and UI.
 - A sound is a list of synth layers (`synth.js`: osc / filtered white-pink-brown noise / 2-op FM, sweeps, vibrato,
   tremolo, chords via `notes`, repeats via `n`/`every`). Add a sound by adding an entry to `SOUNDS`; `windup_<enemy>`
-  falls back to the generic `windup`. UI sounds (`ui_*`, `open`, `error`, `tally`) use the `ui` bus; menu buttons
+  falls back to the generic `windup`. Every gameplay call names its own sound (area bosses: `boss_wake_<kind>`,
+  their moves, `boss_phase2`, `boss_death_<kind>` → `boss_die`; goals; relics; Protocols `cast_<key>` + effect; night
+  verbs) — check with `node .playwright-mcp/audio/check_names2.mjs`. UI sounds (`ui_*`, `open`, `error`, `tally`) use the `ui` bus; menu buttons
   get `ui_hover` automatically, `KeyNav` plays `ui_move` / `ui_back`, `sbtn` plays `ui_confirm`.
 - `game.sfx.ambient` (`AmbientAudio`): beds — wind/leaf wash, day insects, dusk cicada swells, near-water babble,
-  rain (`setRain(0..1)`, a hook for a future weather system) — and creature calls (birds, a distant howler, cricket and
-  frog "agents"). `setProfile(weights, level)` blends `AMBIENCE.profiles` (day, dusk, night, defense, menu).
+  rain (`setRain(0..1)`, from `src/world/Weather.js`) — and creature calls (birds, a distant howler, cricket and
+  frog "agents"). `setProfile(weights, level)` blends `AMBIENCE.profiles` (day, dusk, night, defense, menu);
+  `setWeather(key)` applies `AMBIENCE.weather` (fog: a low-pass hush + quieter bed, heat: cicadas by day, rain: fewer birds).
 - `game.sfx.director` (`AudioDirector`, ticked by `game.sfx.update(dt)` from the Game loop) reads the active scene, so
   gameplay code needs no audio hooks for: the ambience profile (jungle clock, paused / map duck, night prep vs wave,
   menus), the water level (scan around the player), footsteps by surface (on the walk anim's contact frames,
   alternating L/R: water, mud, dirt / trail, paving = stone, leaf litter, moss, + fern), the low-HP heartbeat, the
   stamina-out huff, the E-hold rising tick (+ a rising hum on beacons / the way home), the heavy-chop wind-up, the
-  Relay-critical alarm (< 30%, throttled) and `music.setCombat()` (an alerted creature within 8 tiles; off after 4 s).
-- `game.music.play(mood)`: title, day, dusk (jungle after sunset), night, boss (Colossus only), results, defeat;
+  Relay-critical alarm (< 30%, throttled), `music.setCombat()` (an alerted creature within 8 tiles; off after 4 s;
+  never over `lair` / `boss`, which have their own drums), today's weather, and three loops that follow live things:
+  the thrown machete's whirr, the uplink's boot chatter (faster as it boots) and burning Flares' hiss (night).
+- `game.music.play(mood)`: title, day, dusk (jungle after sunset), lair (jungle area bosses), night, boss (Colossus
+  only), results, defeat;
   `setCombat(on)` crossfades a tension layer (toms, ostinato, shaker) over the current mood.
 - Testing: `.playwright-mcp/audio/test_audio.cjs` renders every sound offline (peak < 1, not silent) and checks the
-  live graph in title / jungle / defense.
+  live graph in title / jungle / defense; `test_phase2.cjs` fights every area boss, the creatures, the uplink and the
+  Protocols and stress-tests the voice cap.
 
 ## Visuals (`src/core/Assets.js`)
 
@@ -107,7 +121,9 @@ Module functions (import from `../core/Assets.js`):
   eyes, screens and crystals keep full brightness at night; `makeVisual(key, {emissive: false})` opts out.
 - Palette swaps (`src/core/PaletteSwap.js`): `paletteSwap(assets)` runs once after load and remaps the hue bands of each
   `PALETTE_SWAP` key (feral cloak → bone/rust) by brightness rank onto a ramp, replacing the texture. DOM icons
-  (`iconStyle`) still use the original PNG.
+  (`iconStyle`) still use the original PNG. It first makes the **derived sprites** in `DERIVED_SPRITES`
+  (`src/data/bosses.js`): a new manifest key copied from `from` (all its 8-way anims) with the same kind of band remap —
+  `npc_engineer` (the player, orange coat) and `feral_chief` (the Feral, deep red / gold).
 - `root.userData.vis.height` — visual height in world units (for HP bars / labels).
 - `game.assets.spriteInfo(key)` → `{tex, def}` for tiles; `game.assets.iconSpec(key, px)` → `{ css, w, h }` for a DOM icon
   (`iconStyle(key, px)` = its CSS). `iconFrame(k)`: the sheet part shown — creatures (`DEFENSE_ENEMIES` / `EXPLORE_ENEMIES`
@@ -150,7 +166,8 @@ Module functions (import from `../core/Assets.js`):
 - `JungleMap.drawBig(canvas, view, markers, time, labels)`: `labels` `[{x, z, text}]` drawn in Tiny5 (whole-pixel
   scale); markers `relic` (gold star), `cache` (gold dot), `lore` (cyan dot).
 - `SporePods(scene, world.spores)` (`src/entities/`): the spore-pod hazard — `update(dt)`, `hittables(out)` (a hit with
-  src `'chop'` launches the pod instead of popping it), `dispose()`. Clouds also hurt / choke creatures (`enemy.chokeT`),
+  src `'chop'` launches the pod instead of popping it), `cloudAt(x, z)` (a cloud with no pod: Bloaters, spore nests,
+  the Thorn Mother), `dispose()`. Clouds also hurt / choke creatures (`enemy.chokeT`),
   and creatures with `podTrigger` set pods off.
 - `JungleWorld(game, scene3d, data, cutMask)`: chunk streaming (`update(dt, focusX, focusZ)`, `warm(x, z)`), queries
   (`brushAt solidAt deepAt wetAt opaqueAt blockedAt(x, z, throughBrush) levelAt speedAt(x, z, brushFree) inFern shadeAt
@@ -195,13 +212,50 @@ Module functions (import from `../core/Assets.js`):
 - `Ambience(scene3d, world).update(dt, cx, cz, dusk)`: pollen, falling leaves, fireflies (emissive, drawn over the
   foliage), light shafts.
 - Persistent state: `run.world` (`run.worldState(size, cell)` decodes it, `run.storeWorld(state)` stores it; bitsets in base64).
+- **Stage 7 days** (critic J M4 / M5 / N2): JungleScene creates, in order, `scene.weather = new Weather(scene)` (before
+  the spore pods: `weather.pods(list)` adds Heat's), `scene.bosses = new AreaBosses(scene)`, `scene.goals = new
+  Goals(scene)`, then `_setupObjective` → `_setupOptionals` → `_setupEvents` → `bosses.build()`; after `_buildHud`,
+  `weather.apply()` + `weather.hud(hud)`. Per frame: `tickSpeedBuffs`, enemies, `goals.update` (before interaction),
+  `bosses.update`, `weather.update`. `hittables()` adds `bosses.hittables` / `goals.hittables`; `_markers()` adds
+  `bosses.markers` (type `boss`, a ☠ in `MAP_MARKERS`) and seen events; `_finish` adds `objectiveFailed`,
+  `bossesKilled`, `weather` to the result. `JungleGen.generateWorld` sets `world.lairs[regionIdx]` (`bossLair(world,
+  ri)`: lost major → furthest lost → major → furthest site; a post-pass, no RNG), and `_sitesIn` never hands out a lair.
+  - `Goals(scene)` (`src/scenes/JungleGoals.js`; data `PRIMARY` / `GOALS` in objectives.js): step types `escort`
+    (`phase` find / lead), `defend` (start / hold), `track` (+ the closing `kill`), `carry` (pickup / deliver), `purge`.
+    `claims(step)` → `_setupObjective` hands it `setupStep(step, si, used)`; `update(dt)`, `hittables(out)` (nests),
+    `onEnemyKilled(e)` (the Alpha's relic), `note()` (HTML after the GOAL strip's step), `carrying` (scene.blockFire;
+    it sets `scene.moveMult` / `scene.noRoll`, which Player reads; Player calls `scene.onNoRoll()`), `failed` (sets
+    `scene.objectiveFailed`), `dispose()`. Objective targets may have getter `x` / `z` (home from the engineer / the
+    core) and an `onSpawn(e)` hook (`_updateObjectiveSpawns` calls it; the Alpha).
+  - **Wards**: an enemy with `e.ward` (the engineer, the uplink: `{pos, vel, kb, aim, r, dead, dodging, hurt()}`) runs
+    its whole AI with `scene.player` swapped for the ward (`_updateEnemies`), so it chases, telegraphs and hits that.
+  - Events: `_setupEvents()` / `_completeEvent(it, def)`; interactable kind `'event'` (`DAY.interactRank.event`),
+    `scene.events`, results in `eventsDone` (`{key, name, flag?}`). Announce at `EVENT_RULES.announce` (`_updateDiscovery`).
+  - `AreaBosses(scene)` (`src/entities/AreaBoss.js`; data `BOSS` / `BOSSES` in bosses.js): `lairs[]` `{area, ri, site,
+    def, boss, dead}` for `run.bossAlive(area)`, `lairSites()`, `inLair(x, z, pad)` (no wildlife there), `build()`,
+    `update(dt)` (engage within `BOSS.aggro`, leash, HUD bar `.j-bossbar` in `hud.root`), `hittables(out)`,
+    `markers(out)`, `focus()` (`_placeCamera` leans toward it, `BOSS.camPull`), `onEnemyKilled(e)` (`e.lordOf`),
+    `onKilled(L)` (Run.clearBoss, `_grantSkillPoint({boss: true})`, `scene.dropRelic(x, z, {rarity: 'R'})`), `killed[]`.
+    `StationaryBoss` (sprite strip idle 0–3 / attack 4–5 / hurt 6 / dead 7, collider, `hurt(dmg, dx, dz, src)`,
+    `damageTaken()`, phase 2 + `onPhase2`, `ready(name, every)`, `later(t, fn)`, `ringAt`, `hitCircle`, `hitLane`,
+    `lob`, `spawnMinion`) → `ThornMother`, `BroodHive`, `Warden`, `DrownedEngine`; `PackLordEnemy` (a `FeralChief` in
+    `scene.enemies`) + `PackLordCtl`.
+  - `src/entities/DayCreatures.js`: `makeEnemy(scene, key, x, z, opts)` (`scene.spawnEnemy` uses it: `bloater` →
+    `Bloater`, `feral_chief` → `FeralChief`, else `ExploreEnemy`), `setSpeedBuff(e, kind, mult, until)` /
+    `tickSpeedBuffs(enemies, now)` (`e.speedMult`, read by ExploreEnemy; clock = `scene.dayT`). `_chunkPop` adds
+    Bloaters (`DAY_CREATURES.bloater`) and makes a camp's first Feral its Chief (`DAY_CREATURES.chief.fromNight`).
+  - `Weather(scene)` (`src/world/Weather.js`; data `WEATHER` / `RAIN_LOOK` in weather.js): sets `scene.detectMult`
+    (ExploreEnemy sight), `noiseMult` (cut-noise radius), `noRustle` (Player / ExploreEnemy), `staminaRegenMult`
+    (Player); `pods(list)`, `apply()` (PostFx uniforms, `post.lightMult`, `ambience.shaftMult`,
+    `sfx.ambient.setRain`), `hud(hud)` (`.j-weather` tag in `hud.tr`), `update(dt)` (ripples), `dispose()`.
 
 ## The night board — `src/data/defenseMap.js`, `src/world/DefenseGround.js`, `src/world/NightCamera.js`
 
 - **Maps:** `DEFENSE_MAPS` = `{ twin, crossing, ford }` (`MAP_KEYS`); each has `width/height` (23×15 field), `lanes`
   (`{ name, short, bearing, points, forward }`: waypoint polyline from off-field left to the plaza; `bearing` = the compass
   direction the lane faces in the jungle; `forward` = up to 2 forward-pad slots), `pads` (fractional tile coords),
-  `woodPads`, `core`, `coreRadius`, `plaza`, `lamps`, `stream` (ford), `trees/rubble/bushes`, `margin`. `DEFENSE_MAP` = twin
+  `woodPads`, `core`, `coreRadius`, `plaza`, `lamps`, `stream` (ford), `trees/rubble/bushes`, `margin`, `hpMult` (enemy
+  health × this on the map: `DefenseScene.hpMult` = night curve × run mods × map, so the layouts play alike). `DEFENSE_MAP` = twin
   (legacy alias). Helpers: `mapFor(runOrKey)` (unknown → twin), `pickMapKey(seed)` (Run.create → `run.mapKey`),
   `forwardSlots(map)` → `[{ lane, at, rank }]`, `padCount(map)` (pads + slots: Save validates `tower.pad < padCount`),
   `laneForAngle(map, angle)` (jungle angle → the lane whose bearing is closest).
@@ -236,6 +290,65 @@ Module functions (import from `../core/Assets.js`):
   y texels above the sprite bottom); `Tower.muzzle()` picks the level / branch (missing branch → level 3).
   Protocol buttons show `PROTOCOL_ICONS[id]` sprites (src/data/protocols.js), the glyph as fallback.
 
+## Night rules — `src/scenes/DefenseScene.js`, `DefenseProtocols.js`, `DefenseForecast.js` (Stage 7 night mechanics)
+
+- **Data:** `src/data/waves.js` — `HEALTH_MULT` / `healthMult(night)` (×`DEFENSE.longNight.hpGrowth` a night past 6),
+  `WAVE_VARIANTS[night − 1] = [A, B, C]` (`{ key, name, groups }`, group `{ push, at, lane, type, count, gap, hpMult? }`),
+  `WAVES` (variant A, back-compat), `variantCount(night)`, `variantFor(run)` (`run.waveVariant` override, else
+  `run.rng('wave')`), `waveFor(night, variant)` → `{ key, name, pushes, groups }` (the Long Night generator past night 6),
+  `DEFENSE` (lull, callEarly, startGuard, exchange, longNight, extra-group push/time window, speeds, banners…), `SALVAGE`.
+  `src/data/protocols.js` — `PROTOCOLS`, `PROTOCOL_ORDER`, `PROTOCOL_ICONS`, `perNight(arr, night)`.
+  `src/data/towers.js` — level 3 = `upgrades[1].branches.{a,b}` (`name, line, detail, cost, set`), `BRANCH_KEYS`,
+  `branchOf(rec)` ('a' for old saves), `BIG_SIZE`. `READINESS` (src/data/guide.js) tunes the forecast.
+- **`buildWave(run, { lanes, dangerLane })`** (exported; BriefingScene uses it for its preview) → `{ variant, name,
+  groups, events, pushes, pushEvents[], total, perLane[], duration }`. Events `{ push, t, lane, type, hpMult? }` are
+  sorted by push then time; the district threat's extra groups go in push `DEFENSE.extraPush` on `dangerLane`, lanes are
+  taken `% lanes`, the wave-size cut (`run.waveCountMult()`) removes from the largest groups.
+- **Phases:** `prep` → `wave` (push k spawning / fighting) ⇄ `lull` (between pushes) → `won` | `lost`. `canBuild` = prep or
+  lull. `startWave(fromPush = 0)` (saves `'wave'` with `run.wavePush = 0`; `fromPush > 0` = Continue into the lull before
+  that push), `_startPush(k)`, `_enterLull(save)` (saves `'wave'` with `run.wavePush = k + 1`), `callNextPush()` (+Scrap
+  for the skipped lull, `_callBonus()`), `_pushSpawned()`. `_step(dt, fixed)` runs spawning, the lull countdown (real
+  time), protocols, towers (only while a push runs) and the end-of-push / end-of-night checks. Space: `_tryStartWave(how)`
+  ('button' | 'space' | 'shift'; a weak readiness arms "Start anyway" for `DEFENSE.startGuard.confirm` s and only the
+  button / Shift+Space starts), no Space-pause for `startGuard.pauseGrace` s after `_startPush` (`spaceGuardT`).
+- **Damage and kills:** `damage(e, amount, opts)` (opts `{ type, source, pierce, blast }`; Flare ×`flareMult(pos)`, blast
+  tags `e.blastT` so a Seed Carrier killed within 3 s of a blast doesn't burst), `_kill(e)` (bounties, seed rule,
+  `nightStats.bossKilled` / `run.stats.bossKilled`). Leaks: `enemyReachedCore(e)` → `_noteLeak(src, dmg)`.
+  `nightStats = { leaks, leakHp, protocols, bossKilled, bossSpent, callEarly }` (the sim and Results read it).
+- **Boss:** `DefenseEnemy` clamps the Colossus at `lane.total − siege.stopAt`, then state `'siege'`: a ring telegraph on
+  the Relay and `scene.bossSlam(e, dmg)` every `siege.every` s; after `maxSlams` `scene.bossSpent(e)` (it collapses; the
+  night is held, `finalResult.bossKilled = false` → Results "The Relay held the Colossus off"). `bossCue(kind)` prints the
+  phase toasts. `e.protocolRoot(t)` (Vine Snare: roots non-bosses, holds the boss `bossRoot` s and returns 'cancel' when it
+  stopped a charge wind-up), `e.applyStun(t)` (Lance), `e.interruptCharge()`. `canBeTargetedBy('bullet')` is true for a
+  burrowed enemy inside a Flare (`scene.litAt(pos)`).
+- **Towers:** `Tower` reads `scene.towerStats` (`_computeTowerStats`: run.towerStats + beacon buffs incl. Spotter's
+  `buffDamage` / `buffRange`); Piercer `pierce` / `bigBonus`, Lance `stun`, Cluster `bomblets`, Napalm burn zones
+  (`Projectiles.zone(…, { source })` credits damage), Snare `rootTime` / `bigRoot`, Thorn Field `damage`.
+  Sprite `${type}_3${branch}` when loaded, else `${type}_3`.
+- **`ProtocolDeck(scene)`** (`scene.protocols`): `keys` (= `run.protocolsFor(meta)`; debug runs get all), `def(k)`
+  (`run.protocolDef` for relic changes), `maxCharges(k)`, `live()` (wave or lull), `blocked(k)` (reason or null),
+  `aim(k)`, `cancelAim()`, `cast(k, { x, z })` (pays, telegraph, resolves after `telegraph` s), `litAt(pos)`,
+  `flareMult(pos)`, `update(dt)`, `frame()` (aim ring, button cooldown sweep via `--cd`), `handleInput()` (Q/W/E, LMB
+  cast, RMB/Esc cancel; returns true when it used the input), `panel()` (the `.df-protobar` buttons), `dispose()`.
+- **`forecastNight(scene)`** → `{ level: 'weak'|'risky'|'strong', lost, lo, hi, lanes: [{ name, short, lost, dots }],
+  ratio }` — a 1-D replay of tonight's wave per lane (samples `READINESS.sample` tiles, step `READINESS.step` s) against
+  `scene.towers` (their stats, `rec.target` rule, path coverage), slows, spitters, burrowers, seed bursts, boss roots /
+  siege and the run's protocols; `lost × lossScale`. `scene._readiness()` caches it per build / resources key.
+- **Run additions:** `upgradeCost(t, branch)`, `upgradeBranches(t)` (the branch table at level 2, else null),
+  `upgrade(t, branch)` (sets `t.branch`), `towerStats` merges the branch's `set` and `t.rangeMod`; `exchangeLeft()` /
+  `exchange(kind)` (`DEFENSE.exchange`, prep only from night 2); `protocolsFor(meta)`; `salvageOptions(lost, night)`
+  (seeded, `SALVAGE.tiers`) / `applySalvage(key, bestPad)`; fields `wavePush` (0–8), `salvage` (`{ freeUpgrades }` for
+  the next prep), `tonight.exchanged`. Save validates `tower.branch` ('a'|'b'), `tower.rangeMod` (1–1.5), `wavePush`,
+  `salvage` (backward compatible, no version bump).
+- **Debug** (`vr.game.scene.debug`): `state()` (phase, push, lull, wave, protocols…), `callNext()`, `cast(k, x, z)`,
+  `win()`, `lose()`, `spawn(type, lane)`; `&variant=0|1|2` forces a wave variant.
+- **Balance sim** (`.playwright-mcp/nightmech/`, not shipped): `sim_page.js` injects `window.__sim` into a
+  `?debug=defense` page — `campaign(profile, seed, { map, tweak })` plays a whole run through the real scene (renderer
+  and the scene's own frame update off; `_step(1/30, true)`), `night(cfg)` one debug night with a fixed build,
+  `tweak({...})` overrides data in the game's own module instances. `campaign.mjs N profiles workers tag` runs workers
+  and prints the per-night table; `tallwide.mjs`, `onelane.mjs`, `calib.mjs` (forecast vs outcome), `ui.mjs` (real-input
+  UI pass with screenshots).
+
 ## Screen-space lighting (`src/core/PostFx.js`)
 
 A scene that sets `this.post = new PostFx(game)` is rendered into a half-float target and composited by one pass.
@@ -247,6 +360,10 @@ foreground leaf frame (`fg_leaf_1..5`, `ATMOS.leafFrame`, whole sprites with lag
 < 1 = emissive share (1 − a ignores darkness, shade and vignette). Opaque materials write 1; `emitBlending(mat)` marks a
 material as emissive, `lightBlending(mat)` adds light. Dithers are Bayer and world-anchored (they move with the ground).
 The default framebuffer ignores alpha, so scenes without PostFx are unaffected. Menus get it through `MenuBackdrop.post`.
+Weather (Weather.js sets them; neutral by default): `uWTint` (RGB multiplier), `uFog` / `uFogCol` / `uFogR` (a veil
+from `uFogR.x` to `.y` × the light radius, 5 Bayer steps, value-noise lumps, dimmer with `uDark`), `uRain` / `uRainK` /
+`uRainP` / `uRainCol` (1-px streaks on world-pixel lanes, per-lane hashed periods); `post.lightMult` scales the light
+radius in `timeOfDay`.
 
 ## Effects (`src/core/Fx.js`)
 
@@ -284,8 +401,16 @@ Fields: `seed night phase relayHp relayMax playerHp meds weapon res{scrap,circui
   `localDate()`, `dailySeed(date)`, `dailyMods(date)`, `dailyRecord(meta, date)`.
 - Districts: `districtChoices()` (weighted against past offers / visits, `AREA_OFFERS`; `areaCount` cards),
   `canRerollAreas(meta)` / `rerollAreas(meta)` (Second Look), `objectiveFor(district)` (avoids recent goals; fixed once
-  chosen), `chooseDistrict(key)` (logs the offer and goal, sets `objective`, `tonight.threat` / `threat2` (Restless
-  Jungle, `secondThreat()`), extra groups, speed), `lootMults()` (today's container multipliers: the chosen area × Picked Over).
+  chosen; only goals whose `minNight` ≤ tonight), `chooseDistrict(key)` (logs the offer and goal, sets `objective`,
+  `tonight.threat` / `threat2` (Restless Jungle, `secondThreat()`), extra groups, speed), `lootMults()` (today's
+  container multipliers: the chosen area × Picked Over × Fog's `lootScrap`).
+- Area bosses / weather (Stage 7): field `bosses[]` (areas whose boss is dead; Save.validRun checks it, default []),
+  `bossCleared(area)`, `bossAlive(area, night)` (from `BOSS.fromNight`), `clearBoss(area)` (records it; if it is
+  today's area, tonight's danger is lifted at once), `threatFor(area)` returns `clearedThreat(area, name)` (`cleared:
+  true`, no extra group / speed) once its boss is dead. Field `weatherKey` (debug override, default null),
+  `weatherFor(night)` (null before `WEATHER.fromNight` and on the guided day; seeded `subSeed(seed, night, 'weather')`),
+  `weather(night)` → `{key, …def}` or null. `applyExpedition` awards `BOSS.reward.research` per `result.bossesKilled`.
+  Boon fields `bankRes` (resources banked with the boon, only if you got home) and `enemySpeed` (× tonight).
 - Resources: `canAfford(cost)`, `missing(cost)` → "Need 12 more Scrap", `spend(cost)`, `add(gain)`.
 - Skills (Stage 7 rework, `src/data/skills.js`): `hasSkill(id)` (old ids read through `SKILL_RENAMED` / `skillId`, so
   `hasSkill('pack_rat_1')` sees Pack Rat), `setSkills(list)` (maps old ids, refunds a point per removed / duplicate one;
@@ -296,7 +421,7 @@ Fields: `seed night phase relayHp relayMax playerHp meds weapon res{scrap,circui
   `skillMult(field)` (product over owned skills), `bountyMult()` (Salvage King; DefenseScene._kill).
   Skill points: JungleScene `_grantSkillPoint(opts)` gives at most `CONFIG.expedition.maxSkillPoints` (1) a trip from the
   goal / bonus tasks; **`_grantSkillPoint({ boss: true })` (an area boss kill) always adds one on top**.
-- Towers: `availableTowers(meta)`, `buildCost(type)` (includes the +5 Scrap per same-type tower, `buildSurcharge(type)`), `towerCount(type)`, `build(type, padIndex)`, `upgradeCost(t)` (null = max, `{}` = free), `upgrade(t)`,
+- Towers: `availableTowers(meta)`, `buildCost(type)` (includes `CONFIG.towerSurcharge` Scrap per same-type tower, `buildSurcharge(type)`), `towerCount(type)`, `build(type, padIndex)`, `upgradeCost(t, branch)` (null = max, `{}` = free), `upgradeBranches(t)`, `upgrade(t, branch)` (level 3 needs a branch; see Night rules),
   `sellValue(t)`, `sell(t)` (a fitted mod goes back to the bench), `towerStats(t, relayFrac)` → merged stats with
   upgrades / boons, then every owned skill's and the fitted mod's `tower` block through the exported
   `applyTowerMod(s, type, block, acc, relayFrac)` (filters `kinds` / `types` / `when.relayBelow`; `range` / `rate` /
@@ -320,7 +445,7 @@ Fields: `seed night phase relayHp relayMax playerHp meds weapon res{scrap,circui
 - Intel (night prep): `decryptCost()`, `decrypt(game)` → Research; `sabotageCost()`, `sabotageBlocked()`, `sabotage()` → wave −10% once per night.
 - Wave size: `waveCountMult()` = `tonight.enemyCount` floored at `CONFIG.waveSizeFloor` (0.8); `waveCutCapped()`.
 - Expedition: `applyExpedition(result, game)` with
-  `{ district, extracted, died, carried:{…}, objectiveDone, boon, optionals:[{key,name,flag?,research?}], events:[{key,flag?}], skillPointsEarned, medsLeft, playerHp, kills, relics:[id] }`.
+  `{ district, extracted, died, carried:{…}, objectiveDone, objectiveFailed, boon, optionals:[{key,name,flag?,research?}], events:[{key,name,flag?}], bossesKilled:[area], weather, skillPointsEarned, medsLeft, playerHp, kills, relics:[id] }`.
   Banks loot only if extracted (else the salvage, clamped to what was carried), awards research, applies the goal's boon
   into `tonight` only if extracted (else `summary.rewardLost`), sets `summary.dawnHp`, stores `lastExpedition`.
   Death rules: `salvageFor(carried, dayT)` (`min(carried, max(floor, share × carried))` for Scrap; nothing with No Drone),

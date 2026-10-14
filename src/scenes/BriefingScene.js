@@ -424,7 +424,7 @@ export class BriefingScene {
     if (!k) return;
     const changed = this.selected !== k;
     this.selected = k;
-    this.game.sfx.play(changed ? 'pickup' : 'open');
+    this.game.sfx.play(changed ? 'ui_select' : 'open');
     this.render();
     if (fromKey || this.nav?.cur) {
       const b = this.root.querySelector('.begin-btn');

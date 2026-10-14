@@ -124,10 +124,13 @@ export const PRIMARY_KEYS = Object.keys(PRIMARY);
 //           costs it `hitCost` s; `types` weights the packs.
 //   track   each clue `follow` m from the last; the Alpha waits `alphaDist` m past the last clue; you read a
 //           clue by walking within `read` tiles; the Alpha is the area's biggest beast in `beasts` order, with
-//           × `alphaHp` health on top of the elite multiplier. `decals` dress each clue.
+//           × `alphaHp` health on top of the elite multiplier. `decals` dress each clue. The trail keeps within
+//           `turn` rad of its last leg (best of `tries` seeded tries); the lair keeps `campGap` tiles from camps;
+//           the next clue glints every glint[0] s while you are within glint[1] tiles.
 //   carry   × `speed` while carrying; the drone takes it within `deliver` tiles of the Relay / a beacon;
-//           `regrab` s hold to pick it back up; `sprite` = the core's look.
-//   purge   `count` nests placed `spread` tiles from the site, `hp` each (× night enemy HP); a nest puffs a spore
+//           `regrab` s hold to pick it back up; E sets it down `dropAhead` tiles in front; `sprite` = its look.
+//   purge   `count` nests `spread` tiles from the site (the least shaded of `tries` spots), `hp` each (× night
+//           enemy HP); a nest puffs a spore
 //           cloud (ring telegraph `puffFuse` s) every `puffEvery` s while you are within `puffRange`; `time` s to
 //           pop them all once the first one goes; `tint` = the nest's sickly spore colour.
 export const GOALS = {
@@ -140,12 +143,12 @@ export const GOALS = {
     ring: '#2ce8f5',
   },
   track: {
-    follow: [20, 30], alphaDist: [10, 16], read: 1.7, alphaHp: 1.5,
+    follow: [20, 30], alphaDist: [10, 16], read: 1.7, alphaHp: 1.5, turn: 1.1, campGap: 8, glint: [0.7, 12], tries: 40,
     beasts: ['razorback', 'feral', 'crawler'],
     decals: ['dec_footprints', 'dec_bones_skull', 'dec_twigs_crossed', 'dec_burrow'],
   },
-  carry: { speed: 0.75, deliver: 3.2, regrab: 0.5, sprite: 'cell_cache' },
-  purge: { count: 3, time: 60, hp: 30, spread: [4, 8], puffEvery: 6, puffRange: 3, puffFuse: 0.9, tint: '#d8f070' },
+  carry: { speed: 0.75, deliver: 3.2, regrab: 0.5, dropAhead: 0.8, sprite: 'cell_cache' },
+  purge: { count: 3, time: 60, hp: 30, spread: [3, 7], tries: 24, puffEvery: 6, puffRange: 3, puffFuse: 0.9, tint: '#d8f070' },
 };
 
 // Optional objectives: always optional, always marked on the map once the room is seen.
@@ -176,11 +179,11 @@ export const OPTIONAL_KEYS = Object.keys(OPTIONAL);
 export const EVENTS = {
   workshop: {
     name: 'Abandoned Workshop', prop: 'workbench', hold: 6, spawnDuring: 2,
-    prompt: 'Strip the workshop: 40 Scrap, but the noise draws creatures (6 s)', reward: { scrap: 40 },
+    prompt: 'Strip the workshop: 40 Scrap, but the noise draws creatures', reward: { scrap: 40 },
   },
   power_surge: {
     name: 'Power Surge', prop: 'power_box', hold: 3, spawnDuring: 3,
-    prompt: 'Overload the grid: towers deal 15% more damage tonight, but creatures come (3 s)',
+    prompt: 'Overload the grid: towers deal 15% more damage tonight, but creatures come',
     flag: { text: 'Power surge: towers deal 15% more damage tonight.', towerDamage: 1.15 },
   },
   infested_cache: {

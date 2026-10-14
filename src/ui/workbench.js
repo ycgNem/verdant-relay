@@ -72,7 +72,7 @@ export function workbenchView(game, opts = {}) {
       toast(game.ui, run.craftBlocked(key) || 'Can\'t make that now', 'bad', 2);
       return;
     }
-    game.sfx.play('build');
+    game.sfx.play('craft');
     const r = RECIPES[key];
     const after = r.mod ? `${look.name} made: fit it in night prep (click a tower)` : r.blade ? `${look.name}: your machete is upgraded` : `${look.name} made`;
     toast(game.ui, after, 'good', 2.6);
@@ -146,7 +146,7 @@ export function modRow(scene, t) {
   if (!fitted && !can.length) return null;
   const game = scene.game;
   const done = (msg) => {
-    game.sfx.play('build');
+    game.sfx.play('mod_fit');
     const c = TOWER_MODS[rec.mod]?.color || '#c0cbdc';
     scene.fx?.ring(t.pos, { color: c, radius: 1, life: 0.4 });
     toast(game.ui, msg, 'good', 2);

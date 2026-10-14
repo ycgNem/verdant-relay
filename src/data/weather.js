@@ -7,8 +7,9 @@
 //   staminaRegen × stamina refill (Player) · pods: × spore pods (extra ones grow near the others)
 // Look / sound (PostFx uniforms; all pixel-exact, world-anchored Bayer dithers):
 //   tint       linear RGB multiplier over the whole view · fog: strength of a dithered veil that thickens away
-//   from you (fogColor) · rain: density of 1-px rain streaks (streak length / speed in RAIN_LOOK) + puddle
-//   ripples per second around you (ripples) · shafts: × the light shafts · audio: AmbientAudio.setRain level.
+//   from you (fogColor), from fogRange[0] to fogRange[1] × the light radius · rain: density of 1-px rain streaks
+//   (streak length / speed in RAIN_LOOK) + puddle ripples per second around you (ripples) · shafts: × the light
+//   shafts · audio: AmbientAudio.setRain level.
 export const WEATHER = {
   fromNight: 2,
   chance: 0.35,
@@ -24,13 +25,13 @@ export const WEATHER = {
       name: 'Fog', icon: '≋',
       short: 'You see 35% less, but containers hold 20% more Scrap',
       lightMult: 0.65, lootScrap: 1.2,
-      tint: [0.92, 0.95, 0.96], fog: 0.85, fogColor: [0.6, 0.66, 0.64], shafts: 0, audio: 0,
+      tint: [0.92, 0.95, 0.96], fog: 0.62, fogRange: [0.3, 1.05], fogColor: [0.6, 0.66, 0.64], shafts: 0, audio: 0,
     },
     heat: {
       name: 'Heat', icon: '☀',
       short: 'Stamina refills 25% slower and spore pods are everywhere',
       staminaRegen: 0.75, pods: 1.5,
-      tint: [1.08, 1.0, 0.85], fog: 0.3, fogColor: [0.86, 0.72, 0.48], shafts: 1.5, audio: 0,
+      tint: [1.08, 1.0, 0.85], fog: 0.3, fogRange: [0.5, 1.4], fogColor: [0.86, 0.72, 0.48], shafts: 1.5, audio: 0,
     },
   },
 };

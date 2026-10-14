@@ -116,6 +116,7 @@ export class PostFx {
       uWTint: { value: new THREE.Vector3(1, 1, 1) },
       uFog: { value: 0 },
       uFogCol: { value: new THREE.Vector3(0.6, 0.66, 0.64) },
+      uFogR: { value: new THREE.Vector2(0.3, 1.05) },        // the veil runs from x to y × the light radius
       uRain: { value: 0 },
       uRainK: { value: new THREE.Vector4(6, 7, 420, 3) },    // gap, len, speed (px/s), slant (px down per px left)
       uRainP: { value: new THREE.Vector3(46, 80, 0.42) },    // period min / max (px), mix
@@ -135,6 +136,7 @@ export class PostFx {
         uniform float uGradeK, uGradeLift, uLamp, uLampLevel, uEmit, uMoonFloor;
         uniform vec3 uTint, uLift, uLampTint, uNightLift;
         uniform vec3 uWTint, uFogCol, uRainP, uRainCol;
+        uniform vec2 uFogR;
         uniform float uFog, uRain;
         uniform vec4 uRainK;
         varying vec2 vUv;
@@ -198,11 +200,11 @@ export class PostFx {
           // lit like the ground under it), then rain streaks — 1-px lines anchored to world pixels, leaning left.
           col *= uWTint;
           if (uFog > 0.0) {
-            float fd = smoothstep(uLightR * 0.12, uLightR * 0.8, d);
+            float fd = smoothstep(uLightR * uFogR.x, uLightR * uFogR.y, d);
             float fn = vnoise(ground * 0.14 + vec2(uTime * 0.05, uTime * 0.021));
             float fk = clamp(uFog * fd * (0.7 + 0.6 * fn), 0.0, 1.0) * (1.0 - emit * 0.6);
             fk = floor(fk * 5.0 + b) / 5.0;
-            col = mix(col, uFogCol * max(lit, vec3(0.3)), fk);
+            col = mix(col, uFogCol * max(lit, vec3(0.3)) * mix(1.0, 0.45, uDark), fk);   // (dimmer after dark)
           }
           if (uRain > 0.0) {
             vec2 wp = floor(px) + floor(uFocus * uPpu + 0.5);

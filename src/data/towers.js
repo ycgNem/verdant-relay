@@ -2,14 +2,15 @@
 // `{ branches: { a: {...}, b: {...} } }`, two ways to finish the tower (critic K #2). Each upgrade's or
 // branch's `set` is merged over the stats, so later levels inherit earlier changes. A saved tower records
 // its branch in `rec.branch` ('a' | 'b'; older saves without one count as 'a').
-// Branch fields: name, line (one plain sentence for the button), cost, set, and its own sprite key
+// Branch fields: name, line (a few plain words for the half-width button), detail (the full sentence, its
+// tooltip), cost, set, and its own sprite key
 // `${type}_3a` / `${type}_3b` (falls back to `${type}_3`, then `${type}`).
 //
-// Upgrade economics (Stage 7): level 2 is the efficient buy (≈ +70% damage per second for ≈ 0.8× the build
-// cost), level 3 a choice of role (≈ 1.2× the build cost + components); a new tower still adds coverage,
-// which upgrades never do, and each tower of a type you own adds CONFIG.towerSurcharge Scrap to the next
-// one. Tall vs wide (balance sim, night 4, ~470 Scrap): 11 L1 towers vs 5 upgraded towers end within
-// ~10 Relay HP of each other (at 0.6× L2 cost and a 12 surcharge, tall won by 25–35 HP).
+// Upgrade economics (Stage 7): level 2 is a good buy (≈ +70% damage per second for ≈ 0.9× the build cost),
+// level 3 a choice of role (≈ 1.2× the build cost + components); a new tower still adds coverage, which
+// upgrades never do, and each tower of a type you own adds CONFIG.towerSurcharge Scrap to the next one.
+// Tall vs wide (balance sim, night 4, 3 maps × 3 variants): 11 towers with five at level 2 (639 Scrap) lose ~18,
+// six level-3 towers (710 Scrap) ~14 (with level 2 at 0.6× and a 12 surcharge the gap was 25–35 HP).
 //
 // kind:  bullet  homing shot at one target (can't hit burrowed enemies unless a Flare lights them)
 //        chain   instant arc that jumps between enemies
@@ -46,11 +47,11 @@ export const TOWERS = {
     kind: 'bullet', damageType: 'kinetic', target: 'first', proj: 'bullet',
     range: 4.5, damage: 10, cooldown: 0.7, projSpeed: 14,
     upgrades: [
-      { cost: { scrap: 36 }, desc: 'Fires much faster and hits harder (+70% damage per second).', set: { cooldown: 0.5, damage: 12 } },
+      { cost: { scrap: 40 }, desc: 'Fires much faster and hits harder (+70% damage per second).', set: { cooldown: 0.5, damage: 12 } },
       { branches: {
-        a: { name: 'Piercer', line: 'Heavy rounds that ignore shields and hit big enemies 50% harder.',
+        a: { name: 'Piercer', line: 'Pierces shields. +50% on tanks.', detail: 'Heavy rounds that ignore shields and hit big enemies 50% harder.',
           cost: { scrap: 55, circuits: 1 }, set: { damage: 24, cooldown: 0.62, pierce: true, bigBonus: 1.5, proj: 'crit' } },
-        b: { name: 'Repeater', line: 'A stream of light rounds: great against swarms.',
+        b: { name: 'Repeater', line: 'Rapid fire. Shreds swarms.', detail: 'A stream of light rounds: great against swarms.',
           cost: { scrap: 55, circuits: 1 }, set: { damage: 9, cooldown: 0.22 } },
       } },
     ],
@@ -66,11 +67,11 @@ export const TOWERS = {
     kind: 'bullet', damageType: 'kinetic', target: 'closest', proj: 'thorn',
     range: 3.5, damage: 4, cooldown: 0.24, projSpeed: 16,
     upgrades: [
-      { cost: { scrap: 28, biofiber: 1 }, desc: 'Thorns hit much harder and slow the target 30%.', set: { damage: 6.5, slowOnHit: 0.7, slowTime: 1.0 } },
+      { cost: { scrap: 32, biofiber: 1 }, desc: 'Thorns hit much harder and slow the target 30%.', set: { damage: 6.5, slowOnHit: 0.7, slowTime: 1.0 } },
       { branches: {
-        a: { name: 'Briar', line: 'Thorns slow by 40% and the slow splashes onto nearby enemies.',
+        a: { name: 'Briar', line: 'Slows 40%, and nearby foes too.', detail: 'Thorns slow by 40% and the slow splashes onto nearby enemies.',
           cost: { scrap: 50, biofiber: 2 }, set: { damage: 7, slowOnHit: 0.6, slowTime: 1.2, slowRadius: 1.6 } },
-        b: { name: 'Hornet', line: 'Faster, harder thorns: the most damage up close.',
+        b: { name: 'Hornet', line: 'Faster, harder thorns.', detail: 'Faster, harder thorns: the most damage up close.',
           cost: { scrap: 50, biofiber: 2 }, set: { damage: 8, cooldown: 0.18 } },
       } },
     ],
@@ -86,11 +87,11 @@ export const TOWERS = {
     kind: 'chain', damageType: 'energy', target: 'first',
     range: 4.0, damage: 11, cooldown: 1.2, chains: 2, chainRange: 2.4, chainFalloff: 0.6,
     upgrades: [
-      { cost: { scrap: 30, circuits: 1 }, desc: 'Stronger bolts that jump to one more enemy.', set: { chains: 3, damage: 14, chainFalloff: 0.7, cooldown: 1.15 } },
+      { cost: { scrap: 34, circuits: 1 }, desc: 'Stronger bolts that jump to one more enemy.', set: { chains: 3, damage: 14, chainFalloff: 0.7, cooldown: 1.15 } },
       { branches: {
-        a: { name: 'Storm', line: 'Jumps to 5 enemies and loses little power per jump.',
+        a: { name: 'Storm', line: 'Jumps to 5 enemies.', detail: 'Jumps to 5 enemies and loses little power per jump.',
           cost: { scrap: 55, circuits: 2 }, set: { chains: 5, chainFalloff: 0.8, damage: 18, cooldown: 1.1 } },
-        b: { name: 'Lance', line: 'One huge bolt that stuns its target (not bosses).',
+        b: { name: 'Lance', line: 'One huge bolt that stuns.', detail: 'One huge bolt that stuns its target for a moment (not bosses).',
           cost: { scrap: 55, circuits: 2 }, set: { chains: 0, damage: 55, cooldown: 1.2, stun: 0.25 } },
       } },
     ],
@@ -107,11 +108,11 @@ export const TOWERS = {
     range: 7.0, minRange: 1.5, damage: 28, cooldown: 1.9, flightTime: 1.1, blastRadius: 1.3, blastEdge: 0.6,
     locked: 'mortar_pod',
     upgrades: [
-      { cost: { scrap: 48, biofiber: 1 }, desc: 'Bigger, harder blasts.', set: { blastRadius: 1.8, damage: 36 } },
+      { cost: { scrap: 52, biofiber: 1 }, desc: 'Bigger, harder blasts.', set: { blastRadius: 1.8, damage: 36 } },
       { branches: {
-        a: { name: 'Napalm', line: 'Leaves burning sap that keeps hurting (and still counts as a blast).',
+        a: { name: 'Napalm', line: 'Leaves burning sap.', detail: 'Shells leave burning sap that keeps hurting (and still counts as a blast).',
           cost: { scrap: 65, biofiber: 2 }, set: { burnDps: 12, burnTime: 2.5 } },
-        b: { name: 'Cluster', line: 'Each shell scatters 3 bomblets over a wider area.',
+        b: { name: 'Cluster', line: 'Scatters 3 bomblets.', detail: 'Each shell scatters 3 bomblets over a wider area.',
           cost: { scrap: 65, biofiber: 2 }, set: { bomblets: 3, bombletDamage: 16, bombletSpread: 1.0 } },
       } },
     ],
@@ -127,11 +128,11 @@ export const TOWERS = {
     kind: 'snare', damageType: 'nature', target: 'first',
     range: 3.3, damage: 2, cooldown: 1.2, slowMult: 0.55, slowTime: 2.6,
     upgrades: [
-      { cost: { scrap: 24, biofiber: 1 }, desc: 'Stronger slow (45% → 60%), more range.', set: { slowMult: 0.4, range: 3.7 } },
+      { cost: { scrap: 28, biofiber: 1 }, desc: 'Stronger slow (45% → 60%), more range.', set: { slowMult: 0.4, range: 3.7 } },
       { branches: {
-        a: { name: 'Root', line: 'Roots enemies in place for 0.8 s (big ones for 0.5 s), once every 4 s each.',
+        a: { name: 'Root', line: 'Roots enemies in place.', detail: 'Roots enemies in place for 0.8 s (big ones 0.5 s), once every 4 s each.',
           cost: { scrap: 50, biofiber: 2 }, set: { rootTime: 0.8, rootCooldown: 4, bigRoot: 0.5 } },
-        b: { name: 'Thorn Field', line: 'Its vines are barbed: 10 damage a second to everything in range.',
+        b: { name: 'Thorn Field', line: 'Barbed: hurts all in range.', detail: 'Its vines are barbed: 12 damage a pulse to everything in range.',
           cost: { scrap: 50, biofiber: 2 }, set: { damage: 12 } },
       } },
     ],
@@ -148,11 +149,11 @@ export const TOWERS = {
     range: 4.5, damage: 0, cooldown: 0, buffRate: 0.2,
     locked: 'pulse_beacon',
     upgrades: [
-      { cost: { scrap: 40, circuits: 1 }, desc: 'Attack speed bonus 20% → 35%.', set: { buffRate: 0.35 } },
+      { cost: { scrap: 44, circuits: 1 }, desc: 'Attack speed bonus 20% → 35%.', set: { buffRate: 0.35 } },
       { branches: {
-        a: { name: 'Overdrive', line: 'Boosted towers also get a 15% chance of a bonus attack.',
+        a: { name: 'Overdrive', line: 'Even faster, bonus attacks.', detail: 'Boosted towers attack 40% faster, with a 15% chance of a bonus attack.',
           cost: { scrap: 60, circuits: 2 }, set: { bonusAttackChance: 0.15, buffRate: 0.4 } },
-        b: { name: 'Spotter', line: 'Boosted towers also deal 15% more damage and reach 10% further.',
+        b: { name: 'Spotter', line: '+15% damage, +10% range.', detail: 'Boosted towers also deal 15% more damage and reach 10% further.',
           cost: { scrap: 60, circuits: 2 }, set: { buffDamage: 0.15, buffRange: 0.1 } },
       } },
     ],

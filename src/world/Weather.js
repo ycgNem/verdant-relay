@@ -63,6 +63,7 @@ export class Weather {
       U.uWTint.value.set(...(d?.tint || [1, 1, 1]));
       U.uFog.value = d?.fog || 0;
       if (d?.fogColor) U.uFogCol.value.set(...d.fogColor);
+      if (d?.fogRange && U.uFogR) U.uFogR.value.set(...d.fogRange);
       U.uRain.value = d?.rain || 0;
       const R = RAIN_LOOK;
       U.uRainK.value.set(R.gap, R.len, R.speed, R.slant);

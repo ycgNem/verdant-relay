@@ -412,7 +412,7 @@ export class Shots {
       t.hit(damage, dx, dz, b.spec.knockback, 'blade');
       sc.fx.flash({ x: t.x - dx * 0.2, y: 0.6, z: t.z - dz * 0.2 }, { color: '#ffffff', size: 0.4, life: 0.05 });
       sc.fx.hitStop(JUICE.melee.stop[0]);
-      this.scene.game.sfx.play('flesh');
+      this.scene.game.sfx.playAt('blade_hit', b.x, b.z);
       n++;
     }
     return n;
@@ -441,7 +441,7 @@ export class Shots {
               if (px !== b.x || pz !== b.z) continue;   // only a bramble dead ahead stops it
               w.hitBrush(tx, tz, 1);
               fx.burst({ x: tx + 0.5, y: 0.4, z: tz + 0.5 }, { color: '#c23a3a', color2: '#5c2f2e', count: 5, speed: 2, up: 1.5, life: 0.3, size: 1.5 / 32 });
-              sc.game.sfx.play('cut');
+              sc.game.sfx.playAt('blade_snag', b.x, b.z);
               this._turnBlade(b);
               break;
             }
@@ -454,7 +454,7 @@ export class Shots {
           if (!stop) for (const c of w.collidersNear(b.x, b.z, 0.3)) if (inFootprint(c, b.x, b.z, 0.06)) { stop = true; break; }
           if (stop) {
             fx.spark({ x: b.x, y: 0.62, z: b.z }, { color: '#fee761', dir: b.dir });
-            sc.game.sfx.play('crack');
+            sc.game.sfx.playAt('blade_clank', b.x, b.z);
             this._turnBlade(b);
           } else if (b.travelled >= b.spec.range) this._turnBlade(b);
         }

@@ -180,7 +180,8 @@ export class Sfx {
   }
 
   _prune(now) {
-    if (this.voices.length && this.voices[0].end < now) this.voices = this.voices.filter((v) => v.end >= now);
+    // Voices end out of order (a long boom before short ticks), so check them all (there are only a few dozen).
+    if (this.voices.some((v) => v.end < now)) this.voices = this.voices.filter((v) => v.end >= now);
   }
 
   /**
@@ -204,13 +205,14 @@ export class Sfx {
     if (same >= (def.max ?? MIX.perName)) return true;
     const pri = def.pri || 1;
     if (this.voices.length >= MIX.voices) {
+      // Full: ordinary sounds wait their turn; a priority cue steals the oldest ordinary voice (fast fade),
+      // and only if every voice is a priority cue may it go a few over (MIX.priExtra), never further.
       if (pri < 2) return true;
-      const victim = this.voices.find((v) => v.pri < 2);
-      if (victim) {
-        victim.gain.gain.setTargetAtTime(0, now, 0.015);
-        victim.end = now;
-        this._prune(now + 0.001);
-      }
+      const i = this.voices.findIndex((v) => v.pri < 2);
+      if (i >= 0) {
+        this.voices[i].gain.gain.setTargetAtTime(0, now, 0.015);
+        this.voices.splice(i, 1);
+      } else if (this.voices.length >= MIX.voices + MIX.priExtra) return true;
     }
     this.last[name] = now;
     try {
@@ -269,7 +271,8 @@ export class Sfx {
     const lis = sc?.player?.pos;
     if (lis) {
       const d = Math.hypot(x - lis.x, z - lis.z);
-      if (d > P.near) gain = (1 - Math.min(1, (d - P.near) / (P.far - P.near))) ** P.curve;
+      const near = soundDef(name)?.near ?? P.near; // tells (wind-ups) stay full-volume further out
+      if (d > near) gain = (1 - Math.min(1, (d - near) / Math.max(1, P.far - near))) ** P.curve;
       if (d > P.muffleFrom) muffle = Math.min(1, (d - P.muffleFrom) / (P.far - P.muffleFrom));
     }
     if (gain < P.minGain) return soundDef(name) ? true : null;

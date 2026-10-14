@@ -109,7 +109,7 @@ export class Bloater extends ExploreEnemy {
     fx.burst({ x: this.x, y: 0.4, z: this.z }, { color: SPORES.color, color2: '#ffffff', count: 22, speed: 3.2, up: 2.6, life: 0.6, size: 2 / 32, gravity: 2 });
     fx.ring({ x: this.x, z: this.z }, { color: SPORES.color, radius: SPORES.radius, life: 0.35 });
     if (d < 10) this.game.shake(4, 0.2);
-    this.game.sfx.playAt('spore_burst', this.x, this.z);
+    this.game.sfx.playAt('bloater_burst', this.x, this.z);
   }
 
   update(dt) {
@@ -203,7 +203,7 @@ export class Bloater extends ExploreEnemy {
     setAnim(this.vis, 'windup', true);
     if (this.pod) setAnim(this.pod, 'swell', true);
     this.tele = sc.fx.ringTele({ x: this.x, z: this.z }, { radius: SPORES.radius, color: SPORES.color, color2: SPORES.color2, time: d.windup, fade: 0.05 });
-    this.game.sfx.playAt('spore_swell', this.x, this.z);
+    this.game.sfx.playAt('bloater_swell', this.x, this.z);
   }
 
   dispose() {
@@ -223,6 +223,7 @@ export class FeralChief extends ExploreEnemy {
   update(dt) {
     super.update(dt);
     if (this.dead) return;
+    if (this.alerted && !this._rallied) { this._rallied = true; this.game.sfx.playAt('chief_rally', this.x, this.z); }
     // Aura: Ferals within DAY_CREATURES.chief.aura move faster while it lives (refreshed a few times a second).
     this.auraT -= dt;
     if (this.auraT > 0) return;

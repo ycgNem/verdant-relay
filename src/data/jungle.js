@@ -199,7 +199,7 @@ export const DAY = {
   // Relay / pylons, then objectives, then containers. Exception (so a crate right next to a pylon is still
   // reachable): standing within interactPointBlank of a lower-ranked one that is at least
   // interactPointBlankLead closer than the winner picks it instead.
-  interactRank: { extract: 0, pylon: 0, primary: 1, optional: 1, container: 2 },
+  interactRank: { extract: 0, pylon: 0, primary: 1, optional: 1, event: 1, container: 2 },
   interactPointBlank: 0.8,
   interactPointBlankLead: 0.6,
   pylonHold: 2.5,

@@ -93,7 +93,7 @@ export class ProtocolDeck {
     // Friendly telegraph: a dashed ring that closes in, in the protocol's colour.
     scene.fx.telegraph(pos, { radius: P.radius, color: P.color, time: P.telegraph, fade: 0.05, style: 'dashed' });
     this.pending.push({ key: k, x: p.x, z: p.z, t: P.telegraph });
-    scene.game.sfx.play(k === 'arc_discharge' ? 'zap' : k === 'flare' ? 'pulse' : 'snare');
+    scene.game.sfx.play(`cast_${k}`);
     if (this.aiming === k) this.cancelAim();
     scene.sideDirty = true;
     scene._refreshTop?.();
@@ -114,6 +114,7 @@ export class ProtocolDeck {
       }
       fx.ring(pos, { color: P.color, radius: P.radius, life: 0.45 });
       fx.burst(pos, { color: '#63c74d', color2: '#265c42', count: 26, speed: 2.4, up: 2.5, life: 0.55, size: 0.08, y: 0.05 });
+      scene.game.sfx.playAt('vine_root', c.x, c.z);
       if (cancelled) {
         toast(scene.game.ui, 'Charge cancelled! The Colossus is held.', 'good', 2.2);
         fx.text(pos, 'CHARGE STOPPED', { color: '#63c74d', cls: 'big', y: 2.6, life: 1.1 });
@@ -131,7 +132,7 @@ export class ProtocolDeck {
       fx.light(pos, { color: '#2ce8f5', intensity: 6, distance: 5, life: 0.2 });
       fx.burst(pos, { color: '#2ce8f5', color2: '#ffffff', count: 24, speed: 3.2, up: 3, life: 0.45, size: 0.07, y: 0.1 });
       scene.game.shake(3, 0.2);
-      scene.game.sfx.play('zap');
+      scene.game.sfx.playAt('arc_discharge', c.x, c.z);
     } else if (c.key === 'flare') {
       const mat = scene._track(new THREE.MeshBasicMaterial({ color: '#feae34', transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending }));
       const mesh = new THREE.Mesh(this.flareGeom, mat);
@@ -143,6 +144,7 @@ export class ProtocolDeck {
       this.flares.push({ x: c.x, z: c.z, r: P.radius, t: P.time, life: P.time, mult: P.damageMult, mesh, mat, spark: 0 });
       fx.flash({ x: c.x, y: 1.2, z: c.z }, { color: '#fee761', size: 1.2, life: 0.2 });
       fx.ring(pos, { color: '#feae34', radius: P.radius, life: 0.5 });
+      scene.game.sfx.playAt('flare_pop', c.x, c.z);
     }
   }
 

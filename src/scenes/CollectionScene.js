@@ -466,7 +466,7 @@ export class CollectionScene {
             t.damageType !== 'none' ? stat('Type', t.damageType) : null),
           // Level 3 is a choice of two branches (src/data/towers.js upgrades[1].branches).
           t.upgrades.map((u, i) => u.branches
-            ? Object.values(u.branches).map((b) => el('div.small.upg', {}, el('span.amber', `Lv ${i + 2} ${b.name}: `), b.line, ' ', costLine(b.cost)))
+            ? Object.values(u.branches).map((b) => el('div.small.upg', {}, el('span.amber', `Lv ${i + 2} ${b.name}: `), b.detail || b.line, ' ', costLine(b.cost)))
             : el('div.small.upg', {}, el('span.amber', `Lv ${i + 2}: `), u.desc, ' ', costLine(u.cost))))));
     }
     c.append(tlist);

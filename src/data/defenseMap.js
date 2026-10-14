@@ -38,6 +38,7 @@ export const DEFENSE_MAPS = {
   // The classic: two winding trails from the north-west and south-west that meet at the Relay.
   twin: {
     key: 'twin', name: 'Twin Paths', blurb: 'Two winding trails meet at the Relay.',
+    hpMult: 0.86,   // enemy health × this on this map (DefenseScene.hpMult; balance sim: the trails only meet at the Relay, so few pads see both)
     width: FIELD.w, height: FIELD.h,
     core: { x: 20.6, y: 8.2 }, coreRadius: 1.2,
     lanes: [
@@ -50,10 +51,12 @@ export const DEFENSE_MAPS = {
     ],
     // Build pads: tile coords of the pad's top-left, nudged off the grid by multiples of 1/8 tile (still
     // pixel-exact) so the plinths don't read as a TD grid. Every footprint (tile + plinth face) stays clear
-    // of lane tiles and pads are ≥ 2 tiles apart (room for 48-px tower art).
+    // of lane tiles and pads are ≥ 2 tiles apart (room for 48-px tower art). Stage 7 balance: on each map two
+    // pads that saw one path (or almost none) moved to spots that see both (pad indices kept, so forward
+    // pads and saves keep their numbers), so a wide build's 9th–11th towers aren't wasted.
     pads: [
       [5.125, 3.25], [10.25, 3.5], [6.25, 7.625], [11.25, 7.5], [14.375, 7.375], [16.5, 2.75],
-      [6.125, 10.625], [11.25, 10.75], [16.125, 12.125], [18.875, 11.375], [1.25, 7.5], [19, 3],
+      [6.125, 10.625], [11.25, 10.75], [16.125, 12.125], [17, 5.75], [1.25, 7.5], [16, 8.75],
     ],
     woodPads: [2, 6, 9],
     trees: [[1, 0], [11, 0], [21, 1], [22, 13], [12, 14], [2, 14]],
@@ -67,6 +70,7 @@ export const DEFENSE_MAPS = {
   // The trails cross mid-map: one pad by the crossing covers both for a long stretch (critic K item 11).
   crossing: {
     key: 'crossing', name: 'Crossing', blurb: 'The two trails cross in the middle of the clearing.',
+    hpMult: 1.07,   // enemy health × this on this map (DefenseScene.hpMult; balance sim: its middle pads see both trails)
     width: FIELD.w, height: FIELD.h,
     core: { x: 20.6, y: 8.2 }, coreRadius: 1.2,
     lanes: [
@@ -78,7 +82,7 @@ export const DEFENSE_MAPS = {
         [[1, 8.25], [1.75, 11]]),
     ],
     pads: [
-      [7, 4.25], [10.75, 4.25], [14.75, 5.25], [15, 1.5], [19.25, 3], [6.25, 9.25],
+      [7, 4.25], [10.75, 4.25], [14.75, 5.25], [8, 8], [14.75, 8.25], [6.25, 9.25],
       [11.25, 9.25], [13.75, 10], [12.5, 13.375], [18.75, 11.25], [16.5, 13.25],
     ],
     woodPads: [1, 5, 8],
@@ -93,6 +97,7 @@ export const DEFENSE_MAPS = {
   // The north trail fords a stream and joins the south trail for the last stretch: one big choke point.
   ford: {
     key: 'ford', name: 'Ford', blurb: 'The north trail fords a stream and joins the south trail before the Relay.',
+    hpMult: 1.18,   // enemy health × this on this map (DefenseScene.hpMult; balance sim: the trails share their last stretch: one big choke point)
     width: FIELD.w, height: FIELD.h,
     core: { x: 20.6, y: 8.2 }, coreRadius: 1.2,
     lanes: [
@@ -105,7 +110,7 @@ export const DEFENSE_MAPS = {
     ],
     pads: [
       [6.25, 3.25], [10.75, 4.25], [6.75, 7.5], [11.25, 7.25], [13, 9.25], [15.75, 4],
-      [7.25, 10.375], [12.25, 13.375], [17.75, 11.75], [17, 5.75], [20, 12.5],
+      [7.25, 10.375], [9, 7.75], [17.75, 11.75], [17, 5.75], [16, 8.75],
     ],
     woodPads: [3, 6, 10],
     trees: [[0, 0], [12, 0], [21, 0], [22, 13], [3, 15], [16, 14]],

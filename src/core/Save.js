@@ -196,9 +196,9 @@ export function validRun(r) {
     const v = r.world?.[f];
     if (v != null && (!Array.isArray(v) || !v.every((k) => typeof k === 'string'))) return false;
   }
-  // Area bosses killed (Stage 7; missing = none): area keys, each once. A forced weather (debug) is a known kind.
+  // Area bosses killed (Stage 7; missing = none): area keys, each once. A forced weather (debug) is a known kind or 'none'.
   if (r.bosses != null && (!Array.isArray(r.bosses) || !r.bosses.every((k) => DISTRICTS[k]) || new Set(r.bosses).size !== r.bosses.length)) return false;
-  if (r.weatherKey != null && !WEATHER.kinds[r.weatherKey]) return false;
+  if (r.weatherKey != null && r.weatherKey !== 'none' && !WEATHER.kinds[r.weatherKey]) return false;
   return true;
 }
 

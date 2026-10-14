@@ -161,7 +161,30 @@ Build scripts there regenerate every PNG from `raw/` (log + costs: `LOG.md`); fr
   `ruin_apartment_facade` (collapsed facade, balconies, exposed brick + rebar), `ruin_server_hall` (rack banks with
   LED pixels, cooling fan, cable bundles). Atlas families `ruin_kiosk / ruin_platform / ruin_facade / ruin_server`.
 - Area bosses (static, they don't walk): `boss_thorn_mother`, `boss_brood_hive`, `boss_warden`, `boss_drowned_engine`.
-  One strip each: `idle` 0–3, `attack` 4–5, `hurt` 6 (warm tint), `dead` 7 (dimmed, slumped). Not wired into gameplay yet.
+  One strip each: `idle` 0–3, `attack` 4–5, `hurt` 6 (warm tint), `dead` 7 (dimmed, slumped). Wired in Stage 7
+  (`src/entities/AreaBoss.js`): attack plays once per move, hurt flashes 0.14 s after a blow, dead holds; phase 2 tints
+  the sprite `BOSS.tint2` (warm red). Their moves use the shared telegraph language: red rings / lanes for hits
+  (`fx.ringTele`, `fx.telegraph`, `fx.chargeLane`), spore-green rings for spore clouds, steam-white rings for vents, the
+  Warden's laser a 1-px blinking aim line, then a 0.45-tile red beam with a pale core.
+
+### Stage 7 days: derived sprites, goal props, weather (`src/data/bosses.js`, `objectives.js`, `weather.js`)
+- **Derived sprites** (no new art; `DERIVED_SPRITES`, made by `PaletteSwap` at load): `npc_engineer` = the player's
+  8-way sheet with the coat hue band remapped by brightness rank onto an orange ramp (`#3b1f0e … #ffc36a`), drawn with
+  a green silhouette (friendly) when covered; `feral_chief` = the Feral's sheet with its cloak on a deep red → gold ramp
+  (the Pack Lord adds the elite ring). Whole-texel remaps only: same pixels, same anims, new palette.
+- Goal props reuse world art at 1×: the uplink = today's beacon (else `terminal`) with a 2-px cyan ground ring (7 tiles;
+  it blinks when you're outside; an x-ray copy shows faintly through foliage); tracks = `dec_footprints` /
+  `dec_bones_skull` / `dec_twigs_crossed` / `dec_burrow` with an amber glint every 0.7 s; the generator core =
+  `cell_cache` (carried over the head); spore nests = `prop_nest` tinted `#d8f070`; the Bloater = a Crawler body tinted
+  `#d0dc68` with a `spore_pod` sac ×2 on its back.
+- **Weather** looks are all in the PostFx pass, pixel-exact: Rain = 1-px streaks on world-pixel lanes every 6 px, 7 px
+  long, leaning 1 px left per 3 down, 42% toward pale blue-grey (lit by the scene's light, so they dim at dusk), plus
+  thin ground ripple rings (`#a8c4dc`) and a cool grade `[0.8, 0.86, 0.96]`. Fog = a grey-green veil in 5 world-anchored
+  Bayer steps, thickening from 30% to 105% of the light radius, lumpy with slow value noise, dimmer after dark. Heat = a
+  warm grade `[1.08, 1.0, 0.85]`, a thin ochre haze far out and ×1.5 light shafts. HUD tag colours: rain `#a8c4dc`,
+  fog `#c4d0cc`, heat `#ffc36a`.
+- HUD: the area boss bar (top centre, 300 × 8 units, red fill over an amber "lag", a pale tick at 50%, grey while the
+  Brood Hive is shielded; name 16 units, note 12), the ☠ boss marker on the maps (a 5 × 5 skull with ink eyes, red `#ff4a4a`).
 
 ## V1 look (night-mode sprites)
 

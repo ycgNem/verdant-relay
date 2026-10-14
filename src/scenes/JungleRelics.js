@@ -102,7 +102,7 @@ export class JungleRelics {
     fx.ring(player.pos, { color: '#fee761', radius: 1.6, life: 0.5 });
     fx.slowMo?.(0.4, 0.35);
     this.game.flash('#fee761', 0.25);
-    this.game.sfx.play('relic') || this.game.sfx.play('perfect_dodge');
+    this.game.sfx.play('second_wind') || this.game.sfx.play('relic');
     this.scene.toast('Lifeline Idol: you get back up (once a day)', 'amber', 3);
     return true;
   }
@@ -166,7 +166,7 @@ export class JungleRelics {
     const key = sc._propKey('locked_cache');
     it.vis = sc._visual(A.spentVariant(key, 'gutted') || 'locked_cache', it.x, it.z);
     sc.fx.burst({ x: it.x, z: it.z }, { color: '#fee761', color2: '#ffffff', count: 22, speed: 2.4, up: 3.2, life: 0.6, y: 0.5 });
-    this.game.sfx.play('crate_open');
+    this.game.sfx.play('relic_cache');
     const id = this._draw({ weights: RS().weights }, `cache:${it.src.id}`);
     if (id) this.spawnDrop(id, it.x, it.z + 0.6);
     else sc.toast('The strongbox is empty: you have every relic already', 'amber', 2.6);
@@ -213,7 +213,7 @@ export class JungleRelics {
       if (sh.kind === 'mast') {
         sc.map.reveal(sh.x, sh.z, RS().mastReveal);
         extra = 'The mast crackles back to life: the land around it is now on your map.';
-        this.game.sfx.play('beacon_on');
+        this.game.sfx.play('mast_crackle');
         sc.fx.ring({ x: sh.x, z: sh.z }, { color: '#2ce8f5', radius: 4, life: 0.8 });
       } else if (sh.kind === 'greenhouse') {
         const p = sc.player;
@@ -370,7 +370,7 @@ export class JungleRelics {
     const R = RELICS[id];
     this.scene.fx.text({ x, z }, `RELIC: ${R.name}`, { color: R.rarity === 'X' ? '#e05a9a' : '#fee761', cls: 'big', y: 1.4, life: 1.4 });
     this.scene.fx.ring({ x, z }, { color: '#fee761', radius: 1.4, life: 0.5 });
-    this.game.sfx.play('relic') || this.game.sfx.play('bonus_done');
+    this.game.sfx.play('relic_drop') || this.game.sfx.play('relic');
     return d;
   }
 
@@ -472,7 +472,7 @@ export class JungleRelics {
     const b = el('div.j-place', {}, el('div.j-place-n', s.name), el('div.j-place-s', sub));
     this.scene.hud.root.append(b);
     this.placeNode = b;
-    this.game.sfx.play('ui_tab');
+    this.game.sfx.play('place_found');
     setTimeout(() => b.classList.add('out'), 2800);
     setTimeout(() => { b.remove(); if (this.placeNode === b) this.placeNode = null; }, 3500);
   }

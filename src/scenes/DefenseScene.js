@@ -212,8 +212,9 @@ export class DefenseScene {
     this.lanes = this.map.lanes.map((d, i) => new Lane(d, i));
     this.corePos = new THREE.Vector3(this.map.core.x, 0, this.map.core.y);
     this.coreRadius = this.map.coreRadius;
-    // Enemy health tonight: the night curve (healthMult) × any run modifier (Run.nightHpMult, e.g. Overgrowth).
-    this.hpMult = run.nightHpMult ? run.nightHpMult() : healthMult(run.night);
+    // Enemy health tonight: the night curve (healthMult) × any run modifier (Run.nightHpMult, e.g. Overgrowth)
+    // × the map's hpMult (layouts whose pads see both paths get tougher enemies, so every map plays fair).
+    this.hpMult = (run.nightHpMult ? run.nightHpMult() : healthMult(run.night)) * (this.map.hpMult ?? 1);
     // The lane facing tonight's area: its danger group comes down it (buildWave via _waveOpts).
     this.dangerLane = this.laneForDistrict(this.district);
 
@@ -1493,7 +1494,7 @@ export class DefenseScene {
         const reason = run.canAfford(cost) ? null : run.missing(cost);
         anyReason = anyReason || reason;
         return button(el('span', {}, el('b', b.name), el('span.df-bline', b.line), costLine(cost, run.res)),
-          () => this._upgrade(t, bk), { disabled: !!reason, reason, cls: 'df-half df-branch', title: `${b.name}: ${b.line}${reason ? ` (${reason})` : ''}` });
+          () => this._upgrade(t, bk), { disabled: !!reason, reason, cls: 'df-half df-branch', title: `${b.name}: ${b.detail || b.line}${reason ? ` (${reason})` : ''}` });
       }));
       body.append(row);
       if (free) body.append(el('div.small.good', 'Free upgrade: tonight\'s reward.'));
@@ -1657,7 +1658,7 @@ export class DefenseScene {
     // Late-game Scrap sink: trade Scrap for a Circuit or Biofiber (DEFENSE.exchange), with the wave preview,
     // once you hold enough Scrap for it to matter.
     const X = DEFENSE.exchange;
-    if (this.canBuild && this.sideMode === 'preview' && run.res.scrap >= X.showAt && run.exchangeLeft() > 0) {
+    if (this.phase === 'prep' && this.sideMode === 'preview' && run.res.scrap >= X.showAt && run.exchangeLeft() > 0) {
       foot.append(el('div.df-intel.df-exchange', {}, X.gives.map((k) => button(
         el('span', {}, 'Trade ', costLine({ scrap: X.scrap }, run.res), el('span.df-arrow', ' → '), costLine({ [k]: 1 })),
         () => this._exchange(k), { cls: 'df-half', title: `Trade ${X.scrap} Scrap for 1 ${k === 'circuits' ? 'Circuit' : 'Biofiber'} (${run.exchangeLeft()} trade${run.exchangeLeft() === 1 ? '' : 's'} left tonight).` }))));
@@ -1699,7 +1700,9 @@ export class DefenseScene {
         strong: 'Looks strong',
       }[r.level];
       const dots = (n) => '●'.repeat(n) + '○'.repeat(3 - n);
-      const expect = r.hi <= 0 ? 'expect no Relay damage' : r.lo <= 0 ? `expect up to −${r.hi} Relay health` : `expect −${r.lo} to −${r.hi} Relay health`;
+      const expect = r.hi <= 0 ? 'expect no Relay damage'
+        : r.hi >= run.relayHp ? `expect −${Math.min(r.lo, Math.round(run.relayHp))} or worse: the Relay may fall`
+        : r.lo <= 0 ? `expect up to −${r.hi} Relay health` : `expect −${r.lo} to −${r.hi} Relay health`;
       foot.append(el(`div.df-rd-line.${r.level}`, {
         title: `Forecast: tonight's pushes replayed against your towers' damage, the stretch of path each one covers, slows and tanks${this.protocols.keys.length ? ', counting your Relay Protocols' : ''}. Predicted Relay loss ~${r.lost}.`,
       },
@@ -1743,9 +1746,9 @@ export class DefenseScene {
 
   _exchange(kind) {
     const run = this.run;
-    if (!this.canBuild) return;
+    if (this.phase !== 'prep') return;
     if (!run.exchange(kind)) { this.game.sfx.play('error'); toast(this.game.ui, run.exchangeLeft() ? run.missing({ scrap: DEFENSE.exchange.scrap }) : 'No more trades tonight', 'bad'); return; }
-    this.game.sfx.play('build');
+    this.game.sfx.play('trade');
     toast(this.game.ui, `Traded ${DEFENSE.exchange.scrap} Scrap for 1 ${kind === 'circuits' ? 'Circuit' : 'Biofiber'}`, 'good', 2);
     this._saveBuild();
     this.sideDirty = true;
@@ -1808,7 +1811,7 @@ export class DefenseScene {
     const free = Object.keys(cost).length === 0;
     if (!run.upgrade(t.rec, branch)) { game.sfx.play('error'); return; }
     t.refreshVisual();
-    game.sfx.play('build');
+    game.sfx.play('upgrade');
     this.fx.ring(t.pos, { color: '#fee761', radius: 1.1, life: 0.45 });
     this.fx.burst(t.pos, { color: '#fee761', color2: '#feae34', count: 18, speed: 1.6, up: 4, life: 0.6, size: 0.07, y: 0.5 });
     const bn = branchOf(t.rec)?.name;
@@ -1884,7 +1887,7 @@ export class DefenseScene {
     const before = this.wave.total;
     this.wave = buildWave(run, this._waveOpts());
     run.save('prep');
-    game.sfx.play('zap');
+    game.sfx.play('sabotage');
     toast(game.ui, `Sabotage: ${before - this.wave.total} fewer enemies tonight`, 'good', 2.4);
     this.sideDirty = true;
     this._refreshTop(true);
@@ -2022,7 +2025,7 @@ export class DefenseScene {
     if (save) {
       this.run.wavePush = this.pushIdx + 1;
       this.run.save('wave');
-      this.game.sfx.play('night_won');
+      this.game.sfx.play('push_held');
       toast(this.game.ui, `Push ${this.pushIdx + 1} held! Build, upgrade or repair before the next one.`, 'good', 2.6);
     }
     this._refreshTop(true);
@@ -2035,6 +2038,7 @@ export class DefenseScene {
     if (bonus > 0) {
       this.run.add({ scrap: bonus });
       this.nightStats.callEarly += bonus;
+      this.game.sfx.play('coins');
       this.fx.text(this.corePos, '', { html: `+${bonus} ${resIconHtml('scrap')}`, color: '#63c74d', cls: 'big', y: 3.4, life: 1 });
     }
     this._startPush(this.pushIdx + 1);
@@ -2242,7 +2246,7 @@ export class DefenseScene {
     this._noteLeak('colossus', dmg, 1, boss.laneIndex);
     this.fx.ring(boss.pos, { color: '#e43b44', radius: 2.4, life: 0.4, from: 0.5 });
     this.fx.burst(boss.pos, { color: '#8f563b', color2: '#5a6988', count: 18, speed: 3, up: 2, life: 0.5, size: 0.1, y: 0.05 });
-    this.game.sfx.playAt('roots_burst', boss.pos.x, boss.pos.z);
+    this.game.sfx.playAt('siege_slam', boss.pos.x, boss.pos.z);
     this.coreHit(dmg);
   }
 
@@ -2251,6 +2255,7 @@ export class DefenseScene {
     this.nightStats.bossSpent = true;
     this.fx.burst(boss.pos, { color: '#8f563b', color2: '#3e8948', count: 40, speed: 2, up: 3, life: 1, size: 0.1, y: boss.height * 0.5 });
     this.fx.ring(boss.pos, { color: '#feae34', radius: 3, life: 0.7 });
+    this.game.sfx.playAt('colossus_spent', boss.pos.x, boss.pos.z);
     toast(this.game.ui, 'The Colossus collapses, spent. The Relay held it off.', 'amber', 3.5);
     this.bossBox.style.display = 'none';
     boss.remove();
@@ -2431,7 +2436,7 @@ export class DefenseScene {
         this._dismissBanner();
       }, true);
     }
-    this.bannerHint = el('div.small.muted', this._salvagePending() ? 'pick one to continue (1–3)' : 'click or press Enter to continue');
+    this.bannerHint = el('div.small.muted', this._salvagePending() ? `pick one to continue (${this.salvage.length > 1 ? `1–${this.salvage.length}` : '1'})` : 'click or press Enter to continue');
     // What got through tonight (critic K §4.5): "Got through: 4 Ruin Guards −40 · Spitter sap −20".
     const leaks = leakSummaryText(this.nightStats);
     this.bannerEl = el(`div.df-banner.${cls}.ui-block`, {},
@@ -2478,7 +2483,7 @@ export class DefenseScene {
     const note = run.applySalvage(key, this._bestPad);
     this.salvagePicked = key;
     run.save('briefing');
-    this.game.sfx.play('build');
+    this.game.sfx.play('salvage_pick');
     if (note) toast(this.game.ui, `Salvage: ${note}`, 'good', 2.6);
     this.bannerEl?.querySelectorAll('.df-salvage-card').forEach((b, j) => { b.classList.toggle('picked', j === i); b.classList.toggle('disabled', j !== i); });
     if (this.bannerHint) this.bannerHint.textContent = 'click or press Enter to continue';
@@ -2819,7 +2824,9 @@ export class DefenseScene {
     if (inp.wasPressed('KeyP')) { this.togglePause(true); return; }
     if (this.startArmed && game.time >= this.startArmed) { this.startArmed = 0; this.sideDirty = true; }   // "Start anyway" expired
     if (inp.wasPressed('Space')) {
-      if (this.phase === 'prep') this._tryStartWave(inp.isDown('ShiftLeft') || inp.isDown('ShiftRight') ? 'shift' : 'space');
+      // Shift held (or pressed and let go within this frame) makes it a deliberate "Start anyway".
+      const shift = ['ShiftLeft', 'ShiftRight'].some((c) => inp.isDown(c) || inp.wasPressed(c));
+      if (this.phase === 'prep') this._tryStartWave(shift ? 'shift' : 'space');
       else if (!(game.time < (this.spaceGuardT || 0))) this.togglePause(true);
       return;
     }

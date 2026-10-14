@@ -2,7 +2,7 @@
 // driven by the AudioDirector, which picks a blend of profiles (src/data/audio.js AMBIENCE.profiles):
 //
 //   continuous layers  wind / leaf wash, day insect drone, dusk cicada swells, near-water babble (follows
-//                      the river near the player), rain (setRain 0..1 — a hook for a future weather system)
+//                      the river near the player), rain (setRain 0..1, from src/world/Weather.js)
 //   creature calls     day birds (whistles, trills, chirps, coos, bell-pings, far chatter), a distant howler
 //                      at dusk, night crickets and frogs (each a little "agent" with its own pitch, place and
 //                      rhythm, so the chorus breathes instead of looping)
@@ -10,6 +10,8 @@
 //   setProfile(weights, level)   target layer weights (0..1) and overall bed level; blends over AMBIENCE.smooth
 //   setWater(level, pan)         0..1 loudness and -1..1 pan of the nearest water
 //   setRain(v)                   0..1
+//   setWeather(key)              today's weather (AMBIENCE.weather): fog hushes the bed (a low-pass on the
+//                                whole thing), heat brings the cicadas out by day, rain quiets the birds
 //
 // Continuous layers only exist while audible (built on demand, torn down after a few silent seconds),
 // and creature calls are only scheduled while the ambience bus is up, so a muted bed costs ~nothing.
@@ -37,6 +39,7 @@ export class AmbientAudio {
     this.levelTarget = 0;
     this.water = { level: 0, pan: 0 };
     this.rain = 0;
+    this.wx = null;            // AMBIENCE.weather[key] (or null)
     this.layers = {};          // name → { gain, nodes, quietT, ... }
     this.agents = { crickets: [], frogs: [] };
   }
@@ -45,7 +48,10 @@ export class AmbientAudio {
     this.ctx = ctx;
     this.out = ctx.createGain();
     this.out.gain.value = 0;
-    this.out.connect(dest);
+    this.hush = ctx.createBiquadFilter();   // weather low-pass on the whole bed (open = 20 kHz)
+    this.hush.type = 'lowpass';
+    this.hush.frequency.value = 20000;
+    this.out.connect(this.hush).connect(dest);
     const R = AMBIENCE.reverb;
     this.verb = ctx.createConvolver();
     this.verb.buffer = makeImpulse(ctx, R.time, R.decay, R.tone);
@@ -57,9 +63,13 @@ export class AmbientAudio {
   }
 
   setProfile(weights, level = 1) {
-    for (const k of KEYS) this.target[k] = Math.max(0, weights?.[k] || 0);
-    this.levelTarget = Math.max(0, level);
+    const W = this.wx;
+    for (const k of KEYS) this.target[k] = Math.max(0, (weights?.[k] || 0) * (W?.mult?.[k] ?? 1) + (W?.add?.[k] || 0));
+    this.levelTarget = Math.max(0, level * (W?.level ?? 1));
   }
+
+  /** Today's weather key (or null): applied by the next setProfile; the hush glides in over a few seconds. */
+  setWeather(key) { this.wx = (key && AMBIENCE.weather[key]) || null; }
 
   setWater(level, pan = 0) { this.water.level = Math.max(0, Math.min(1, level)); this.water.pan = Math.max(-1, Math.min(1, pan)); }
   setRain(v) { this.rain = Math.max(0, Math.min(1, Number(v) || 0)); }
@@ -72,6 +82,7 @@ export class AmbientAudio {
     for (const key of KEYS) this.mix[key] += (this.target[key] - this.mix[key]) * k;
     this.level += (this.levelTarget - this.level) * k;
     this.out.gain.setTargetAtTime(this.level, now, 0.25);
+    this.hush.frequency.setTargetAtTime(this.wx?.hush || 20000, now, 1.5);
     const audible = this.level > 0.01 && this.e.busLevel('ambience') > 0;
     const L = AMBIENCE.layers;
     const want = audible ? {
