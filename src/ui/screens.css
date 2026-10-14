@@ -33,6 +33,8 @@
   letter-spacing: round(0.04em, var(--fpx)); white-space: nowrap;
 }
 .badge.good { color: var(--good); border-color: var(--good); }
+/* a pixel icon inside a badge (icon_lock, 7x9 texels at the font's texel scale) must not grow the line */
+.badge .vicon { margin: calc(var(--u) * -3) calc(var(--u) * 1) calc(var(--u) * -3) calc(var(--u) * -2); vertical-align: middle; }
 .badge.locked { color: var(--amber); border-color: #9a6a20; }
 
 /* ---------------------------------------------------------------- icons */
@@ -68,6 +70,10 @@
   color: var(--accent); letter-spacing: round(0.32em, var(--fpx)); font-size: max(var(--fq), round(calc(var(--u) * 47.5 - 0.01px), var(--fq)));
   text-shadow: calc(var(--u) * 3) calc(var(--u) * 3) 0 var(--ink), 0 0 calc(var(--u) * 16) rgba(44, 232, 245, 0.35);
 }
+/* Pixel-art wordmark (pixel-art/ui_logo, 320x96). TitleScene.sizeLogo sets width/height to a whole number of
+   device px per texel (the world's texel scale), so never size it here; pixelated keeps the texels square. */
+.title-logo-art { margin: calc(var(--u) * -10) 0 0 calc(var(--u) * -6); line-height: 0; }
+.title-logo-img { display: block; max-width: none; image-rendering: pixelated; image-rendering: crisp-edges; image-rendering: pixelated; user-select: none; pointer-events: none; }
 .title-left .tagline { margin-bottom: calc(var(--u) * 14); color: #f3e3c3; }
 .menu-col { display: flex; flex-direction: column; gap: calc(var(--u) * 8); width: calc(var(--u) * 290); }
 .menu-btn { width: 100%; padding: calc(var(--u) * 8) calc(var(--u) * 14); }
@@ -255,11 +261,19 @@
 .skill-branch { font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); letter-spacing: round(0.1em, var(--fpx)); text-transform: uppercase; color: var(--c); }
 .skill-name { font-size: max(var(--fq), round(calc(var(--u) * 14 - 0.01px), var(--fq))); font-weight: bold; color: #fff; }
 .skill-desc { font-size: max(var(--fq), round(calc(var(--u) * 11.5 - 0.01px), var(--fq))); color: var(--text); line-height: 1.3; }
+/* skill rework (Stage 7): icon + number line, keystones, branch counts */
+.skill-ic { display: inline-block; min-width: 1.2em; margin-right: calc(var(--u) * 4); color: var(--c); text-align: center; }
+.skill-num { font-size: max(var(--fq), round(calc(var(--u) * 11.5 - 0.01px), var(--fq))); color: var(--amber); }
+.skill-own { color: var(--muted); letter-spacing: 0; text-transform: none; }
+.skill-key { margin-left: calc(var(--u) * 6); padding: 0 calc(var(--u) * 4); color: #181425; background: #fee761; letter-spacing: round(0.04em, var(--fpx)); }
+.skill-card.keystone { border-style: double; border-width: calc(var(--u) * 3); border-top-width: calc(var(--u) * 6); background: linear-gradient(#3b3352, #241e38); box-shadow: 0 0 0 1px #fee761 inset; }
+.skill-tag .skill-ic { margin-right: 0; }
+.skill-tag.keystone { border-style: double; border-width: calc(var(--u) * 3); }
 
 /* ---------------------------------------------------------------- summary */
 
 .sum-head { gap: calc(var(--u) * 16); }
-.headline { font-size: max(var(--fq), round(calc(var(--u) * 26 - 0.01px), var(--fq))); font-weight: bold; letter-spacing: round(0.1em, var(--fpx)); }
+.headline { font-size: max(var(--fq), round(calc(var(--u) * 26 - 0.01px), var(--fq))); font-weight: bold; letter-spacing: round(0.04em, var(--fpx)); }   /* critic H §5: no wide tracking */
 .sum-head.ok .headline { color: var(--good); text-shadow: 0 0 calc(var(--u) * 12) rgba(99, 199, 77, 0.4); }
 .sum-head.fail .headline { color: var(--danger); text-shadow: 0 0 calc(var(--u) * 12) rgba(228, 59, 68, 0.4); }
 .sum-head.fail { border-color: #a22633; }
@@ -396,3 +410,18 @@
 .sum-chip .lbl { color: var(--c, var(--text)); }
 .sum-danger { color: #ffb0b0; }
 .sum-research { padding-top: calc(var(--u) * 2); }
+
+/* ---------------------------------------------------------------- settings tabs + controls (Stage 7 UX) */
+.set-head { flex-wrap: nowrap; margin-bottom: calc(var(--u) * 4); }
+.set-head h2 { margin: 0; }
+.settings-panel .set-grid { min-height: calc(var(--u) * 300); }
+.set-keyhelp { margin: calc(var(--u) * 2) 0 calc(var(--u) * 6); }
+.set-keys { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 4) calc(var(--u) * 24); }
+.set-keys.fixed { margin-top: calc(var(--u) * 8); padding-top: calc(var(--u) * 6); border-top: 1px dashed var(--panel-edge); }
+.set-key { display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 8); min-height: calc(var(--u) * 26); }
+.set-key-l { font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
+.set-keys.fixed .set-key-l { color: var(--muted); }
+.key-btn { min-width: calc(var(--u) * 96); text-align: center; padding: calc(var(--u) * 3) calc(var(--u) * 8); font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
+.key-btn.changed { color: var(--accent); }
+.key-btn.waiting { border-color: var(--amber); color: var(--amber); animation: kblink 0.9s steps(2) infinite; }
+.set-keyfoot { margin-top: calc(var(--u) * 10); }

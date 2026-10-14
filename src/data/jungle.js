@@ -8,6 +8,57 @@ export const LEVEL_NAMES = ['water', 'mud', 'dirt', 'floor', 'moss'];
 // 3 bramble: solid, thorny; a slash only nicks it, a heavy chop clears it.
 // Terrain kinds drawn from PixelLab art (public/terrain); the others use TerrainBaker's procedural textures.
 export const TERRAIN_ART = ['floor', 'moss', 'paving'];
+// Value structure (critic H #2, TerrainBaker): the walkable surfaces baked this much brighter than their art, so
+// paths read as the lightest ground (jungle only; the night map's stand-in ground is untouched).
+export const TERRAIN_VALUE = { dirt: 1.2, paving: 1.1 };
+
+// Ground decal scatter (TerrainBaker._scatter): tries per 16 × 16-tile chunk, share of tries skipped, and the same
+// decal never twice within `spacing` tiles (critic H #12: at most one per 8 × 8 tiles, across chunk borders too).
+// weight: base pick weight × these (name fragments) — the crossed-twig "X" and bone piles read as UI markers when
+// common. Districts add their own multipliers (REGION_LOOK.decals).
+export const DECALS = {
+  perChunk: 70, skip: 0.35, spacing: 8,
+  weight: { twigs_crossed: 0.25, bones: 0.5, footprints: 0.4, burrow: 0.5, web: 0.6 },
+};
+
+// Emissives (critic H #4): texels that keep glowing in the shade and at night (PostFx light code). keys: sprite
+// key → hue bands [from, to] (degrees, wrapping) in which a texel at least minV bright and minS saturated glows
+// (src/core/Emissive.js draws a mask over those texels: eyes, screens, the Relay crystal, pylon tips, fire).
+// decals: glowing ground decals (name fragment → minimum texel value that glows; TerrainBaker marks those texels
+// with canvas alpha groundAlpha).
+// Every level / branch sprite of a night tower (key, _2, _3, _3a, _3b) → the same bands, unless `over` gives one.
+const towerGlow = (type, bands, over = {}) => Object.fromEntries(['', '_2', '_3', '_3a', '_3b'].map((s) => [type + s, over[s] || bands]));
+export const EMISSIVE = {
+  minV: 0.72, minS: 0.4,
+  keys: {
+    // Night towers (48 × 64 art): lamps, orbs, eyes and fire keep their light at night. The turret's band is tight:
+    // its drum's lightest ochre (#bfa05a, ~41°) must stay dark; its lamps are #f0a030 (35°) and #ffd070 (40°).
+    ...towerGlow('scrap_turret', [[32, 40.6]]),
+    ...towerGlow('thorn_nest', [[295, 312]]),                                   // purple heart
+    ...towerGlow('arc_spire', [[183, 195]]),                                    // cyan orb / arcs
+    ...towerGlow('snare_vine', [[330, 345]]),                                   // pink bloom highlights
+    ...towerGlow('mortar_pod', [[80, 105]], { _3a: [[12, 46]] }),               // green pod glow; 3a fire
+    ...towerGlow('pulse_beacon', [[27, 46]], { _3a: [[10, 46]], _3b: [[27, 46], [183, 195]] }),   // amber lamp and rings
+    relay_core: [[160, 205]], prop_relay_pylon: [[165, 205]], prop_data_terminal: [[140, 190]],
+    prop_intel_terminal: [[25, 65]], prop_cell_cache: [[140, 190]], prop_rare_cache: [[260, 310]],
+    prop_fuse: [[10, 50]], prop_campfire: [[5, 60]], prop_data_drive: [[10, 40]], prop_nest: [[10, 50]],
+    crawler: [[340, 20]], skitter: [[35, 65]], spitter: [[340, 20]],
+  },
+  decals: { fungus_glow: 0.5, mushrooms_blue: 0.42 },
+  groundAlpha: 200,
+};
+
+// Load-time palette swaps (src/core/PaletteSwap.js, critic H #10): per sprite key, texels in `bands` (hue degrees)
+// with at least minS saturation are remapped onto `ramp` by brightness rank; `dark` folds deep-shadow texels of
+// other hues (≤ maxV value) onto the darkest steps. The Feral's olive cloak → bone / rust (#7a4a3a / #a08060),
+// so it never wears the player's olive poncho.
+export const PALETTE_SWAP = {
+  feral: {
+    bands: [[52, 118]], minS: 0.2,
+    dark: { bands: [[150, 240]], maxV: 0.4, minS: 0.15 },
+    ramp: ['#2a1814', '#4e2c22', '#7a4a3a', '#a08060', '#c2a77e'],
+  },
+};
 
 export const BRUSH = { none: 0, fern: 1, thicket: 2, bramble: 3 };
 
@@ -40,9 +91,14 @@ export const OPENED_TOP = {
     colors: { ...INTERIOR, wallDarkTop: [52, 34, 52], wallDark: [38, 25, 40], wallLitTop: [92, 62, 96], wallLit: [70, 46, 74] } },
 };
 
-// Ground light pool under an activated pylon (src/core/PixelGlow.js): size in tiles (texel-exact at
-// 32 px/tile), brightness steps, falloff power, colour and additive strength.
-export const PYLON_GLOW = { w: 3.5, h: 2, steps: 4, power: 1.3, color: '#2ce8f5', strength: 0.7 };
+// Ground light pool under an activated pylon (src/core/PixelGlow.js lightPool): size in tiles (texel-exact at
+// 32 px/tile), brightness steps, falloff power, colour and additive strength. It is a light source for PostFx
+// (lit under the canopy and at night). beam: a light column (beamW × beamH texels, from beamY tiles up — the
+// mast's tip) drawn above the canopy so a live pylon reads from across the jungle (critic H #12).
+export const PYLON_GLOW = {
+  w: 6, h: 3.5, steps: 5, power: 1.15, color: '#2ce8f5', strength: 0.55,
+  beam: true, beamW: 10, beamH: 112, beamY: 2.6, beamStrength: 0.75, pulse: 2.4,
+};
 
 // Brush legibility (src/world/FloraAtlas.js _tint): a colour grade per flora family so the three brush
 // types read apart at a glance. mul/add per RGB channel, sat = saturation factor, ramp = brightness
@@ -178,8 +234,21 @@ export const SPORES = {
   damage: 5,
   staminaDrain: 30,          // stamina per second inside a cloud
   safeHands: 0.5,            // Safe Hands: damage × this, no stamina drain
+  // Environmental kills (critic I §9B): clouds hurt creatures too (`damage` every `tick` s) and choke them (× `slow`
+  // speed, no new wind-ups); creatures with `podTrigger` (Ferals, Crawlers, Razorbacks) set pods off like you do; a
+  // charging Razorback pops any pod within `chargePop` at once; a heavy chop launches a pod `launch` tiles along your
+  // swing, and it bursts where it lands after `launchTime` s.
+  creature: { damage: 6, tick: 0.6, slow: 0.6 },
+  chargePop: 0.9,
+  launch: 3.5, launchTime: 0.5,
   color: '#c9d65a', color2: '#7f9a3c',   // cloud dither colours (light / dark speckle)
 };
+
+// Spore cloud look (src/world/SporeLook.js, critic H #12): `puffs` puff sprites (spore_puff_1..3), one in the
+// middle and the rest on a ring at ring[0] / ring[1] × the cloud radius, floating height[0..1] tiles up; they pop in
+// from the centre over `grow` s, drift up to ±drift/2 tiles/s, bob a texel, and drop out (outer first) after
+// thinFrom of the cloud's life.
+export const SPORE_LOOK = { puffs: 8, ring: [0.34, 0.66], height: [0.05, 0.4], drift: 0.12, grow: 0.3, thinFrom: 0.6, bobSpeed: 2 };
 
 // Wildlife population per chunk (16 × 16 tiles), rolled per day. danger = 0 near the Relay → 1 far out.
 export const POP = {
@@ -194,30 +263,46 @@ export const POP = {
   minSpawnDist: 15,          // never pop in closer than this to the player (view half-diagonal ≈ 11.5 tiles + look-ahead + margin)
   // District enemy tables use the v1 'scav' (gunner): in the jungle it is the melee Feral Scavenger.
   remap: { scav: 'feral' },
+  // Thorn Stalkers (critic I §9D): from `fromNight`, a chunk whose tiles are at least `fernShare` fern may hold one
+  // (chance × the district's weight below, `max` per chunk). Placed on a fern tile; they live under the brush.
+  stalker: {
+    fromNight: 3, fernShare: 0.28, chance: 0.55, max: 1,
+    districts: { canopy_greenhouse: 1.6, overgrown_market: 1, collapsed_residential: 1, flooded_transit: 0.8, data_center: 0.6 },
+  },
 };
 
 // Look and feel per district region: which ruins and props dress its sites, how much water, brush bias,
 // tree mix. Keys match src/data/districts.js.
+// grade (critic H #3): the district colour grade, a linear RGB multiplier PostFx applies to everything standing on
+// the region (blended over ATMOS.gradeBlur tiles at the borders; its shadows also lift toward the same hue,
+// ATMOS.gradeLift). decals: ground decals this district favours (dec_* name fragments, weight multiplier;
+// TerrainBaker._scatter), e.g. bolts and tin puddles in the Data Center.
+// hero (critic H #3): the district's hero ruin family; JungleGen puts 1–2 of them at every MAJOR site of the region.
 export const REGION_LOOK = {
   overgrown_market: {
-    ruins: ['ruin_wall', 'ruin_pillar', 'ruin_car', 'ruin_stairs'], pave: 0.7, brushBias: 0.0, pond: 0,
-    trees: { kapok: 2, fig: 2, palm: 1, dead: 1 }, tint: [1.0, 1.0, 0.96],
+    ruins: ['ruin_wall', 'ruin_pillar', 'ruin_car', 'ruin_stairs'], hero: 'ruin_kiosk', pave: 0.7, brushBias: 0.0, pond: 0,
+    trees: { kapok: 2, fig: 2, palm: 1, dead: 1 },
+    grade: [1.13, 1.02, 0.84], decals: { pot_shards: 3, seed_pod: 2, berries: 2, bones: 1.5, feathers: 2, cog: 1.5 },
   },
   flooded_transit: {
-    ruins: ['ruin_train', 'ruin_pillar', 'ruin_wall', 'ruin_mast'], pave: 0.5, brushBias: -0.04, pond: -0.1,
-    trees: { palm: 2, fig: 1, dead: 2, kapok: 1 }, tint: [0.92, 1.0, 1.05],
+    ruins: ['ruin_train', 'ruin_pillar', 'ruin_wall', 'ruin_mast'], hero: 'ruin_platform', pave: 0.5, brushBias: -0.04, pond: -0.1,
+    trees: { palm: 2, fig: 1, dead: 2, kapok: 1 },
+    grade: [0.84, 1.0, 1.14], decals: { puddle: 3, lily: 2.5, reeds: 2.5, cattails: 2.5, snail: 2, tin_puddle: 2 },
   },
   canopy_greenhouse: {
-    ruins: ['ruin_greenhouse', 'ruin_pillar', 'ruin_statue', 'ruin_wall'], pave: 0.4, brushBias: 0.06, pond: 0,
-    trees: { kapok: 2, fig: 3, palm: 1, fern: 2 }, tint: [0.95, 1.06, 0.95],
+    ruins: ['ruin_greenhouse', 'ruin_pillar', 'ruin_statue', 'ruin_wall'], hero: 'ruin_greenhouse', pave: 0.4, brushBias: 0.06, pond: 0,
+    trees: { kapok: 2, fig: 3, palm: 1, fern: 2 },
+    grade: [1.0, 1.12, 0.84], decals: { flowers: 3, fungus_glow: 4, mushrooms: 3, sapling: 2.5, monstera_leaf: 2, fern_frond: 2 },
   },
   collapsed_residential: {
-    ruins: ['ruin_wall', 'ruin_stairs', 'ruin_car', 'ruin_pillar'], pave: 0.6, brushBias: 0.02, pond: 0,
-    trees: { fig: 2, kapok: 1, dead: 2, palm: 1 }, tint: [1.04, 0.98, 0.94],
+    ruins: ['ruin_wall', 'ruin_stairs', 'ruin_car', 'ruin_pillar'], hero: 'ruin_facade', pave: 0.6, brushBias: 0.02, pond: 0,
+    trees: { fig: 2, kapok: 1, dead: 2, palm: 1 },
+    grade: [1.15, 0.94, 0.88], decals: { bricks_mossy: 3.5, pot_shards: 2.5, slab_mossy: 3, concrete_chunks: 2.5, web: 2 },
   },
   data_center: {
-    ruins: ['ruin_mast', 'ruin_wall', 'ruin_pillar', 'ruin_statue'], pave: 0.85, brushBias: -0.02, pond: 0,
-    trees: { dead: 2, fig: 2, kapok: 1 }, tint: [0.94, 0.98, 1.06],
+    ruins: ['ruin_mast', 'ruin_wall', 'ruin_pillar', 'ruin_statue'], hero: 'ruin_server', pave: 0.85, brushBias: -0.02, pond: 0,
+    trees: { dead: 2, fig: 2, kapok: 1 },
+    grade: [0.9, 0.95, 1.16], decals: { bolts: 4, cog: 3.5, tin_puddle: 3, concrete_chunks: 3, slab_mossy: 1.5 },
   },
 };
 
@@ -225,7 +310,8 @@ export const REGION_LOOK = {
 // or stack on each other. Gaps are fractions of the summed radii; push = max correction speed (tiles/s).
 // Skipped mid-attack, so lunges and charges still connect.
 // frontGap: extra tiles kept when the creature stands in front of (south of) the player.
-export const CROWD = { playerGap: 0.95, frontGap: 0.3, enemyGap: 0.8, push: 7 };
+// playerGap 1.45 (critic I #2: at 0.95 four Ferals stood inside the player's sprite).
+export const CROWD = { playerGap: 1.45, frontGap: 0.3, enemyGap: 0.8, push: 7 };
 
 // Lighting/atmosphere (src/core/PostFx.js + the ground/foliage shaders).
 export const ATMOS = {
@@ -236,30 +322,77 @@ export const ATMOS = {
   dappleScale: 0.21,         // dapple noise frequency (per tile)
   wind: 0.16,                // dapple drift speed (tiles/s)
   vignette: 0.55,
+  // Value structure (critic H #2): the canopy shade spares walkable trail / clearing tiles (× trailShade in
+  // JungleWorld._buildShade → tShade.g; cards keep the full density, tShade.r), and upright cards are a touch
+  // darker than the ground they stand on (cardShade), so path > brush > canopy in value at a glance.
+  trailShade: 0.4,
+  cardShade: 0.95,
+  // Upright brush cards darken toward their base (card shader): over the bottom `baseH` of the card (share of its
+  // height) per texel row down to × baseDark, fully in the card's own shadows, about half on its lit leaves (no
+  // flat band across the card) — the brush sinks, the path lifts.
+  brushBase: { baseH: 0.5, baseDark: 0.8 },
+  // Global shadow lift (linear RGB, added to the darkest values) and how strongly each district's grade
+  // multiplier also lifts its shadows in the same hue direction (REGION_LOOK.grade, PostFx tGrade).
+  shadowLift: [-0.008, 0.007, 0.015],
+  gradeLift: 0.08,
+  // District colour grade blur (tiles): grades blend across region borders over about this distance.
+  gradeBlur: 6,
   // The player's visible radius in tiles: midday → dusk (darkness beyond). Sized for the 20 × 11-tile
   // view (CONFIG.ui.view): at dusk the dark closes in to about the screen's top/bottom edges.
   lightRadius: [13.5, 8.25],
-  // Foreground leaf frame (PostFx uLeafBand), internal px from the screen edge: [solid, faded out] for the
-  // left/right (x) and top/bottom (y) edges — a fixed depth, so the frame doesn't grow with the view.
-  leafFrame: { x: [0, 72], y: [16, 56] },
+  // Time of day (PostFx.timeOfDay, critic H #4). Golden hour: from `goldFrom` of the daylight the light warms
+  // toward `gold` (× goldK at the peak, dimmed by goldDim) and the canopy shade deepens by goldShade ("longer
+  // shadows"); it holds into dusk and fades over goldDusk (dusk 0..1). Night (dusk night[0] → night[1]): moonlit
+  // `moon` tint (linear RGB) at nightAmbient × the day's brightness, never below moonFloor, plus a navy moonLift
+  // (linear RGB) into the blacks outside the lamp. lamp: a warm pool around the player from
+  // dusk `on`, radius r = [solid, gone] × the light radius, at `level` brightness in `tint`. emit: brightness of
+  // emissive texels / light pools (they ignore shade, darkness and vignette).
+  cycle: {
+    goldFrom: 0.72, gold: '#ffb070', goldK: 0.6, goldDim: 0.08, goldShade: 0.35, goldDusk: [0.3, 0.6],
+    night: [0.25, 0.9], moon: [0.46, 0.62, 1.15], nightAmbient: 0.52, moonFloor: 0.2, moonLift: [0.002, 0.006, 0.018],
+    lamp: { on: [0.1, 0.55], r: [0.24, 0.46], level: 0.88, tint: [1.0, 0.84, 0.62] },
+    emit: 1.08,
+  },
+  // Foreground leaf frame (PostFx, critic H #5): whole hand-drawn silhouettes fg_leaf_<leaf> (1 monstera,
+  // 2 palm frond, 3 banana, 4 fern, 5 vine; procedural stand-ins if missing). Each leaf's stem (its manifest
+  // anchor) lands on (ax × screen w + x, ay × screen h + y) internal px, mostly off-screen so only the blade
+  // reaches in; `flip` mirrors it. They lag the camera a little (parallax × the camera move, settling at
+  // `settle`/s, at most parallaxMax px) and sway `sway` whole px. Darkened with the light (never below minLight).
+  leafFrame: {
+    parallax: 0.35, parallaxMax: 10, settle: 2.2, swaySpeed: 0.9, minLight: 0.45,
+    items: [
+      { leaf: 1, ax: 0, ay: 1, x: -34, y: 44, sway: 1 },               // monstera from the bottom-left corner
+      { leaf: 2, ax: 0, ay: 0, x: -26, y: -26, sway: 2 },              // palm frond from the top-left
+      { leaf: 3, ax: 0.7, ay: 1, x: 0, y: 66, sway: 1 },               // banana rising from the bottom edge, right side
+      { leaf: 4, ax: 1, ay: 1, x: 26, y: 34, sway: 2 },                // fern from the bottom-right corner
+      { leaf: 5, ax: 0.24, ay: 0, x: 0, y: -46, sway: 1 },             // vines hanging from the top edge
+      { leaf: 5, ax: 0.83, ay: 0, x: 0, y: -74, sway: 1 },
+    ],
+  },
   // Ambience particles (src/world/Ambience.js): pool size, spawn box around the camera (tiles, w × d) and
   // the box beyond which they are recycled — a bit wider than the view (20 × 11 tiles).
   // shafts: light shafts kept around the camera, placed within shaftBox (tiles).
-  particles: { count: 620, spawn: [32, 24], keep: [36, 28], shafts: 6, shaftBox: [30, 20] },
+  // flies: share of the pool that turns into fireflies at full dark (they glow: emissive); flyBlink: a firefly
+  // is lit while its blink sine is above this.
+  particles: { count: 620, spawn: [32, 24], keep: [36, 28], shafts: 6, shaftBox: [30, 20], flies: 0.62, flyBlink: 0.1 },
   xrayRadius: 1.55,          // foliage in front of the player turns see-through within this (tiles) — a dithered
                              // halo around the player; the player's own texels are always fully clear (playerOutline)
   xrayMax: 1,                // share of foliage texels removed at the centre of the window (fades to 0 at the rim)
   xrayInner: 0.4,            // fraction of the radius that stays at xrayMax before the dithered fade starts
   // Occlusion silhouettes (src/core/Assets.js): where brush/trees/ruins cover a creature, its outline
   // is drawn solid and its body as a dither of `fill` density, in these flat colours.
-  // playerFill: the player's own dither density where a sprite (an enemy, a crate) stands in front of it.
+  // playerFill: the player's own dither density where a sprite (an enemy, a crate) stands in front of it — 0: just
+  // the outline, so the player's x-ray never prints over a creature (critic I #3; enemy silhouettes in turn skip the
+  // player's stencil-masked texels, Assets.js).
   // One colour language (simplicity pass): cyan = you / home, red = danger. Enemies must out-shine the player:
   // the player's silhouette is a calm mid cyan, hostiles a hot red (brighter still once they've spotted you).
-  silhouette: { player: '#4fb8c8', enemy: '#ff2e2e', enemyDim: '#e04434', fill: 0.2, playerFill: 0.35, inner: 0.75 },
+  silhouette: { player: '#4fb8c8', enemy: '#ff2e2e', enemyDim: '#e04434', fill: 0.2, playerFill: 0, inner: 0.75 },
   // Player readability (critic G #1): foliage/trunk/ruin cards never cover the player's own texels or its
   // 1-texel outline (stencil mask, Assets.js), so the player is always drawn whole. The outline is dark on
-  // open ground and turns `cover` while brush or a tall object is right around / in front of the player.
-  playerOutline: { open: '#141019', cover: '#5fc8d8', coverRadius: 1, coverAhead: 2 },
+  // open ground and turns `cover` only while a card in front ACTUALLY overlaps the player (critic H #10,
+  // JungleWorld.coveredAt): `body` = the sampled box in texels around the feet (half width, low..high rows above
+  // the feet, step); `hits` = sample points over opaque card texels to turn cyan (on) / to stay cyan (off).
+  playerOutline: { open: '#141019', cover: '#5fc8d8', body: { half: 9, low: 3, high: 42, step: 3 }, hits: { on: 6, off: 3 } },
   sway: 1,                   // foliage sway amplitude (texels)
 };
 
@@ -292,6 +425,11 @@ export const SOLID = {
     ruin_car_wreck: [-1.35, -0.85, 1.35, 0, 0.2],
     ruin_radio_mast: [-1.6, -0.8, 1.1, -0.1, 0.2],
     ruin_stairs: [-1.3, -1.6, 1.25, -0.25, 0.2],
+    // district hero ruins (critic H #3, pixel-art/pixellab_v3/build_ruins.py)
+    ruin_market_kiosks: [-2.2, -0.75, 2.2, -0.1, 0.2],      // the kiosk row (barrels in front stay walkable)
+    ruin_station_platform: [-1.3, -0.8, 1.2, -0.1, 0.3],    // the diagonal slab's middle; its ends sink into mud
+    ruin_apartment_facade: [-0.95, -0.7, 1.3, -0.15, 0.15], // the facade + side wall (rubble in front is walkable)
+    ruin_server_hall: [-1.0, -1.1, 1.1, -0.15, 0.15],       // both rack banks and the cooling unit
   },
   kind: {
     tree_kapok: [-0.2, -0.6, 0.05, -0.45, 0.5],
@@ -310,6 +448,10 @@ export const SOLID = {
     ruin_car: [-1.35, -0.85, 1.35, 0, 0.2],
     ruin_mast: [-1.6, -0.8, 1.1, -0.1, 0.2],
     ruin_stairs: [-1.3, -1.6, 1.25, -0.25, 0.2],
+    ruin_kiosk: [-2.2, -0.75, 2.2, -0.1, 0.2],
+    ruin_platform: [-1.3, -0.8, 1.2, -0.1, 0.3],
+    ruin_facade: [-0.95, -0.7, 1.3, -0.15, 0.15],
+    ruin_server: [-1.0, -1.1, 1.1, -0.15, 0.15],
     prop_campfire: [0, -0.15, 0, -0.15, 0.42],
     prop_pylon: [-0.4, -0.6, 0.4, -0.05, 0.15],          // the pylon's stone plinth
     prop_relay: [-1.2, -1.45, 1.2, -0.25, 0.25],         // the Relay Core's platform
@@ -317,7 +459,7 @@ export const SOLID = {
     prop_objective: [-0.25, -0.4, 0.25, -0.1, 0.18],     // objective / optional props (fuse box, pump, terminal…)
     prop_nest: [0, -0.2, 0, -0.2, 0.5],
   },
-  opaque: ['ruin_wall', 'ruin_train', 'ruin_statue'],
+  opaque: ['ruin_wall', 'ruin_train', 'ruin_statue', 'ruin_kiosk', 'ruin_facade', 'ruin_server'],
   tilePad: 0.15,             // a tile counts as blocked for flow fields when its centre is this close to a footprint
 };
 
@@ -342,6 +484,9 @@ export const GROUND = {
   deepTint: 0.5,             // deep water drawn this much darker (TerrainBaker), so the channel reads
   clearFront: 1.3,           // no undergrowth this far in front of (south of) logs, rocks and ruins, so they show
   treeFront: { rock: 1.9, ruin: 2.4 },   // ...and no tree trunk this far in front of them (its card would hide them)
+  // Containers and pylons (critic H #12): no undergrowth within `clear` tiles in front of (south of) them, only
+  // ferns out to `low` (not for hidden caches), and no tree trunk within `tree` tiles south / `treeX` across.
+  propFront: { clear: 1.1, low: 2.2, tree: 2.6, treeX: 1.4 },
   // Reachability (JungleGen): every site, pylon and container must be walkable from the Relay (brush counts as
   // passable — it can be cut; deep water, trunks, rocks and ruins don't). A tile is walkable when its centre
   // is ≥ reachPad from every footprint. Unreachable targets are fixed along the cheapest path: deep water on it
@@ -350,3 +495,8 @@ export const GROUND = {
   fixDeep: 12,
   fixObject: 30,
 };
+
+// Wading (src/world/Wading.js, critic H #6): in shallow water a character's sprites are clipped `line` texels above
+// the feet (at most maxShare of a small creature's height), with the fx_ripple loop centred on that waterline
+// and an fx_splash on entry (its entry texel splashEntry, frame px, on the waterline).
+export const WATER = { line: 8, maxShare: 0.2, splashEntry: [8, 11] };

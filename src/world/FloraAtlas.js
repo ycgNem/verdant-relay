@@ -40,9 +40,15 @@ export const FAMILIES = {
   ruin_car: [/^ruin_(car|wreck|vehicle)/],
   ruin_mast: [/^ruin_(mast|radio|antenna|tower)/],
   ruin_stairs: [/^ruin_(stair|steps)/],
+  // District hero ruins (critic H #3): one per district, placed at its major sites (REGION_LOOK.hero).
+  ruin_kiosk: [/^ruin_(market|kiosk)/],
+  ruin_platform: [/^ruin_(station|platform)/],
+  ruin_facade: [/^ruin_(apartment|facade)/],
+  ruin_server: [/^ruin_(server|data)/],
 };
 // Fallbacks between families when one has neither art nor a placeholder painter.
-const ALIAS = { cutstump: 'stump', tree_fern: 'tree_palm', tree_fallen: 'log', ruin_stairs: 'ruin_wall', ruin_mast: 'ruin_pillar', ruin_greenhouse: 'ruin_pillar', vine: 'thicket', mushroom: 'fern' };
+const ALIAS = { cutstump: 'stump', tree_fern: 'tree_palm', tree_fallen: 'log', ruin_stairs: 'ruin_wall', ruin_mast: 'ruin_pillar', ruin_greenhouse: 'ruin_pillar', vine: 'thicket', mushroom: 'fern',
+  ruin_kiosk: 'ruin_car', ruin_platform: 'ruin_train', ruin_facade: 'ruin_wall', ruin_server: 'ruin_mast' };
 
 export class FloraAtlas {
   constructor(assets) {

@@ -22,27 +22,41 @@ export class Ambience {
     this.three = scene3d;
     this.t = 0;
     this.dusk = 0;
-    const pos = new Float32Array(N * 3), col = new Float32Array(N * 3), size = new Float32Array(N);
+    const pos = new Float32Array(N * 3), col = new Float32Array(N * 3), size = new Float32Array(N), emit = new Float32Array(N);
     this.geom = new THREE.BufferGeometry();
     this.geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     this.geom.setAttribute('color', new THREE.BufferAttribute(col, 3));
     this.geom.setAttribute('size', new THREE.BufferAttribute(size, 1));
+    // Fireflies are emissive (PostFx light code: alpha 0): they keep their glow in the dark.
+    this.geom.setAttribute('emit', new THREE.BufferAttribute(emit, 1));
     this.mat = new THREE.ShaderMaterial({
-      transparent: false,
+      // Drawn over the foliage (they drift in the air in front of it): no depth test. Colour overwrites; alpha
+      // keeps the pixel's PostFx light code (dst × src alpha), except fireflies, which write 0 = emissive.
+      transparent: true,
       depthWrite: false,
+      depthTest: false,
+      blending: THREE.CustomBlending,
+      blendSrc: THREE.OneFactor,
+      blendDst: THREE.ZeroFactor,
+      blendSrcAlpha: THREE.ZeroFactor,
+      blendDstAlpha: THREE.SrcAlphaFactor,
       vertexShader: `
         attribute float size;
         attribute vec3 color;
+        attribute float emit;
         varying vec3 vCol;
+        varying float vEmit;
         void main() {
           vCol = color;
+          vEmit = emit;
           gl_PointSize = size;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }`,
       fragmentShader: `
         varying vec3 vCol;
+        varying float vEmit;
         void main() {
-          gl_FragColor = vec4(vCol, 1.0);
+          gl_FragColor = vec4(vCol, 1.0 - vEmit);
           #include <colorspace_fragment>
         }`,
     });
@@ -74,7 +88,7 @@ export class Ambience {
       p.y = 0.3 + Math.random() * 1.6;
       p.life = 4 + Math.random() * 6;
       p.c = [0.85, 1.0, 0.45];
-      p.size = Math.random() < 0.3 ? 2 : 1;
+      p.size = Math.random() < 0.55 ? 2 : 1;
     } else {
       p.y = 0.2 + Math.random() * 2.6;
       p.life = 5 + Math.random() * 6;
@@ -87,7 +101,8 @@ export class Ambience {
     this.t += dt;
     this.dusk = dusk;
     const pos = this.geom.attributes.position.array, col = this.geom.attributes.color.array, size = this.geom.attributes.size.array;
-    const wantFly = Math.round(N * 0.45 * dusk), wantMote = Math.round(N * 0.35 * (1 - dusk)), wantLeaf = Math.round(N * 0.12);
+    const emit = this.geom.attributes.emit.array;
+    const wantFly = Math.round(N * ATMOS.particles.flies * dusk), wantMote = Math.round(N * 0.35 * (1 - dusk)), wantLeaf = Math.round(N * 0.12);
     let flies = 0, motes = 0, leaves = 0;
     for (const p of this.p) if (p.alive) { if (p.kind === KIND.fly) flies++; else if (p.kind === KIND.mote) motes++; else leaves++; }
     for (let i = 0; i < N; i++) {
@@ -117,7 +132,7 @@ export class Ambience {
         const fade = Math.min(1, p.age / 0.8, (p.life - p.age) / 0.8);
         // Fireflies blink; motes only show in light (less under the canopy).
         let b = fade;
-        if (p.kind === KIND.fly) b *= Math.max(0, Math.sin(this.t * 2.3 + p.ph * 3)) > 0.35 ? 1 : 0.15;
+        if (p.kind === KIND.fly) b *= Math.max(0, Math.sin(this.t * 2.3 + p.ph * 3)) > ATMOS.particles.flyBlink ? 1 : 0.15;
         if (p.kind === KIND.mote) b *= 1 - this.world.shadeAt(p.x, p.z) * 0.8;
         k = b > 0.3 ? b : 0;
       }
@@ -125,17 +140,20 @@ export class Ambience {
       const c = p.c || [0, 0, 0];
       col[i * 3] = c[0] * k; col[i * 3 + 1] = c[1] * k; col[i * 3 + 2] = c[2] * k;
       size[i] = k > 0 ? p.size : 0;
+      emit[i] = p.alive && p.kind === KIND.fly ? 1 : 0;
     }
     this.geom.attributes.position.needsUpdate = true;
     this.geom.attributes.color.needsUpdate = true;
     this.geom.attributes.size.needsUpdate = true;
+    this.geom.attributes.emit.needsUpdate = true;
     this._updateShafts(dt, cx, cz);
   }
 
   _updateShafts(dt, cx, cz) {
     // Keep a few shafts near the camera, in places with a gap in the canopy (shade 0.2–0.6).
     const [SW, SD] = ATMOS.particles.shaftBox;
-    const want = this.dusk > 0.6 ? 0 : ATMOS.particles.shafts;
+    // shaftMult: weather (Weather.js) — none in rain or fog, more in the heat.
+    const want = this.dusk > 0.6 ? 0 : Math.round(ATMOS.particles.shafts * (this.shaftMult ?? 1));
     while (this.shafts.length < want) {
       let x = 0, z = 0, ok = false;
       for (let t = 0; t < 12 && !ok; t++) {

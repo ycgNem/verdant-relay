@@ -82,19 +82,19 @@
 
 /* ---- banners */
 .x-banner {
-  position: absolute; left: 50%; top: 37%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; z-index: 22;
+  position: absolute; left: 50%; top: 22%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; z-index: 22;   /* off the player (critic L §3) */
   text-shadow: calc(var(--u) * 3) calc(var(--u) * 3) 0 #181425; transition: opacity 0.6s;
 }
 .x-banner.out { opacity: 0; }
-.x-banner-t { font-size: max(var(--fq), round(calc(var(--u) * 34 - 0.01px), var(--fq))); font-weight: bold; letter-spacing: round(0.12em, var(--fpx)); color: var(--amber); animation: x-in 0.35s ease-out; }
-.x-banner-s { font-size: max(var(--fq), round(calc(var(--u) * 13 - 0.01px), var(--fq))); color: var(--text); }
+.x-banner-t { font-size: max(var(--fq), round(calc(var(--u) * 36 - 0.01px), var(--fq))); font-weight: bold; letter-spacing: round(0.04em, var(--fpx)); color: var(--amber); animation: x-in 0.35s ease-out; }   /* critic H §5: no wide tracking */
+.x-banner-s { font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: var(--text); text-shadow: calc(var(--u) * 1.5) calc(var(--u) * 1.5) 0 #181425; }
 @keyframes x-in { from { transform: scale(1.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
 .explore-ui .overlay { cursor: default; }
 
 /* ---- juice / readability */
 /* HUD boxes fade while a threat is behind them (JungleScene._fadeHudOverThreats). */
-.x-fade { opacity: 0.22; }
+.x-fade { opacity: var(--hudfade, 0.5); }   /* JUICE.hudFade.opacity (critic L: 0.22 hid the clock) */
 /* Paused: the world prompt dims with the world. */
 .x-hud.paused .x-prompt, .x-hud.paused .x-edge { opacity: 0.35; animation: none; }
 /* Loot icon flying into its HUD chip. */

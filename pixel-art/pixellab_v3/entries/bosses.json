@@ -1,0 +1,146 @@
+{
+ "boss_thorn_mother": {
+  "file": "boss_thorn_mother.png",
+  "ppu": 32,
+  "frames": 8,
+  "fw": 90,
+  "fh": 95,
+  "anchor": [
+   45,
+   87
+  ],
+  "fps": 8,
+  "anims": {
+   "idle": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "attack": [
+    4,
+    5
+   ],
+   "hurt": [
+    6
+   ],
+   "dead": [
+    7
+   ]
+  },
+  "animFps": {
+   "idle": 5,
+   "attack": 7,
+   "hurt": 8,
+   "dead": 1
+  }
+ },
+ "boss_brood_hive": {
+  "file": "boss_brood_hive.png",
+  "ppu": 32,
+  "frames": 8,
+  "fw": 96,
+  "fh": 82,
+  "anchor": [
+   50,
+   73
+  ],
+  "fps": 8,
+  "anims": {
+   "idle": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "attack": [
+    4,
+    5
+   ],
+   "hurt": [
+    6
+   ],
+   "dead": [
+    7
+   ]
+  },
+  "animFps": {
+   "idle": 5,
+   "attack": 7,
+   "hurt": 8,
+   "dead": 1
+  }
+ },
+ "boss_warden": {
+  "file": "boss_warden.png",
+  "ppu": 32,
+  "frames": 8,
+  "fw": 76,
+  "fh": 96,
+  "anchor": [
+   38,
+   88
+  ],
+  "fps": 8,
+  "anims": {
+   "idle": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "attack": [
+    4,
+    5
+   ],
+   "hurt": [
+    6
+   ],
+   "dead": [
+    7
+   ]
+  },
+  "animFps": {
+   "idle": 5,
+   "attack": 7,
+   "hurt": 8,
+   "dead": 1
+  }
+ },
+ "boss_drowned_engine": {
+  "file": "boss_drowned_engine.png",
+  "ppu": 32,
+  "frames": 8,
+  "fw": 94,
+  "fh": 90,
+  "anchor": [
+   47,
+   87
+  ],
+  "fps": 8,
+  "anims": {
+   "idle": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "attack": [
+    4,
+    5
+   ],
+   "hurt": [
+    6
+   ],
+   "dead": [
+    7
+   ]
+  },
+  "animFps": {
+   "idle": 5,
+   "attack": 7,
+   "hurt": 8,
+   "dead": 1
+  }
+ }
+}

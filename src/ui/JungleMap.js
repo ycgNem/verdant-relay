@@ -16,11 +16,22 @@ export const MAP_MARKERS = {
   optional: { color: '#c47bff', shape: 'diamond', size: 1.1, label: 'Bonus task' },
   container: { color: '#ead4aa', shape: 'dot', size: 0.6, label: 'Supplies' },
   player: { color: '#ffffff', shape: 'arrow', size: 1.7, label: 'You' },
+  // Wayfinding (critic L §3): the crossing to use when the straight line to the goal runs into deep water.
+  ford: { color: '#c8e4f0', shape: 'diamond', size: 1.25, hollow: true, label: 'Crossing (stepping stones)' },
+  // Area boss lair (src/entities/AreaBoss.js): a pixel skull, from day 3 until it is killed.
+  boss: { color: '#ff4a4a', core: '#ffe0d0', shape: 'skull', size: 1.6, label: 'Area boss' },
+  // Relics & lore (src/scenes/JungleRelics.js): strongboxes, shrines and relics on the ground (a four-point star);
+  // hidden caches the Scavenger's Compass finds; data logs you have walked past.
+  relic: { color: '#fee761', core: '#ffffff', shape: 'star', size: 1.5, label: 'Relic (strongbox / shrine)' },
+  cache: { color: '#fee761', shape: 'dot', size: 0.75, label: 'Hidden cache (compass)' },
+  lore: { color: '#2ce8f5', shape: 'dot', size: 0.7, label: 'Data log' },
 };
 // Draw order: small first, the player last.
-const ORDER = ['container', 'pylon_off', 'optional', 'pylon_on', 'relay', 'objective', 'player'];
+const ORDER = ['container', 'cache', 'lore', 'pylon_off', 'optional', 'relic', 'boss', 'ford', 'pylon_on', 'relay', 'objective', 'player'];
+// The skull marker (shape 'skull'): 5 × 5 cells, 1 = bone, 2 = eye / tooth gap (left dark).
+const SKULL = ['01110', '11111', '12121', '11111', '01010'];
 // Markers that stick to the minimap rim when they are outside it.
-const RIM = new Set(['objective', 'relay', 'pylon_on']);
+const RIM = new Set(['objective', 'relay', 'pylon_on', 'ford']);
 const INK = '#0b0a12';
 const OUTSIDE = '#050409';   // big map: beyond the world's edge
 
@@ -33,6 +44,10 @@ function shapePoly(shape, s, a = 0) {
   const r = s / 2;
   if (shape === 'diamond') return [[0, -r - 0.5], [r + 0.5, 0], [0, r + 0.5], [-r - 0.5, 0]];
   if (shape === 'tri') return [[0, -r - 0.5], [r + 0.5, r], [-r - 0.5, r]];
+  if (shape === 'star') {   // a four-point star (relics)
+    const o = r + 0.5, i = Math.max(1, r * 0.38);
+    return [[0, -o], [i, -i], [o, 0], [i, i], [0, o], [-i, i], [-o, 0], [-i, -i]];
+  }
   if (shape === 'arrow') {
     const c = Math.cos(a), si = Math.sin(a);
     const pts = [[r + 1, 0], [-r, r * 0.85], [-r * 0.35, 0], [-r, -r * 0.85]];
@@ -75,11 +90,25 @@ export function drawMarker(g, type, px, py, unit, opts = {}) {
   if (!st) return;
   const s = Math.max(2, Math.round(unit * st.size * (opts.scale || 1)));
   const cx = Math.round(px), cy = Math.round(py);
+  if (st.shape === 'skull') {
+    // Whole-pixel cells: an ink border one cell wide, then the bone.
+    const k = Math.max(1, Math.round(s / 5)), x0 = cx - Math.floor((5 * k) / 2), y0 = cy - Math.floor((5 * k) / 2);
+    g.fillStyle = INK;
+    g.fillRect(x0 - k, y0 - k, 7 * k, 7 * k - k);
+    SKULL.forEach((row, y) => [...row].forEach((c, x) => {
+      if (c === '0') return;
+      g.fillStyle = c === '1' ? (opts.dim ? '#4a5266' : st.color) : INK;
+      g.fillRect(x0 + x * k, y0 + y * k, k, k);
+    }));
+    return;
+  }
   const poly = shapePoly(st.shape, s, opts.a || 0);
   const o = Math.max(1, Math.round(unit / 5));   // outline thickness
   // Dark outline: the shape stamped at the 8 neighbouring offsets.
   for (let dy = -o; dy <= o; dy += o) for (let dx = -o; dx <= o; dx += o) if (dx || dy) fillPoly(g, poly, cx + dx, cy + dy, INK);
   fillPoly(g, poly, cx, cy, opts.dim ? '#4a5266' : st.color);
+  // Hollow (◇): the inside punched back out in ink, a ring one outline thick.
+  if (st.hollow && s > 3 * o + 1) fillPoly(g, shapePoly(st.shape, s - 3 * o, opts.a || 0), cx, cy, INK);
   if (st.core && !opts.dim) {
     const c = Math.max(1, Math.round(s / 3));
     g.fillStyle = st.core;
@@ -275,8 +304,11 @@ export class JungleMap {
     return v;
   }
 
-  /** Big map: view = { cx, cz, ppt } (tile centre, whole device px per tile). */
-  drawBig(canvas, view, markers, time = 0) {
+  /**
+   * Big map: view = { cx, cz, ppt } (tile centre, whole device px per tile). `labels` = [{ x, z, text }]: place
+   * names (JungleRelics.labels), drawn in the pixel font at a whole multiple of 8 device px with a 1-step outline.
+   */
+  drawBig(canvas, view, markers, time = 0, labels = null) {
     this._composite();
     const w = canvas.width, h = canvas.height;
     const g = canvas.getContext('2d');
@@ -290,7 +322,26 @@ export class JungleMap {
     g.drawImage(this.fog, ox, oz, this.W * ppt, this.W * ppt);
     const unit = Math.max(4, Math.min(9, Math.round(ppt * 1.4)), Math.round(Math.min(w, h) / 90));
     const e = unit * 1.5;
+    if (labels?.length) this._labels(g, labels, (mx, mz) => [ox + mx * ppt, oz + mz * ppt], w, h);
     this._markers(g, markers, (mx, mz) => [ox + mx * ppt, oz + mz * ppt], unit, time, { box: [e, e, w - e, h - e] });
+  }
+
+  /** Place names over the map (under the markers): pale text, dark outline, whole device pixels. */
+  _labels(g, labels, toPx, w, h) {
+    const k = Math.max(1, Math.round(h / 360));
+    const fs = 8 * k;
+    g.font = `${fs}px Tiny5, monospace`;
+    g.textAlign = 'center';
+    g.textBaseline = 'bottom';
+    for (const L of labels) {
+      let [px, py] = toPx(L.x, L.z);
+      px = Math.round(px); py = Math.round(py);
+      if (px < -100 || py < 0 || px > w + 100 || py > h + fs) continue;
+      g.fillStyle = INK;
+      for (const [dx, dy] of [[-k, 0], [k, 0], [0, -k], [0, k], [k, k]]) g.fillText(L.text, px + dx, py + dy);
+      g.fillStyle = '#ead4aa';
+      g.fillText(L.text, px, py);
+    }
   }
 
   /** A small legend icon canvas for marker `type` (CSS size `css` px). */

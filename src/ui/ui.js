@@ -180,12 +180,71 @@ export function setToastsPaused(ui, paused) {
   host._paused = !!paused;
 }
 
-/** A modal dialog with a title, body and buttons. Returns the overlay node (remove() to close). */
-export function modal(ui, title, body, buttons = []) {
+/**
+ * A modal dialog with a title, body and buttons. Returns the overlay node (remove() to close).
+ * Keyboard (critic L §2.3, every dialog works without a mouse): the primary button has focus; Enter / Space / E
+ * (and the bound interact key) press the focused button, arrows / W S / Tab move the focus, Esc presses the
+ * cancel button. Only the topmost visible overlay listens, and it keeps those keys to itself (a capture
+ * listener), so Esc that closes a dialog doesn't also reach the game. Keys are ignored for `opts.guard` s after
+ * it opens (a key mashed in a fight can't confirm the dialog that just appeared).
+ *   opts.cancel   the button Esc presses (default: the one marked with an "Esc" hotkey; else, next to a
+ *                 danger button, the first safe one; else a lone button)
+ *   opts.keys     false = the caller handles keys itself (screensKit.ask uses a KeyNav)
+ *   opts.extraKeys  more codes that press the focused button (the jungle's bound interact key)
+ */
+export function modal(ui, title, body, buttons = [], opts = {}) {
   const box = panel('modal', el('h2', title), body, el('div.row.end', {}, buttons));
   const ov = el('div.overlay.ui-block', {}, box);
   ui.append(ov);
+  if (opts.keys !== false) modalKeys(ui, ov, buttons.filter(Boolean), opts);
   return ov;
+}
+
+const MODAL_PRESS = new Set(['Enter', 'NumpadEnter', 'Space', 'KeyE']);
+const MODAL_PREV = new Set(['ArrowUp', 'ArrowLeft', 'KeyW']);
+const MODAL_NEXT = new Set(['ArrowDown', 'ArrowRight', 'KeyS']);
+
+function modalKeys(ui, ov, buttons, opts) {
+  const usable = () => buttons.filter((b) => b.isConnected && !b.classList.contains('disabled') && b.offsetParent !== null);
+  const isEsc = (b) => [...b.querySelectorAll('.hotkey')].some((h) => h.textContent.trim() === 'Esc');
+  const cancel = () => {
+    if (opts.cancel) return opts.cancel;
+    const list = usable();
+    return list.find(isEsc) || (list.some((b) => b.classList.contains('danger')) ? list.find((b) => !b.classList.contains('danger')) : list.length === 1 ? list[0] : null);
+  };
+  let cur = null;
+  const focus = (b) => {
+    cur?.classList.remove('kfocus');
+    cur = b || null;
+    cur?.classList.add('kfocus');
+  };
+  focus(buttons.find((b) => b.classList.contains('primary')) || buttons[0]);
+  const armAt = performance.now() + (opts.guard ?? 0.3) * 1000;
+  const onKey = (e) => {
+    if (!ov.isConnected) { window.removeEventListener('keydown', onKey, true); return; }
+    const shown = [...ui.querySelectorAll('.overlay')].filter((o) => o.style.display !== 'none' && o.offsetParent !== null);
+    if (shown[shown.length - 1] !== ov) return;
+    const c = e.code;
+    const press = MODAL_PRESS.has(c) || opts.extraKeys?.includes(c);
+    const move = MODAL_PREV.has(c) || MODAL_NEXT.has(c) || c === 'Tab';
+    if (!press && !move && c !== 'Escape') return;
+    const esc = c === 'Escape' ? cancel() : null;
+    if (c === 'Escape' && !esc) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.repeat || performance.now() < armAt) return;
+    if (esc) { esc.click(); return; }
+    const list = usable();
+    if (!list.length) return;
+    if (move) {
+      const d = MODAL_PREV.has(c) || (c === 'Tab' && e.shiftKey) ? -1 : 1;
+      const i = list.indexOf(cur);
+      focus(list[((i < 0 ? (d > 0 ? -1 : 0) : i) + d + list.length) % list.length]);
+      return;
+    }
+    (list.includes(cur) ? cur : list[0]).click();
+  };
+  window.addEventListener('keydown', onKey, true);
 }
 
 /** Floating world text (damage numbers, pickups). Positioned each frame by the caller via place(). */

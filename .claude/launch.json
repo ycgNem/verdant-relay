@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 5190
+    },
+    {
+      "name": "playtest",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "playtest"],
+      "port": 5191
     }
   ]
 }

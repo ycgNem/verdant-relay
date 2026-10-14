@@ -19,11 +19,25 @@ Every push to `main` rebuilds and redeploys the live site through GitHub Actions
 
 ## How to play
 
-- **Day (exploration):** WASD move · mouse aim · LMB fire · RMB Pulse Cutter (melee, cuts brambles) · Space dodge · E interact (hold) · Q med kit · Tab big map · Esc pause.
-  Finish the district objective, grab loot, then hold E in the extraction zone. Loot is only kept if you extract.
+- **Day (exploration):** WASD move · mouse aim · LMB machete slash (3-hit combo; hold while walking to hack through brush) · hold RMB heavy chop (an RMB press just before a hit lands deflects it) · Space dodge roll · F throw the machete · E interact (hold) · Q med kit · Tab (or M) big map · Esc pause.
+  Every key except Esc can be rebound in **Settings → Controls** (also from the pause menu); tips and prompts show the key you picked.
+  Do the day's goal, grab loot, then head home (hold E at the Relay or a beacon you switched on). Loot is only kept if you get home.
+  The clock under the minimap is the daylight left (the ring around the minimap drains with it); after sunset the jungle hunts you.
+- **Dialogs:** every dialog works from the keyboard: Enter / Space / E press the highlighted button, arrows or Tab move it, Esc cancels.
+  F2 mutes everything anywhere; Settings has full screen (Game tab).
 - **Night (defense):** click a glowing pad to build (or 1–6 then a pad), click a tower to upgrade (U), sell (S) or change targeting (T).
   Read the wave preview, spend Intel (Decrypt / Sabotage), repair (R), then Start Wave (Space). F toggles 1×/2×.
-- Survive 6 nights; the Canopy Colossus attacks on night 6. Research Data earned in every run buys permanent unlocks in the Collection.
+  Map: mouse wheel or + / − zooms (whole steps), right- or middle-drag or the arrow keys pan, Home re-frames the board.
+- **Between trips:** at the briefing pick an area (1–3), R re-rolls the offer (with Second Look); on the summary pick a
+  skill (1–6), R re-rolls the cards (with Fresh Ideas), L saves the point for later; at the Workbench 1–9 make a recipe,
+  Esc goes back, Enter skips to night prep. In night prep, a selected tower's Mod row fits a mod you made.
+- Survive 6 nights; the Canopy Colossus attacks on night 6. Research Data earned in every run buys permanent unlocks in
+  the Collection's research tree (arrows move, Enter / click to select, U or a second click unlocks).
+- After the first win: **Long Night** (endless, from the title, L) and **Overgrowth** 1–10 (title, Left / Right; each
+  level adds a modifier and +10% Research). After the first run: the **Daily Run** (D; today's seed and two modifiers).
+- **Relics and secrets:** cut into lost sites for old strongboxes, kneel at landmark shrines (pick 1 of 2: keys 1 / 2),
+  and read the glowing data logs. A relic only works once you get it home (it's lost if you go down). Everything you've
+  found and read is in the Collection's **Codex**.
 
 ## Docs
 
@@ -42,4 +56,7 @@ via `python pixel-art/merge_manifest.py`. Anything not registered falls back to 
 ## Debug URLs
 
 `?debug=explore&district=flooded_transit&night=2`, `?debug=defense&night=6&scrap=600&circuits=12&biofiber=12`,
-`?debug=summary`, `?debug=briefing`, `?debug=results&victory=1`. Debug runs never touch your real save (add `&save=1` to test Continue).
+`?debug=summary`, `?debug=briefing`, `?debug=results&victory=1`; add `&mode=long|daily` or `&og=3` for a Long Night,
+Daily or Overgrowth run (`?debug=defense&night=6&mode=long`, win it, and night 7 follows). Night maps: `&map=twin|crossing|ford`,
+`&beacons=2` (forward pads), `&relics=whetstone,storm_totem` (relics owned; with `?debug=summary`, `&found=a,b`). Debug runs never touch your
+real save (add `&save=1` to test Continue).

@@ -1,0 +1,122 @@
+{
+  "relic_whetstone": {
+    "file": "relic_whetstone.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_tapir_boots": {
+    "file": "relic_tapir_boots.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_lantern_moth": {
+    "file": "relic_lantern_moth.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_bramble_gloves": {
+    "file": "relic_bramble_gloves.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_spore_sac": {
+    "file": "relic_spore_sac.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_featherfoot": {
+    "file": "relic_featherfoot.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_medic_satchel": {
+    "file": "relic_medic_satchel.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_cracked_lens": {
+    "file": "relic_cracked_lens.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_old_battery": {
+    "file": "relic_old_battery.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_seed_bank": {
+    "file": "relic_seed_bank.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_rusted_bell": {
+    "file": "relic_rusted_bell.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_compass": {
+    "file": "relic_compass.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_hunters_fang": {
+    "file": "relic_hunters_fang.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_ironwood_grip": {
+    "file": "relic_ironwood_grip.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_drone_tag": {
+    "file": "relic_drone_tag.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_second_wind": {
+    "file": "relic_second_wind.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_pylon_coil": {
+    "file": "relic_pylon_coil.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_root_heart": {
+    "file": "relic_root_heart.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_capacitor": {
+    "file": "relic_capacitor.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_signal_booster": {
+    "file": "relic_signal_booster.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_hungry_idol": {
+    "file": "relic_hungry_idol.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_blood_moss": {
+    "file": "relic_blood_moss.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_glass_machete": {
+    "file": "relic_glass_machete.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "relic_storm_totem": {
+    "file": "relic_storm_totem.png",
+    "ppu": 32,
+    "shadow": 0
+  }
+}

@@ -1,0 +1,31 @@
+{
+ "prop_relay_pylon": {
+  "file": "prop_relay_pylon_v3.png",
+  "ppu": 32,
+  "frames": 5,
+  "fw": 32,
+  "fh": 113,
+  "anchor": [
+   17,
+   105
+  ],
+  "fps": 8,
+  "anims": {
+   "idle": [
+    0
+   ],
+   "off": [
+    0
+   ],
+   "on": [
+    1,
+    2,
+    3,
+    4
+   ]
+  },
+  "animFps": {
+   "on": 6
+  }
+ }
+}

@@ -15,6 +15,8 @@
 //                     yield = Scrap multiplier by distance from the nearest return point
 //     spores          [{ id, x, z, region }]                    spore pods (a hazard; they regrow every day)
 //     pylons          [{ id, x, z, region }]                    extraction relays (activated ones persist)
+//     relicCaches / shrines / loreSpots   site features (siteFeatures: relic strongboxes at lost majors, a
+//                     shrine per landmark, data logs); sites[].name / .kind = place names (src/data/lore.js)
 //     deep            Uint8Array(W²)      1 = deep water: impassable for everyone (GROUND.deepFrom)
 //     ford            Uint8Array(W²)      1 = a shallow crossing through a river (trail fords + a few extra)
 //     reach           { targets, unreachable, fords, removed, passes } — the reachability check's report
@@ -29,10 +31,13 @@ import { makeRng, subSeed } from '../core/rng.js';
 import { makeNoise, hash2 } from './noise.js';
 import { JUNGLE, LEVEL, BRUSH, REGION_LOOK, SPORES, GROUND, DAY } from '../data/jungle.js';
 import { footprint, inFootprint } from './Solid.js';
+import { PLACE_NAMES, LANDMARK_NAMES, LORE_SPOTS } from '../data/lore.js';
+import { GUIDE } from '../data/guide.js';
 
 const TAU = Math.PI * 2;
 
-export function generateWorld(seed, districtKeys) {
+// opts.guided: the player's guided first run (Run.guided): trail-side crates line the route to the guided goal.
+export function generateWorld(seed, districtKeys, opts = {}) {
   const J = JUNGLE;
   const W = J.size, V = W + 1;
   const rng = makeRng(subSeed(seed, 'world'));
@@ -465,8 +470,27 @@ export function generateWorld(seed, districtKeys) {
   }
 
   // ---------------------------------------------------------------- site dressing: ruins + props
+  const hrng = makeRng(subSeed(seed, 'heroes'));   // own stream: the rest of the layout stays as it was
   for (const s of sites) {
     const look = REGION_LOOK[regionKey(s.region)] || REGION_LOOK.overgrown_market;
+    // District hero ruins (critic H #3): 1–2 of the region's signature ruin (REGION_LOOK.hero) at each major site,
+    // on the far (north) side of the clearing, so they frame it without covering the objective spot at its centre.
+    if (s.type === 'major' && look.hero) {
+      const nh = hrng.int(1, 2);
+      for (let k = 0; k < nh; k++) {
+        const a = -Math.PI / 2 + (nh === 1 ? (hrng.next() - 0.5) * 1.2 : (k ? 0.75 : -0.75) + (hrng.next() - 0.5) * 0.4);
+        const d = s.r * (0.5 + hrng.next() * 0.15);
+        const x = Math.round((s.x + Math.cos(a) * d) * 32) / 32, z = Math.round((s.z + Math.sin(a) * d) * 32) / 32;
+        const o = { id: `o${oid}`, kind: 'ruin', type: look.hero.replace('ruin_', ''), x, z, r: 0, flip: false, site: s.idx, hero: true };
+        const f = footprint(o);
+        if (f && inFootprint(f, s.x, s.z, 2)) continue;
+        if (objects.some((q) => q.kind === 'ruin' && Math.hypot(q.x - x, q.z - z) < 5)) continue;
+        oid++;
+        objects.push(o);
+        markCircle(x, z, 2);
+        markFoot(o, 0.5);
+      }
+    }
     if (s.type === 'major' || s.type === 'minor' || s.type === 'landmark') {
       const n = s.type === 'major' ? rng.int(4, 6) : s.type === 'minor' ? rng.int(2, 3) : 1;
       for (let k = 0; k < n; k++) {
@@ -474,7 +498,7 @@ export function generateWorld(seed, districtKeys) {
         const d = s.type === 'landmark' ? 0 : s.r * (0.55 + rng.next() * 0.35);
         const x = Math.round((s.x + Math.cos(a) * d) * 32) / 32, z = Math.round((s.z + Math.sin(a) * d) * 32) / 32;
         const type = s.type === 'landmark' ? rng.pick(['statue', 'mast', 'greenhouse']) : rng.pick(look.ruins).replace('ruin_', '');
-        if (objects.some((o) => o.kind === 'ruin' && Math.hypot(o.x - x, o.z - z) < 3)) continue;
+        if (objects.some((o) => o.kind === 'ruin' && Math.hypot(o.x - x, o.z - z) < (o.hero ? 4.5 : 3))) continue;
         objects.push({ id: `o${oid++}`, kind: 'ruin', type, x, z, r: 0, flip: rng.chance(0.5), site: s.idx });
         markCircle(x, z, 1.5);
         markFoot(objects[objects.length - 1], 0.5);
@@ -625,6 +649,9 @@ export function generateWorld(seed, districtKeys) {
       k++;
     }
   }
+  // Relic strongboxes, landmark shrines, data logs and place names (src/data/relics.js, lore.js): own streams,
+  // after everything else is placed, so the rest of the layout doesn't shift.
+  siteFeatures(world, seed, occupied, B, (tx, tz) => tileLevelMin(tx, tz) <= LEVEL.mud);
   world.occupied = occupied;
   // Far from a return point (the Relay or any pylon) = richer: `yield` multiplies a container's Scrap.
   const LD = J.lootDistance;
@@ -634,6 +661,11 @@ export function generateWorld(seed, districtKeys) {
     c.yield = Math.round((LD.mult[0] + (LD.mult[1] - LD.mult[0]) * k) * 100) / 100;
     if (c.type === 'cache' && d < LD.cacheMin) c.type = 'chest';
   }
+
+  // The guided first run (critic L §2.1, the guided day must pay): pick the guided goal site (GUIDE.district's
+  // region, a trail-side major/minor site GUIDE.objectiveDist from the Relay; JungleScene prefers it) and line the
+  // trail there with a few crates (GUIDE.routeCrates), each in a cleared nook beside the trail.
+  if (opts.guided) guidedRoute(world, sites, districtKeys, occupied, makeRng(subSeed(seed, 'guided')));
 
   // Make sure the Relay clearing and every site/pylon are clear of brush at their centres.
   for (const s of sites) clearDisc(world, s.x, s.z, s.type === 'pylon' ? 1.6 : 1.2);
@@ -654,7 +686,113 @@ export function generateWorld(seed, districtKeys) {
       if (inFootprint(f, tx + 0.5, tz + 0.5, 0.25) || (low && tz + 0.5 > f.z1 && tz + 0.5 < zEnd && tx + 0.5 > f.x0 - f.rr && tx + 0.5 < f.x1 + f.rr)) B[tz * W + tx] = BRUSH.none;
     }
   }
+  // Loot, pylons and spore pods stay in view (critic H #12: a chest 80% hidden behind an elephant-ear card): no undergrowth
+  // within GROUND.propFront.clear in front of (south of) a container or pylon, only low ferns out to .low
+  // (hidden caches keep their thicket: you still cut your way to them), and no tree right in front.
+  const PF = GROUND.propFront;
+  // Spore pods too (a hazard you should see coming), but only the near clearing.
+  const props = [...world.containers.map((c) => ({ x: c.x, z: c.z, hidden: !!c.hidden })), ...world.pylons.map((p) => ({ x: p.x, z: p.z, hidden: false })),
+    ...(world.spores || []).map((p) => ({ x: p.x, z: p.z, hidden: true })),
+    ...[...(world.relicCaches || []), ...(world.shrines || []), ...(world.loreSpots || [])].map((p) => ({ x: p.x, z: p.z, hidden: false }))];
+  for (const p of props) {
+    const R = p.hidden ? PF.clear : PF.low;
+    for (let tz = Math.floor(p.z - 0.5); tz <= Math.floor(p.z + R); tz++) for (let tx = Math.floor(p.x - R); tx <= Math.floor(p.x + R); tx++) {
+      if (tx < 0 || tz < 0 || tx >= W || tz >= W) continue;
+      const dx = tx + 0.5 - p.x, dz = tz + 0.5 - p.z, d = Math.hypot(dx, dz), i = tz * W + tx;
+      if (dz < -0.1) continue;
+      if (d <= PF.clear) B[i] = BRUSH.none;
+      else if (d <= R && B[i] > BRUSH.fern) B[i] = BRUSH.fern;
+    }
+  }
+  world.objects = world.objects.filter((o) => o.kind !== 'tree' || !props.some((p) => o.z > p.z && o.z < p.z + PF.tree && Math.abs(o.x - p.x) < PF.treeX));
+  // Area boss lairs (src/data/bosses.js): one site index per region (bossLair; no random draws, nothing shifts).
+  world.lairs = districtKeys.map((_, ri) => bossLair(world, ri));
   return world;
+}
+
+/**
+ * The site an area's boss holds (critic J M5): the region's lost major site, else its lost site furthest from the
+ * Relay, else its major site (else any non-pylon site). Returns the site index, or -1.
+ */
+export function bossLair(world, ri) {
+  const c = world.center;
+  const mine = world.sites.filter((s) => s.region === ri && s.type !== 'pylon');
+  const far = (a, b) => Math.hypot(b.x - c.x, b.z - c.z) - Math.hypot(a.x - c.x, a.z - c.z);
+  const pick = mine.find((s) => s.type === 'major' && s.lost)
+    || mine.filter((s) => s.lost && s.type !== 'camp').sort(far)[0]
+    || mine.find((s) => s.type === 'major')
+    || mine.slice().sort(far)[0];
+  return pick ? pick.idx : -1;
+}
+
+/**
+ * Site features (Stage 7 relics & lore: src/data/relics.js, src/data/lore.js), each from its own seeded stream so
+ * the rest of the world's layout never shifts:
+ *   s.name        majors and landmarks get a place name from their area's list (never twice in one jungle);
+ *                 landmarks also get s.kind = the ruin standing there ('statue' | 'mast' | 'greenhouse')
+ *   relicCaches   [{ id, site, x, z }]        an old strongbox at every LOST major site (inside its bramble ring)
+ *   shrines       [{ id, site, x, z, kind }]  one per landmark, on the ground in front of its ruin
+ *   loreSpots     [{ id, site, x, z }]        sites holding a data log (LORE_SPOTS chance per type; one per site)
+ * Each spot is an open tile of the site's clearing (no footprint, no thicket, no water), then marked occupied.
+ */
+function siteFeatures(world, seed, occupied, B, wet) {
+  const W = world.size;
+  const nrng = makeRng(subSeed(seed, 'names'));
+  const fill = (t) => t.replace('{n}', String(nrng.int(2, 9))).replace('{L}', 'ABCDEF'[nrng.int(0, 5)]);
+  const majors = {};
+  for (const k of world.districts) majors[k] = nrng.shuffle(PLACE_NAMES[k]?.major || []);
+  const lands = {};
+  for (const [k, list] of Object.entries(LANDMARK_NAMES)) lands[k] = nrng.shuffle(list);
+  const free = (x, z, anyBrush) => {
+    const tx = Math.floor(x), tz = Math.floor(z);
+    if (tx < 1 || tz < 1 || tx >= W - 1 || tz >= W - 1) return false;
+    const i = tz * W + tx;
+    return !occupied[i] && (anyBrush || B[i] < BRUSH.thicket) && !wet(tx, tz) && !world.deep[i];
+  };
+  // Taken: occupied, and no undergrowth on the tile itself (a crowded clearing may push a spot into the brush).
+  const take = (x, z) => { const tx = Math.floor(x), tz = Math.floor(z); occupied[tz * W + tx] = 1; B[tz * W + tx] = BRUSH.none; return { x: tx + 0.5, z: tz + 0.5 }; };
+  const frng = makeRng(subSeed(seed, 'features'));
+  // An open tile in the clearing between r0 and r1 × the site's radius (or the `prefer` point if it is open);
+  // after 40 tries the ring widens and brush tiles count.
+  const spot = (s, r0, r1, prefer) => {
+    if (prefer && free(prefer.x, prefer.z)) return take(prefer.x, prefer.z);
+    for (let t = 0; t < 80; t++) {
+      const late = t >= 40;
+      const a = frng.next() * TAU, d = s.r * (r0 + frng.next() * (r1 - r0 + (late ? 0.5 : 0)));
+      const x = s.x + Math.cos(a) * d, z = s.z + Math.sin(a) * d;
+      if (free(x, z, late)) return take(x, z);
+    }
+    return null;
+  };
+  world.relicCaches = [];
+  world.shrines = [];
+  world.loreSpots = [];
+  const lrng = makeRng(subSeed(seed, 'lore'));
+  for (const s of world.sites) {
+    if (s.type === 'major') {
+      const list = majors[world.districts[s.region]] || [];
+      if (list.length) s.name = fill(list.shift());
+    }
+    if (s.type === 'landmark') {
+      // The ruin standing at the landmark's centre decides what it is (JungleGen site dressing).
+      const ruin = world.objects.find((o) => o.kind === 'ruin' && o.site === s.idx && LANDMARK_NAMES[o.type]);
+      s.kind = ruin?.type || 'statue';
+      const list = lands[s.kind];
+      if (list?.length) s.name = fill(list.shift());
+      // In front of (south of) its ruin, so the shrine's glow sits in view under it.
+      const f = ruin ? footprint(ruin) : null;
+      const p = spot(s, 0.3, 0.8, f ? { x: ruin.x, z: f.z1 + f.rr + 1.0 } : null);
+      if (p) world.shrines.push({ id: `sh${s.idx}`, site: s.idx, kind: s.kind, ...p });
+    }
+    if (s.type === 'major' && s.lost) {
+      const p = spot(s, 0.25, 0.65);
+      if (p) world.relicCaches.push({ id: `rc${s.idx}`, site: s.idx, ...p });
+    }
+    if (lrng.chance(LORE_SPOTS[s.type] || 0)) {
+      const p = spot(s, 0.4, 0.75);
+      if (p) world.loreSpots.push({ id: `lg${s.idx}`, site: s.idx, ...p });
+    }
+  }
 }
 
 /**
@@ -671,6 +809,7 @@ export function ensureReachable(world) {
     ...world.sites.map((s) => ({ x: s.x, z: s.z, r: 2 })),
     ...world.pylons.map((p) => ({ x: p.x, z: p.z, r: 2 })),
     ...world.containers.map((c) => ({ x: c.x, z: c.z, r: 1.2 })),
+    ...[...(world.relicCaches || []), ...(world.shrines || []), ...(world.loreSpots || [])].map((c) => ({ x: c.x, z: c.z, r: 1.2 })),
   ];
   report.targets = targets.length;
   const sx = Math.floor(world.center.x + DAY.startOffset[0]), sz = Math.floor(world.center.z + DAY.startOffset[1]);
@@ -794,9 +933,79 @@ function dijkstraTiles(W, cost, sx, sz) {
   return { dist, from };
 }
 
+/**
+ * The guided run's goal site + trail-side crates (see generateWorld). Sets world.guided = { site, route } (route:
+ * [x, z] tile centres from the Relay to the site) and adds containers { …, guided: true, yield } with ids g0…
+ */
+function guidedRoute(world, sites, districtKeys, occupied, rng) {
+  const W = world.size, V = W + 1, L = world.level, B = world.brush;
+  const R = GUIDE.routeCrates;
+  const gi = districtKeys.indexOf(GUIDE.district);
+  const cx = world.center.x, cz = world.center.z;
+  const [g0, g1] = GUIDE.objectiveDist;
+  const dOf = (s) => Math.hypot(s.x - cx, s.z - cz);
+  // In range first (major before minor, nearest the middle of the range), else the closest one out of range.
+  const cand = sites.filter((s) => s.region === gi && !s.lost && (s.type === 'major' || s.type === 'minor'));
+  if (gi < 0 || !cand.length) return;
+  const off = (s) => Math.max(0, g0 - dOf(s), dOf(s) - g1);
+  cand.sort((a, b) => off(a) - off(b) || (a.type === 'major' ? 0 : 1) - (b.type === 'major' ? 0 : 1) || Math.abs(dOf(a) - (g0 + g1) / 2) - Math.abs(dOf(b) - (g0 + g1) / 2));
+  const site = cand[0];
+  // Cheapest walk from the Relay to the site, strongly preferring trail tiles (deep water is out).
+  const lvMin = (x, z) => Math.min(L[z * V + x], L[z * V + x + 1], L[(z + 1) * V + x], L[(z + 1) * V + x + 1]);
+  const cost = (i) => (world.deep[i] ? 1e6 : world.trail[i] ? 1 : B[i] >= BRUSH.thicket ? 9 : 4);
+  const { from } = dijkstraTiles(W, cost, Math.floor(cx), Math.floor(cz));
+  const route = [];
+  for (let i = Math.floor(site.z) * W + Math.floor(site.x); i >= 0 && route.length < W * 4; i = from[i]) route.push(i);
+  route.reverse();
+  world.guided = { site: site.id, route: route.map((i) => [(i % W) + 0.5, Math.floor(i / W) + 0.5]) };
+  if (route.length < 8) return;
+  let side = rng.chance(0.5) ? 1 : -1;
+  // Crates every R.every tiles of walking from R.first on (the route is 4-connected: one tile per step), up to
+  // R.max, none in the last R.endGap tiles (the site has its own). Each sits on the first free tile off the
+  // trail's edge, on alternating sides.
+  for (let k = 0; k < R.max; k++) {
+    const want = R.first + k * R.every;
+    if (want > route.length - 1 - R.endGap) break;
+    let spot = null, ax = 0, az = 0;
+    for (const shift of [0, 2, -2, 4, -4, 6]) {
+      const at = Math.min(route.length - 3, Math.max(2, want + shift));
+      ax = route[at] % W; az = Math.floor(route[at] / W);
+      const bx = route[at + 2] % W, bz = Math.floor(route[at + 2] / W);
+      const dl = Math.hypot(bx - ax, bz - az) || 1;
+      const nx = -(bz - az) / dl, nz = (bx - ax) / dl;   // perpendicular to the route here
+      for (const sd of [side, -side]) {
+        for (let d = R.side[0]; d <= R.side[1] && !spot; d += 0.5) {
+          const tx = Math.floor(ax + 0.5 + nx * d * sd), tz = Math.floor(az + 0.5 + nz * d * sd);
+          if (tx < 2 || tz < 2 || tx >= W - 2 || tz >= W - 2) continue;
+          const i = tz * W + tx;
+          if (world.trail[i]) continue;   // still on the trail: step further out
+          if (occupied[i] || world.deep[i] || world.site[i] >= 0 || lvMin(tx, tz) <= LEVEL.mud) break;
+          spot = { tx, tz, i };
+        }
+        if (spot) break;
+      }
+      if (spot) break;
+    }
+    side = -side;
+    if (!spot) continue;
+    // A cleared nook: no brush on the crate's tile or between it and the trail.
+    const n = Math.ceil(Math.hypot(spot.tx - ax, spot.tz - az) * 2);
+    for (let s = 0; s <= n; s++) {
+      const x = Math.floor(ax + 0.5 + ((spot.tx - ax) * s) / n), z = Math.floor(az + 0.5 + ((spot.tz - az) * s) / n);
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+        const j = (z + dz) * W + x + dx;
+        if (Math.abs(dx) + Math.abs(dz) <= 1 && !world.trail[j]) B[j] = BRUSH.none;
+      }
+    }
+    occupied[spot.i] = 1;
+    world.containers.push({ id: `g${k}`, type: R.types[k] || 'crate', x: spot.tx + 0.5, z: spot.tz + 0.5, site: -1, region: world.region[spot.i], guided: true, yield: R.yield });
+  }
+}
+
 /** The run's world (generation takes ~150 ms and never changes within a run, so it is cached on the game). */
 export function worldForRun(game, run, districtKeys) {
-  if (game._jungle?.seed !== run.seed) game._jungle = { seed: run.seed, data: generateWorld(run.seed, districtKeys) };
+  const guided = !!run.guided;
+  if (game._jungle?.seed !== run.seed || game._jungle.guided !== guided) game._jungle = { seed: run.seed, guided, data: generateWorld(run.seed, districtKeys, { guided }) };
   return game._jungle.data;
 }
 

@@ -15,7 +15,7 @@
 //     north lip, lit south edge), spread moss over the stone and stain it; then cracks and rubble.
 // Canopy shade, sun dapples and colour grading are applied later, in screen space (src/core/PostFx.js).
 
-import { LEVEL, BRUSH, JUNGLE, PAVING, GROUND } from '../data/jungle.js';
+import { LEVEL, BRUSH, JUNGLE, PAVING, GROUND, TERRAIN_VALUE, DECALS, REGION_LOOK, EMISSIVE } from '../data/jungle.js';
 import { makeNoise, hash2 } from './noise.js';
 
 export const CHUNK_PX = JUNGLE.chunk * 32;
@@ -149,7 +149,11 @@ export class TerrainBaker {
       const art = terrainArt?.[kind];
       this.tex[kind] = art ? tileArt(art) : { data: makeTexture(kind, (world.seed + kind.length * 977) >>> 0), w: TEX, h: TEX };
     }
+    // The jungle (not the night map's stand-in world): value lift on paths, district decal sets.
+    this.jungle = !!world.region;
     this.decals = this._collectDecals();
+    this._decalPx = new Map();   // decal key -> ImageData (emissive marking)
+    this._candMemo = new Map();  // chunk -> decal candidates (_decalCands)
     this.paveNoise = makeNoise((world.seed ^ 0x2c1b3c6d) >>> 0);
     // Ruin slabs (critic G #9): with PixelLab paving art, stone is sampled per slab in world space —
     // staggered rows, a random flip/rotation per slab, only some slabs keep the star motif, and a
@@ -177,7 +181,11 @@ export class TerrainBaker {
       if (!info?.tex?.image) continue;
       const k = key.toLowerCase();
       const img = info.tex.image;
-      const entry = { key, img };
+      const name = k.slice(4);
+      let w = 1;
+      for (const [frag, mul] of Object.entries(DECALS.weight)) if (name.includes(frag)) w *= mul;
+      const emit = Object.entries(EMISSIVE.decals).find(([frag]) => name.includes(frag));
+      const entry = { key, img, name, w, emit: emit ? emit[1] : 0 };
       if (/lily|reed/.test(k)) groups.water.push(entry);
       else if (/puddle|root/.test(k)) { groups.mud.push(entry); groups.floor.push(entry); }
       else if (/pebble|stone|twig|bone/.test(k)) { groups.dirt.push(entry); groups.floor.push(entry); }
@@ -284,10 +292,13 @@ export class TerrainBaker {
               const q = Math.floor(st * 2 + BAYER4[(y & 3) * 4 + (x & 3)]);
               const f = q <= 0 ? 1 - PV.stain : q >= 2 ? 1 + PV.stain * 0.5 : 1;
               r *= f; gg *= f * (q <= 0 ? 1.04 : 1); b *= f * (q <= 0 ? 0.92 : 1);
+              if (this.jungle) { r *= TERRAIN_VALUE.paving; gg *= TERRAIN_VALUE.paving; b *= TERRAIN_VALUE.paving; }
             }
             if (paveAt(x, y - 1) === 1) { m = 1.3; paved = true; }   // lit broken edge south of a hole
           }
         }
+        // Value structure (critic H #2): the paths (dirt trails, paving stone) a step lighter than the floor around.
+        if (this.jungle && k === LEVEL.dirt) m *= TERRAIN_VALUE.dirt;
         if (paved) { /* hole shading done */ }
         else if (k === 0 && (up > 0 || left > 0 || right > 0 || down > 0)) { r = foam[0]; gg = foam[1]; b = foam[2]; }
         else if (k === 0 && deep) {
@@ -315,6 +326,7 @@ export class TerrainBaker {
     // Pass 3: ground detail.
     this._scatter(g, cx, cz, lv, B);
     this._ruinDetail(g, cx, cz, lv, B, paveAt);
+    this._markEmissive(g);
     return c;
   }
 
@@ -360,6 +372,42 @@ export class TerrainBaker {
       stain[j * N + i] = n.fbm(x * sc * 1.6 - 40.1, z * sc * 1.6 + 93.7, 2);
     }
     return { hole, moss, stain };
+  }
+
+  /**
+   * Glowing decals (EMISSIVE.decals: glow fungus, blue mushrooms): their bright texels get canvas alpha
+   * EMISSIVE.groundAlpha (< 0.9), which the ground material turns into PostFx's emissive code, so they keep
+   * glowing in the shade and at night. Only texels of the decal that are bright enough (value >= its threshold).
+   */
+  _markEmissive(g) {
+    const list = this._emissive || [];
+    if (!list.length) return;
+    const P = CHUNK_PX, A = EMISSIVE.groundAlpha;
+    for (const { d, x, y } of list) {
+      let src = this._decalPx.get(d.key);
+      if (!src) {
+        const c = document.createElement('canvas');
+        c.width = d.img.width; c.height = d.img.height;
+        const cg = c.getContext('2d', { willReadFrequently: true });
+        cg.drawImage(d.img, 0, 0);
+        src = cg.getImageData(0, 0, c.width, c.height);
+        this._decalPx.set(d.key, src);
+      }
+      const x0 = Math.max(0, x), y0 = Math.max(0, y), x1 = Math.min(P, x + src.width), y1 = Math.min(P, y + src.height);
+      if (x1 <= x0 || y1 <= y0) continue;
+      const dst = g.getImageData(x0, y0, x1 - x0, y1 - y0);
+      let any = false;
+      for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) {
+        const si = ((yy - y) * src.width + (xx - x)) * 4;
+        if (src.data[si + 3] < 128) continue;
+        const v = Math.max(src.data[si], src.data[si + 1], src.data[si + 2]) / 255;
+        if (v < d.emit) continue;
+        dst.data[((yy - y0) * (x1 - x0) + (xx - x0)) * 4 + 3] = A;
+        any = true;
+      }
+      if (any) g.putImageData(dst, x0, y0);
+    }
+    this._emissive = null;
   }
 
   /** Cracks and rubble on ruin paving (texel-level, deterministic per chunk). */
@@ -452,20 +500,63 @@ export class TerrainBaker {
     }
   }
 
+  /**
+   * Decal candidates of chunk (cx, cz), deterministic (cached): position (world texels), a first and a backup
+   * pick (weighted, districts favouring their own set: REGION_LOOK.decals) and a priority. Neighbouring chunks
+   * read each other's candidates, so the spacing rule below holds across chunk borders in any bake order.
+   */
+  _decalCands(cx, cz) {
+    const key = cz * 1000 + cx;
+    let out = this._candMemo.get(key);
+    if (out) return out;
+    out = [];
+    if (this._candMemo.size > 200) this._candMemo.clear();
+    this._candMemo.set(key, out);
+    const P = CHUNK_PX, seed = this.world.seed, W = this.world.size, keys = this.world.districts || [];
+    const kindName = ['water', 'mud', 'dirt', 'floor', 'moss', 'dirt'];
+    for (let k = 0; k < DECALS.perChunk; k++) {
+      const x = Math.floor(hash2(cx * 131 + k, cz, seed) * P), y = Math.floor(hash2(cx, cz * 131 + k, seed + 1) * P);
+      const wx = cx * P + x, wy = cz * P + y;
+      const list = this.decals[kindName[this._levelAt(wx, wy)]];
+      if (!list?.length || hash2(k, cx + cz * 99, seed + 2) < DECALS.skip) continue;
+      let look = null;
+      if (this.jungle) {
+        const tx = Math.max(0, Math.min(W - 1, wx >> 5)), tz = Math.max(0, Math.min(W - 1, wy >> 5));
+        const ri = this.world.region[tz * W + tx];
+        look = ri >= 0 ? REGION_LOOK[keys[ri]]?.decals : null;
+      }
+      const wOf = (d) => {
+        let w = d.w;
+        if (look) for (const [frag, mul] of Object.entries(look)) if (d.name.includes(frag)) w *= mul;
+        return w;
+      };
+      let tot = 0;
+      for (const e of list) tot += wOf(e);
+      const pick = (r) => { for (const e of list) { r -= wOf(e); if (r <= 0) return e; } return list[list.length - 1]; };
+      out.push({ wx, wy, a: pick(hash2(k * 7, cz * 7 + cx, seed + 3) * tot), b: pick(hash2(k * 7 + 1, cz * 7 + cx, seed + 3) * tot), pri: hash2(k, cx * 31 + cz, seed + 5) });
+    }
+    return out;
+  }
+
   _scatter(g, cx, cz, lv, B) {
     const P = CHUNK_PX;
     const seed = this.world.seed;
-    const n = 70;
-    const kindName = ['water', 'mud', 'dirt', 'floor', 'moss', 'dirt'];
-    // Sprite decals.
-    for (let k = 0; k < n; k++) {
-      const x = Math.floor(hash2(cx * 131 + k, cz, seed) * P), y = Math.floor(hash2(cx, cz * 131 + k, seed + 1) * P);
-      const kind = kindName[lv[(y + 1) * B + x + 1]];
-      const list = this.decals[kind];
-      if (!list?.length || hash2(k, cx + cz * 99, seed + 2) < 0.35) continue;
-      const d = list[Math.floor(hash2(k, cz * 7 + cx, seed + 3) * list.length)];
-      g.drawImage(d.img, Math.round(x - d.img.width / 2), Math.round(y - d.img.height / 2));
+    // Sprite decals. The same decal never repeats within DECALS.spacing tiles (critic H #12: four crossed-twig
+    // X marks in one clearing read as UI markers): a candidate yields to a same-decal candidate of higher
+    // priority nearby (its own chunk or a neighbour), then tries its backup pick.
+    const D2 = (DECALS.spacing * 32) ** 2;
+    const near = [];
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) near.push(...this._decalCands(cx + dx, cz + dz));
+    const free = (e, c) => !near.some((o) => o !== c && o.a.key === e.key && o.pri > c.pri && (o.wx - c.wx) ** 2 + (o.wy - c.wy) ** 2 < D2);
+    const emissive = [];
+    for (const c of this._decalCands(cx, cz)) {
+      const d = free(c.a, c) ? c.a : free(c.b, c) ? c.b : null;
+      if (!d) continue;
+      const dx = Math.round(c.wx - cx * P - d.img.width / 2), dy = Math.round(c.wy - cz * P - d.img.height / 2);
+      g.drawImage(d.img, dx, dy);
+      if (d.emit) emissive.push({ d, x: dx, y: dy });
     }
+    this._emissive = emissive;
     // Procedural detail: fallen leaves, twigs, flowers (texel-level), denser on the leaf floor.
     const leafCols = ['#6b3a1f', '#8a5a2b', '#9a7a32', '#5a5a26', '#a3472a'];
     const flowerCols = ['#e4a3c8', '#f2d06b', '#e8e0d0', '#d65a4a'];

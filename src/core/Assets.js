@@ -30,6 +30,12 @@ import { VISUALS } from '../data/visuals.js';
 import { CARD_SCALE, SPRITE_CARD } from './PixelView.js';
 import { TERRAIN_ART, ATMOS, OPENED_LOOK, OPENED_TOP, PYLON_GLOW } from '../data/jungle.js';
 import { radialGlowTexture } from './PixelGlow.js';
+import { addEmissive, emissiveBands } from './Emissive.js';
+import { paletteSwap } from './PaletteSwap.js';
+import { DEFENSE_ENEMIES, EXPLORE_ENEMIES } from '../data/enemies.js';
+
+// Sprite keys that are creatures (DOM icons show their side view, cropped, never below 1×: Assets.iconFrame).
+const CREATURE_KEYS = new Set([...Object.keys(DEFENSE_ENEMIES), ...Object.keys(EXPLORE_ENEMIES)]);
 
 const GEOMS = {
   box: (s) => new THREE.BoxGeometry(...s),
@@ -168,11 +174,19 @@ const float SIL_BAYER[16] = float[16](0.03125,0.53125,0.15625,0.65625,0.78125,0.
   customProgramCacheKey() { return 'vr-silhouette-sprite'; }
 }
 
-/** Attach an occlusion silhouette to a sprite visual (see SilhouetteMaterial). */
-function addSilhouette(vis, color, fill) {
+/**
+ * Attach an occlusion silhouette to a sprite visual (see SilhouetteMaterial). `skipMask` (jungle creatures, critic I
+ * #3): never draw over texels a card mask stenciled (the player's body + outline), so a creature standing right
+ * behind you can't print its dither over your sprite.
+ */
+function addSilhouette(vis, color, fill, skipMask = false) {
   const body = vis.body;
   const G = vis.geom;
-  const mat = new SilhouetteMaterial({ map: vis.tex, color, transparent: true, depthWrite: false, depthFunc: THREE.GreaterDepth, fog: false },
+  const mask = skipMask ? {
+    stencilWrite: true, stencilWriteMask: 0x00, stencilRef: CARD_MASK_REF, stencilFunc: THREE.NotEqualStencilFunc,
+    stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.KeepStencilOp,
+  } : {};
+  const mat = new SilhouetteMaterial({ map: vis.tex, color, transparent: true, depthWrite: false, depthFunc: THREE.GreaterDepth, fog: false, ...mask },
     new THREE.Vector2(1 / G.iw, 1 / G.ih), fill);
   // Same depth as the body's own visible texels must NOT count as "in front": bias toward the camera.
   mat.polygonOffset = true;
@@ -334,6 +348,7 @@ export class Assets {
       }, undefined, () => { console.warn(`Sprite failed to load: ${def.file}`); resolve(); });
     }));
     await Promise.all(jobs);
+    paletteSwap(this);   // load-time recolours (PALETTE_SWAP: the Feral's cloak), src/core/PaletteSwap.js
     await this._loadTerrain();
   }
 
@@ -401,26 +416,70 @@ export class Assets {
   iconScale(key, boxPx) {
     const k = this.resolveKey(key);
     if (!k) return null;
-    const def = this.manifest[k];
-    const img = this.textures[k].image;
-    const { fw, fh } = frameGeom(def, img);
+    const creature = CREATURE_KEYS.has(key) || CREATURE_KEYS.has(k);
+    const { w, h } = this.iconFrame(k, creature);
     const dpr = window.devicePixelRatio || 1;
-    const r = (boxPx * dpr) / Math.max(fw, fh);
+    const r = (boxPx * dpr) / Math.max(w, h);
     // Up to ~15% over the box is allowed (a 48 px tower in a 45 px slot stays 1× instead of halving).
-    const ds = r >= 0.85 ? Math.max(1, Math.floor(r + 0.15)) : 1 / Math.ceil(1 / r - 0.15);
+    // Creatures never shrink below 1× unless they are over twice the slot (critic H §2: a ½ Razorback was a
+    // 10-px smudge); the box grows to fit (screensKit.iconEl).
+    const ds = r >= 0.85 ? Math.max(1, Math.floor(r + 0.15)) : creature && r >= 0.5 ? 1 : 1 / Math.ceil(1 / r - 0.15);
     return ds / dpr;
   }
 
-  /** CSS for a DOM icon of a sprite's first frame, at most `sizePx` CSS px on its long side
-   *  (integer-scaled, see iconScale), or null. */
-  iconStyle(key, sizePx = 32) {
+  /**
+   * The part of a sprite sheet a DOM icon shows, in sheet texels { sx, sy, w, h }: frame 0 — for a creature, its
+   * side view (a directional sheet's 'e' idle frame) cropped to the opaque bounding box, so a small creature
+   * isn't a speck in a big empty frame (critic H §2). Cached per key.
+   */
+  iconFrame(k, creature = CREATURE_KEYS.has(k)) {
+    this._iconFrames ||= new Map();
+    const ck = `${k}|${creature ? 1 : 0}`;
+    if (this._iconFrames.has(ck)) return this._iconFrames.get(ck);
+    const def = this.manifest[k];
+    const img = this.textures[k].image;
+    const { fw, fh } = frameGeom(def, img);
+    let box = { sx: 0, sy: 0, w: fw, h: fh };
+    if (creature) {
+      const anims = normAnims(def);
+      const idle = anims?.idle;
+      if (def.dirs && idle && idle.row >= 0) box.sy = (idle.row + Math.max(0, def.dirs.indexOf('e'))) * fh;
+      try {
+        const c = document.createElement('canvas');
+        c.width = fw; c.height = fh;
+        const g = c.getContext('2d', { willReadFrequently: true });
+        g.drawImage(img, box.sx, box.sy, fw, fh, 0, 0, fw, fh);
+        const d = g.getImageData(0, 0, fw, fh).data;
+        let x0 = fw, y0 = fh, x1 = -1, y1 = -1;
+        for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+          if (d[(y * fw + x) * 4 + 3] < 128) continue;
+          if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        }
+        if (x1 >= x0) box = { sx: box.sx + x0, sy: box.sy + y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+      } catch { /* a tainted or missing image: the whole frame */ }
+    }
+    this._iconFrames.set(ck, box);
+    return box;
+  }
+
+  /** A DOM icon for `key` at most about `sizePx` CSS px on its long side: { css, w, h } (CSS px), or null. */
+  iconSpec(key, sizePx = 32) {
     const k = this.resolveKey(key);
     if (!k) return null;
     const def = this.manifest[k];
     const img = this.textures[k].image;
-    const { fw, fh } = frameGeom(def, img);
+    const f = this.iconFrame(k, CREATURE_KEYS.has(key) || CREATURE_KEYS.has(k));
     const scale = this.iconScale(key, sizePx);
-    return `background-image:url(${import.meta.env.BASE_URL}sprites/${def.file});background-size:${img.width * scale}px ${img.height * scale}px;background-position:0 0;width:${fw * scale}px;height:${fh * scale}px;image-rendering:pixelated;background-repeat:no-repeat;`;
+    const w = f.w * scale, h = f.h * scale;
+    return {
+      w, h,
+      css: `background-image:url(${import.meta.env.BASE_URL}sprites/${def.file});background-size:${img.width * scale}px ${img.height * scale}px;background-position:${-f.sx * scale}px ${-f.sy * scale}px;width:${w}px;height:${h}px;image-rendering:pixelated;background-repeat:no-repeat;`,
+    };
+  }
+
+  /** CSS for a DOM icon of a sprite (iconSpec: integer-scaled, creatures cropped to their side view), or null. */
+  iconStyle(key, sizePx = 32) {
+    return this.iconSpec(key, sizePx)?.css ?? null;
   }
 
   /**
@@ -546,10 +605,13 @@ export class Assets {
       if (opts.ring) root.add(makeRing(Math.max(0.3, shadowR), opts.ring));   // hostile marker (enemies)
       // Occlusion silhouette for creatures: the player, and anything with a hostile ring.
       const silColor = opts.silhouette ?? (key === 'player' ? ATMOS.silhouette.player : opts.ring ? ATMOS.silhouette.enemyDim : null);
-      if (silColor && vis.kind === 'sprite') addSilhouette(vis, silColor, key === 'player' ? ATMOS.silhouette.playerFill : undefined);
+      if (silColor && vis.kind === 'sprite') addSilhouette(vis, silColor, key === 'player' ? ATMOS.silhouette.playerFill : undefined, !!opts.silhouetteSkipsMask);
       // 1-texel outline + card mask (the player by default; opts.outline = colour or false).
       const outline = opts.outline ?? (key === 'player' ? ATMOS.playerOutline.open : null);
       if (outline && vis.kind === 'sprite') addOutline(vis, outline);
+      // Glowing texels (eyes, screens, crystal) keep their light at night (src/core/Emissive.js, EMISSIVE).
+      const glow = vis.kind === 'sprite' && opts.emissive !== false && emissiveBands(sk);
+      if (glow) addEmissive(vis, glow);
       setFrame(vis, 0);
     } else {
       const parts = VISUALS[key] || VISUALS[key.replace(/_\d+$/, '')];

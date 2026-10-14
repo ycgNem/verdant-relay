@@ -166,7 +166,7 @@ export class Projectiles {
     });
   }
 
-  /** Burning ground patch. opts: { radius, dps, time, type, color }. */
+  /** Burning ground patch. opts: { radius, dps, time, type, color, source (tower credited with the damage) }. */
   zone(pos, opts) {
     const mat = new THREE.MeshBasicMaterial({ map: this.zoneTex, color: opts.color || '#ffffff', transparent: true, opacity: 0.9, alphaTest: 0.3, depthWrite: false });
     const mesh = new THREE.Mesh(this.zoneGeom, mat);
@@ -175,7 +175,7 @@ export class Projectiles {
     mesh.scale.setScalar(opts.radius);
     mesh.renderOrder = 1;
     this.scene.three.add(mesh);
-    this.zones.push({ mesh, pos: new THREE.Vector3(pos.x, 0, pos.z), radius: opts.radius, dps: opts.dps, t: 0, time: opts.time, type: opts.type || 'burn', ember: 0 });
+    this.zones.push({ mesh, pos: new THREE.Vector3(pos.x, 0, pos.z), radius: opts.radius, dps: opts.dps, t: 0, time: opts.time, type: opts.type || 'burn', ember: 0, source: opts.source || null });
   }
 
   update(dt) {
@@ -222,7 +222,7 @@ export class Projectiles {
       for (const e of this.scene.enemies) {
         if (e.dead || e.removed) continue;
         const dx = e.pos.x - z.pos.x, dz = e.pos.z - z.pos.z;
-        if (dx * dx + dz * dz <= r2) this.scene.damage(e, z.dps * dt, z.type, { silent: true });
+        if (dx * dx + dz * dz <= r2) this.scene.damage(e, z.dps * dt, z.type, { silent: true, source: z.source });
       }
       z.mesh.material.opacity = (0.7 + Math.random() * 0.3) * Math.min(1, (z.time - z.t) / 0.5);
       z.mesh.rotation.z += dt * 0.6;

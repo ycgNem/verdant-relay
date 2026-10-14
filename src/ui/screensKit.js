@@ -14,7 +14,7 @@ import { SKILLS } from '../data/skills.js';
 import { VISUALS } from '../data/visuals.js';
 
 export const RESEARCH = { label: 'Research', color: '#fee761', glyph: '◈' };
-export const BRANCH_COLOR = { Scavenger: '#feae34', Engineer: '#2ce8f5', Warden: '#63c74d' };
+export const BRANCH_COLOR = { Scavenger: '#feae34', Machete: '#c0cbdc', Engineer: '#2ce8f5', Warden: '#63c74d' };   // Machete: blade steel
 
 /** Research Data as icon + amount + label, matching resChip(). */
 export function researchChip(amount, opts = {}) {
@@ -22,9 +22,9 @@ export function researchChip(amount, opts = {}) {
     el('span.glyph', RESEARCH.glyph), el('b', String(amount)), opts.noLabel ? null : el('span.lbl', opts.label || RESEARCH.label));
 }
 
-/** button() that also plays a sound. opts.sfx (default 'open'); disabled clicks play 'error'. */
+/** button() that also plays a sound. opts.sfx (default 'ui_confirm'); disabled clicks play 'error'. */
 export function sbtn(game, label, onClick, opts = {}) {
-  const sfx = 'sfx' in opts ? opts.sfx : 'open';
+  const sfx = 'sfx' in opts ? opts.sfx : 'ui_confirm';
   const b = button(label, (e) => { if (sfx) game.sfx.play(sfx); onClick?.(e); }, {
     ...opts,
     onDisabled: () => {
@@ -85,7 +85,7 @@ export class KeyNav {
       i = hovered >= 0 ? hovered - d : d > 0 ? -1 : 0;
     }
     this.focus(i + d);
-    this.game.sfx.play('dodge');
+    this.game.sfx.play('ui_move');
   }
 
   clear() {
@@ -112,6 +112,7 @@ export class KeyNav {
         break;
       case 'Escape':
         e.preventDefault();
+        if (this.opts.onEscape) this.game.sfx.play('ui_back');
         this.opts.onEscape?.();
         break;
       default:
@@ -156,7 +157,7 @@ export function ask(game, opts) {
     const cancel = sbtn(game, opts.cancel || 'Cancel', () => close(false), { hotkey: 'Esc' });
     const ok = sbtn(game, opts.confirm || 'Confirm', () => close(true), { cls: opts.danger ? 'danger' : 'primary', sfx: opts.danger ? 'sell' : 'done' });
     const body = opts.body || el('p', opts.text || '');
-    const ov = modal(game.ui, opts.title || 'Are you sure?', body, [cancel, ok]);
+    const ov = modal(game.ui, opts.title || 'Are you sure?', body, [cancel, ok], { keys: false });   // KeyNav below
     ov.classList.add('scr-modal');
     ov.addEventListener('click', (e) => { if (e.target === ov) close(false); });
     const nav = new KeyNav(game, { layer: ov, items: () => [cancel, ok], onEscape: () => close(false), start: opts.defaultCancel ? 0 : 1 });
@@ -284,7 +285,11 @@ export function iconEl(game, key, size = 28, opts = {}) {
   if (info?.tex?.image) {
     // Integer-scaled (Assets.iconScale): the biggest 1×/2×/3× (or even 1/n) that fits the box.
     const boxPx = size * (game.u || 1);
-    box.append(el('span.vicon-sprite', { style: game.assets.iconStyle(key, boxPx) }));
+    const spec = game.assets.iconSpec ? game.assets.iconSpec(key, boxPx) : { css: game.assets.iconStyle(key, boxPx) };
+    box.append(el('span.vicon-sprite', { style: spec.css }));
+    // A creature drawn at 1× may be bigger than the slot (never ½: Assets.iconScale): the box grows with it.
+    if (spec.w > boxPx) box.style.minWidth = `${spec.w}px`;
+    if (spec.h > boxPx) box.style.minHeight = `${spec.h}px`;
     return box;
   }
   const base = key.replace(/_\d+$/, '');
@@ -306,7 +311,9 @@ export function iconEl(game, key, size = 28, opts = {}) {
 
 export function skillTag(id) {
   const s = SKILLS[id];
-  return el('span.skill-tag', { title: `${s.branch}: ${s.desc}`, style: { '--c': BRANCH_COLOR[s.branch] } }, el('span.dot'), s.name);
+  if (!s) return null;
+  return el(`span.skill-tag${s.keystone ? '.keystone' : ''}`, { title: `${s.branch}${s.keystone ? ' keystone' : ''}: ${s.desc}`, style: { '--c': BRANCH_COLOR[s.branch] } },
+    el('span.skill-ic', s.icon || '◆'), s.name);
 }
 
 /**
@@ -323,7 +330,7 @@ export function skillPicker(game, opts = {}) {
     if (!run || run.skillPoints <= 0) return;
     const ids = run.skillOptions(game.meta);
     node.append(el('div.row.picker-head', {},
-      el('span.pts', { title: 'Skill points are earned from objectives' }, el('b', String(run.skillPoints)), run.skillPoints === 1 ? ' skill point to spend' : ' skill points to spend'),
+      el('span.pts', { title: 'One skill point per trip (the goal, or a bonus task), and one per area boss killed' }, el('b', String(run.skillPoints)), run.skillPoints === 1 ? ' skill point to spend' : ' skill points to spend'),
       el('span.small.muted', `Pick 1 of ${ids.length} · keys 1–${Math.max(1, ids.length)}`),
       el('span.grow'),
       opts.onSave ? sbtn(game, opts.saveLabel || 'Save point for later', () => opts.onSave(), { hotkey: 'L', cls: 'save-pt small-btn' }) : null));
@@ -334,12 +341,18 @@ export function skillPicker(game, opts = {}) {
     const row = el('div.skill-cards');
     ids.forEach((id, i) => {
       const s = SKILLS[id];
-      const req = s.req ? el('div.small.muted', `Builds on ${SKILLS[s.req].name}`) : null;
-      const card = el('button.btn.skill-card', {
+      // Branch line: how many of its skills you own (builds lean into an identity); a keystone says why it's here.
+      const have = run.branchCount ? run.branchCount(s.branch) : 0;
+      const req = s.req ? el('div.small.muted', `Builds on ${SKILLS[s.req].name}`)
+        : s.keystone ? el('div.small.muted', `Opened by your ${have} ${s.branch} skills. One per branch.`) : null;
+      const card = el(`button.btn.skill-card${s.keystone ? '.keystone' : ''}`, {
         style: { '--c': BRANCH_COLOR[s.branch] },
         onclick: (e) => { e.stopPropagation(); take(id); },
       },
-      el('div.skill-branch', s.branch), el('div.skill-name', s.name), el('div.skill-desc', s.desc), req, el('span.hotkey', String(i + 1)));
+      el('div.skill-branch', {}, s.branch, s.keystone ? el('span.skill-key', '★ Keystone') : have ? el('span.skill-own', ` · ${have} owned`) : null),
+      el('div.skill-name', {}, el('span.skill-ic', s.icon || '◆'), s.name),
+      s.num ? el('div.skill-num', s.num) : null,
+      el('div.skill-desc', s.desc), req, el('span.hotkey', String(i + 1)));
       cards.push(card);
       row.append(card);
     });
@@ -348,7 +361,7 @@ export function skillPicker(game, opts = {}) {
   const take = (id) => {
     const run = game.run;
     if (!run || !run.takeSkill(id)) { game.sfx.play('error'); return; }
-    game.sfx.play('done');
+    game.sfx.play('skill');
     toast(game.ui, `Learned ${SKILLS[id].name}`, 'good', 2);
     refresh();
     opts.onChange?.(id);

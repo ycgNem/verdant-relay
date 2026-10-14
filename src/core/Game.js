@@ -47,7 +47,7 @@ export class Game {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     this.input = new Input(stage);
-    this.sfx = new Sfx();
+    this.sfx = new Sfx(this);       // audio engine: mix buses, one-shots, ambience, audio director
     this.meta = loadMeta();
     this.run = null;                 // current Run (src/core/Run.js), or null on the title screen
 
@@ -64,7 +64,7 @@ export class Game {
     this.applySettings();
     window.addEventListener('resize', () => this.fit());
     // Audio may only start after a user gesture.
-    const unlock = () => { this.sfx.unlock(); this.sfx.volume = this.meta.settings.volume; };
+    const unlock = () => { this.sfx.unlock(); this.sfx.applySettings(); };
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
     // Swallow clicks for a moment after a scene switch (see CONFIG.ui.sceneClickGuard).
@@ -114,6 +114,7 @@ export class Game {
           console.error(e);
         }
         this._inUpdate = false;
+        this.sfx.update(real);   // audio director + ambience (reads the scene; never throws)
         if (this._pendingGo) {
           const [name, params] = this._pendingGo;
           this._pendingGo = null;
@@ -247,7 +248,7 @@ export class Game {
   }
 
   applySettings() {
-    this.sfx.volume = this.meta.settings.volume;
+    this.sfx.applySettings();
     this._applyRes();
   }
 

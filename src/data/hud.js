@@ -15,6 +15,10 @@ export const MAP_VIEW = {
 export const HUD = {
   edgeMargin: 26,        // off-screen arrows sit this many --u from the stage edge
   threatFadeEvery: 6,    // frames between "enemy behind a HUD panel" checks
+  // Health bar (critic L §3: at 28–38 HP it was the stamina bar's orange): green above `ok`, yellow above `low`,
+  // red below; under `pulse` the screen edge pulses red.
+  health: { ok: 0.6, low: 0.3, pulse: 0.3, colors: ['#63c74d', '#fee761', '#e43b44'] },
+  markLift: 0.35,        // world units above a sprite's top where an in-world ◆ marker floats
 };
 
 export const MENU_INPUT = {

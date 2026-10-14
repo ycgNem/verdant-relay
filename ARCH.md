@@ -11,7 +11,13 @@ How the engine pieces fit together. `DESIGN.md` says what the game is; `PLAN.md`
   - `exit()` must dispose geometries/materials/textures it created, remove window listeners and clear timers.
 - `game.go(name, params)` switches scene. `dt` is clamped to 1/20 s.
 - **Debug URLs** (for testing): `?debug=explore&district=flooded_transit&night=2` (the jungle; `vr.game.scene.debug` has teleport, god, reveal, timeLeft, extract…), `?debug=defense&night=4&scrap=400&circuits=10&biofiber=10`,
-  `?debug=summary`, `?debug=briefing`, `?debug=results&victory=1`. Optional `&skills=a,b&points=2`. `window.vr.game` is the Game.
+  `?debug=summary`, `?debug=briefing`, `?debug=results&victory=1`. Optional `&skills=a,b&points=2` (old skill ids map),
+  `&mods=focusing_lens,uplink` (tower mods on the Workbench bench), `&blade=serrated_edge,heavy_spine` (machete upgrades). `window.vr.game` is the Game.
+  Run modes: `&mode=long|daily` (Long Night / Daily; a long run accepts `&night=` up to 99, e.g. `?debug=defense&night=6&mode=long`
+  then win → night 7) and `&og=N` (Overgrowth level). The defense scene's `vr.game.scene.debug` has `win()`, `lose()`, `spawn(type, lane)`.
+  Night board: `&map=twin|crossing|ford` (else picked from the seed), `&beacons=N` (pylons p0…p(N−1) count as switched on → forward pads).
+  Relics: `&relics=whetstone,pylon_coil` (already brought home), with `debug=summary` `&found=a,b` (carried home on the
+  debug trip). In the jungle `vr.game.scene.relicsCtl.debug` has `carry(id)`, `drop({ rarity })`, `goto('cache'|'shrine'|'lore', n)`, `info()`.
 
 ## Game (`src/core/Game.js`)
 
@@ -19,11 +25,11 @@ How the engine pieces fit together. `DESIGN.md` says what the game is; `PLAN.md`
 |---|---|
 | `game.run` | current `Run` or null |
 | `game.meta` / `game.saveMeta()` | permanent progress (`src/core/Save.js` schema) |
-| `game.input` | `isDown(code)`, `wasPressed(code)`, `mouseHeld(b)`, `mouseClicked(b)`, `mouse.{x,y,ndcX,ndcY}` (codes are `KeyboardEvent.code`: `KeyW`, `Space`, `Tab`, `Escape`…) |
-| `game.sfx.play(name)` | synthesized blips (`src/core/Sfx.js`: shoot cutter hit hurt pickup open dodge build sell zap boom core done alarm error) |
+| `game.input` | `isDown(code)`, `wasPressed(code)`, `mouseHeld(b)`, `mouseClicked(b)`, `mouse.{x,y,ndcX,ndcY}` (codes are `KeyboardEvent.code`: `KeyW`, `Space`, `Tab`, `Escape`…). **Key bindings** (`src/data/controls.js`, Settings → Controls): `useBindings(() => meta.settings.keys)` (the jungle turns it on, `null` off) makes a physical key bound to an action read as that action's *default* code, so gameplay code keeps checking `'KeyW'`, `'Space'`, `'KeyE'`…; an unbound default key reads as nothing. `rawIsDown` / `rawWasPressed` = physical keys; `keyFor(action)` = the bound code. Module exports `keyLabel(code)` ("Space", "L-Shift", the layout's character via the Keyboard API) and `resolveKeys(stored)` |
+| `game.sfx.play(name, opts)` / `playAt(name, x, z)` | synthesized one-shots (`src/core/Sfx.js`, sounds in `src/data/audio.js`); see **Audio** below |
 | `game.assets` | sprite/visual factory (below) |
 | `game.setResMult(m)` | render at the view size ×m (resets on scene switch) |
-| `game.setInternalRes(w, h)` | render at a fixed internal size until the next scene switch (night: `DEFENSE_VIEW.res` = 1280×720) |
+| `game.setInternalRes(w, h)` | render at a fixed internal size until the next scene switch (night: `NightCamera` sets floor(window / k), even, per zoom k) |
 | `game.fit()` | size the stage: always a whole-number CSS scale (device px). Fixed field of view `CONFIG.ui.view` = 640×360 (20 × 11.25 tiles): ×2 at 1280×720, ×3 at 1920×1080, ×4 at 2560×1440; other windows take the scale filling the most of the window with each side inside `CONFIG.ui.viewBand` (1366×768 → 682×384 ×2, 1920×950 → 640×316 ×3, 1600×900 → 704×396 ×2 letterboxed; small windows `viewBand.small`: 1024×600 → 512×300 ×2). No resolution setting. A fixed `setInternalRes` is integer-scaled when that fills ≥ `CONFIG.ui.minIntegerFill`, else stretched |
 | `game.u` | CSS px per UI unit (`--u`) = min(stage width / 960, height / 540) — the stage aspect varies a little, so use this, not `clientWidth / 960` |
 | `game.width/height` | current internal resolution — changes with the window, so size per frame (PostFx) or rely on `_applyRes` re-sizing the scene's PixelCamera |
@@ -32,6 +38,39 @@ How the engine pieces fit together. `DESIGN.md` says what the game is; `PLAN.md`
 | `game.mouseOnPlane(camera, y)` | mouse ray ∩ horizontal plane → Vector3 |
 | `game.project(vec3, camera)` | world → stage CSS px `{x, y, visible}` |
 | `game.time` | real seconds since boot |
+
+## Audio (`src/core/Sfx.js`, `AmbientAudio.js`, `AudioDirector.js`, `Music.js`, `synth.js`)
+
+Everything is synthesized on WebAudio at runtime (no sample files); tuning in `src/data/audio.js` (`MIX`, `SOUNDS`,
+`AMBIENCE`, `AUDIO_DIRECTOR`) and `src/data/music.js`. One AudioContext (`game.sfx.ctx`), created on the first click/key.
+
+- Mix: `bus.sfx` / `bus.ui` / `bus.music` (→ `musicDuck`) / `bus.ambience` → `master` (Master slider, mute) → glue
+  compressor → limiter → speakers. `game.sfx.applySettings()` re-reads `meta.settings` (`master`, `volume` = sound effects,
+  `music`, `ambience`, `muted`); `toggleMute()` is also on **F2** anywhere (M is the jungle map).
+- `game.sfx.play(name, { vol, pan, rate, delay, more })` → a voice when it plays, `true` if the sound exists but was
+  skipped (no audio yet, muted, throttled, voice cap), `null` for an unknown name — so `play(newName) || play(oldName)`
+  falls back only on unknown names. Every play varies pitch/level a little (`pitch`, `vary`); `gap`, `max` per sound
+  and `MIX.voices` overall keep fights from piling up; `send` = reverb, `duck` = dip the music (stings).
+- `game.sfx.playAt(name, x, z, opts)`: world sounds — pans by the point's screen x (the scene's camera) and, when the
+  scene has a `player`, fades and dulls with distance from it (`MIX.positional`). Use it for anything that happens
+  somewhere in the world (creatures, towers, impacts); plain `play` for the player's own actions and UI.
+- A sound is a list of synth layers (`synth.js`: osc / filtered white-pink-brown noise / 2-op FM, sweeps, vibrato,
+  tremolo, chords via `notes`, repeats via `n`/`every`). Add a sound by adding an entry to `SOUNDS`; `windup_<enemy>`
+  falls back to the generic `windup`. UI sounds (`ui_*`, `open`, `error`, `tally`) use the `ui` bus; menu buttons
+  get `ui_hover` automatically, `KeyNav` plays `ui_move` / `ui_back`, `sbtn` plays `ui_confirm`.
+- `game.sfx.ambient` (`AmbientAudio`): beds — wind/leaf wash, day insects, dusk cicada swells, near-water babble,
+  rain (`setRain(0..1)`, a hook for a future weather system) — and creature calls (birds, a distant howler, cricket and
+  frog "agents"). `setProfile(weights, level)` blends `AMBIENCE.profiles` (day, dusk, night, defense, menu).
+- `game.sfx.director` (`AudioDirector`, ticked by `game.sfx.update(dt)` from the Game loop) reads the active scene, so
+  gameplay code needs no audio hooks for: the ambience profile (jungle clock, paused / map duck, night prep vs wave,
+  menus), the water level (scan around the player), footsteps by surface (on the walk anim's contact frames,
+  alternating L/R: water, mud, dirt / trail, paving = stone, leaf litter, moss, + fern), the low-HP heartbeat, the
+  stamina-out huff, the E-hold rising tick (+ a rising hum on beacons / the way home), the heavy-chop wind-up, the
+  Relay-critical alarm (< 30%, throttled) and `music.setCombat()` (an alerted creature within 8 tiles; off after 4 s).
+- `game.music.play(mood)`: title, day, dusk (jungle after sunset), night, boss (Colossus only), results, defeat;
+  `setCombat(on)` crossfades a tension layer (toms, ostinato, shaker) over the current mood.
+- Testing: `.playwright-mcp/audio/test_audio.cjs` renders every sound offline (peak < 1, not silent) and checks the
+  live graph in title / jungle / defense.
 
 ## Visuals (`src/core/Assets.js`)
 
@@ -49,17 +88,31 @@ Module functions (import from `../core/Assets.js`):
 - Occlusion silhouettes: sprites of `player` and of anything made with `{ring}` get a child sprite drawn with depthFunc GREATER —
   a solid 1-texel outline + dithered fill in a flat colour wherever foliage/trees/ruins/props cover them (`ATMOS.silhouette`).
   `opts.silhouette` sets/overrides the colour (`false`/null = none); `setSilhouette(root, color|null)`; enemies switch dim → bright
-  when the scene sets `root.userData.alert` (JungleScene does, from `enemy.alerted`).
+  when the scene sets `root.userData.alert` (JungleScene does, from `enemy.alerted`). `opts.silhouetteSkipsMask` (jungle
+  creatures) stencil-tests against `CARD_MASK_REF`, so a creature's silhouette never prints over the player's body; the
+  player's own silhouette is outline-only (`ATMOS.silhouette.playerFill` 0) — critic I #3.
 - Sprite outline + card mask: `makeVisual(key, {outline: color})` (default for `player`; night towers use their type colour)
   draws a flat 1-texel outline around the sprite in-shader, and a hidden child writes stencil `CARD_MASK_REF` over the body +
   outline before the cards draw — the foliage/trunk/ruin card shader skips those pixels, so cards never cover that sprite
   (the x-ray dither only lands around it). `setOutline(root, color)`; the jungle switches the player's outline
-  `ATMOS.playerOutline.open` ↔ `.cover` via `JungleWorld.coveredAt(x, z)`. Renderer + PostFx target have stencil buffers for this.
+  `ATMOS.playerOutline.open` ↔ `.cover` via `JungleWorld.coveredAt(x, z)` (samples the player's body box against the opaque
+  atlas texels of the upright cards in front, with hysteresis). Renderer + PostFx target have stencil buffers for this.
 - `game.assets.spentVariant(key, 'dark'|'open'|'gutted')` → a derived sprite key (glow off / hollowed top / dimmed); the
   hollow interior follows the sprite's top-face polygon from `OPENED_TOP` (jungle.js) when listed;
-  `openedVariant(type, closedKey)` picks per `OPENED_LOOK`. `game.assets.pylonGlow` → the activated-pylon light pool (`PYLON_GLOW`, `src/core/PixelGlow.js`).
+  `openedVariant(type, closedKey)` picks per `OPENED_LOOK`. (`game.assets.pylonGlow` is legacy; the jungle builds the
+  activated-pylon look from `src/core/PixelGlow.js`: `lightPool(o)` — a flat stepped glow written as light for PostFx —
+  and `beaconBeam(o)`, a stepped pulsing beam above the canopy, both tuned by `PYLON_GLOW`.)
+- Emissives (`src/core/Emissive.js`): `makeVisual` adds a child sprite `'emissive'` to every sprite key listed in
+  `EMISSIVE.keys` (hue bands, jungle.js) that re-draws only the texels in those bands with the PostFx emit code, so
+  eyes, screens and crystals keep full brightness at night; `makeVisual(key, {emissive: false})` opts out.
+- Palette swaps (`src/core/PaletteSwap.js`): `paletteSwap(assets)` runs once after load and remaps the hue bands of each
+  `PALETTE_SWAP` key (feral cloak → bone/rust) by brightness rank onto a ramp, replacing the texture. DOM icons
+  (`iconStyle`) still use the original PNG.
 - `root.userData.vis.height` — visual height in world units (for HP bars / labels).
-- `game.assets.spriteInfo(key)` → `{tex, def}` for tiles; `game.assets.iconStyle(key, px)` → CSS string for DOM icons.
+- `game.assets.spriteInfo(key)` → `{tex, def}` for tiles; `game.assets.iconSpec(key, px)` → `{ css, w, h }` for a DOM icon
+  (`iconStyle(key, px)` = its CSS). `iconFrame(k)`: the sheet part shown — creatures (`DEFENSE_ENEMIES` / `EXPLORE_ENEMIES`
+  keys) use their side view (a directional sheet's 'e' idle row) cropped to the opaque bounding box; `iconScale` keeps
+  creatures at ≥ 1× (½ only past twice the slot) and `screensKit.iconEl` grows its box to fit (critic H §2).
 
 ## The jungle (day) — `src/world/`
 
@@ -72,38 +125,128 @@ Module functions (import from `../core/Assets.js`):
   `objGrid` (tile centre within `SOLID.tilePad` of a footprint) + deep feed `blockedAt` and so the flow fields.
   Debug: `vr.game.scene.debug.colliders(true)` outlines footprints (yellow), deep water (blue ×) and fords (cyan +);
   `debug.reach()` returns the generator's reachability report.
-- `JungleGen.generateWorld(seed, districtKeys)` → plain data: `size` (192), `level` (vertex terrain levels, `LEVEL`),
+- `JungleGen.generateWorld(seed, districtKeys, { guided })` → plain data (`guided`: the guided run's world also gets
+  `guided = { site, route }` — the guided goal site and the walk there — and up to 4 trail-side containers `{ guided: true,
+  yield: 1 }` with ids `g0…`, `GUIDE.routeCrates`; `worldForRun` passes `run.guided` and keys its cache on it): `size` (192), `level` (vertex terrain levels, `LEVEL`),
   `pave`, `brush` (per tile, `BRUSH`), `region`, `trail`, `site`, `objects` (trees/ruins/rocks), `sites` (`lost`: no trail,
   ringed by thick brush), `containers` (`yield`: Scrap multiplier by distance from the Relay / nearest pylon), `spores`,
   `pylons`, `center`, `deep` / `ford` (per tile), `reach` (`ensureReachable(world)`: flood from the Relay over
   `blockGrid(world)`, repairs with fords / object removal; `floodTiles` is exported for tests). `worldForRun(game, run, keys)` caches it per run seed; `compass(dx, dz)`; `clearDisc(world, x, z, r)`.
-- `SporePods(scene, world.spores)` (`src/entities/`): the spore-pod hazard — `update(dt)`, `hittables(out)`, `dispose()`.
+  Relics & lore (`siteFeatures`, own seed streams `names` / `features` / `lore`): `site.name` (majors, landmarks;
+  `src/data/lore.js`), `site.kind` (landmarks: statue / mast / greenhouse), `relicCaches` `[{id 'rc…', site, x, z}]`
+  (lost majors), `shrines` `[{id 'sh…', site, kind, x, z}]` (landmarks), `loreSpots` `[{id 'lg…', site, x, z}]`; each
+  spot is kept walkable and in `ensureReachable`'s targets.
+- `JungleRelics(scene)` (`src/scenes/JungleRelics.js`, `scene.relicsCtl`): strongboxes, shrines (the pick-of-two modal),
+  data-log spots, relics on the ground, the carried relics (`carried`, HUD strip in `hud.tl`), place banners. Hooks the
+  scene calls: `onContainerOpened(it)` (hidden caches), `meleeMult()` / `landed()` / `cutPower`, `onKill(e)`,
+  `relicSave(player)`, `relicPerfectDodge()`, `huntDelay`, `light(U)`, `markers()`, `labels()` (big-map names),
+  `pauseLine()`, `lostLines()`, `update(dt)`, `dispose()`. Scene wrappers for entities: `scene.relicMod(field)`,
+  `scene.dropRelic(x, z, { rarity })` (area bosses: `{ rarity: 'R' }`), `scene.relicSave(p)` (Player._die),
+  `scene.relicPerfectDodge()`. What was used is in `run.world.relics` (`rc…` opened, `sh…` taken, `sh…+` the landmark
+  extra), `lore` (log spots read) and `visited` (places announced).
+- `src/ui/relics.js`: `relicIcon(game, id, size, {silhouette})` (the `relic_<id>` plaque art, else a pendant),
+  `relicCard(game, id, {size, line})`, `relicTag(game, id, {lost})`, `relicTitle`, `rarityTag`, `relicKey(assets, id)`
+  (the world's pendant texture, `relic__pendant_<C|R|X>`). Styles in `src/ui/relics.css`.
+- `JungleMap.drawBig(canvas, view, markers, time, labels)`: `labels` `[{x, z, text}]` drawn in Tiny5 (whole-pixel
+  scale); markers `relic` (gold star), `cache` (gold dot), `lore` (cyan dot).
+- `SporePods(scene, world.spores)` (`src/entities/`): the spore-pod hazard — `update(dt)`, `hittables(out)` (a hit with
+  src `'chop'` launches the pod instead of popping it), `dispose()`. Clouds also hurt / choke creatures (`enemy.chokeT`),
+  and creatures with `podTrigger` set pods off.
 - `JungleWorld(game, scene3d, data, cutMask)`: chunk streaming (`update(dt, focusX, focusZ)`, `warm(x, z)`), queries
   (`brushAt solidAt deepAt wetAt opaqueAt blockedAt(x, z, throughBrush) levelAt speedAt(x, z, brushFree) inFern shadeAt
   lineOfSight`), movement
-  `moveBody(p, dx, dz, r, {throughBrush, onBrush})`, `blockedCircle`, `addCollider(obj)`, the machete
-  `hitBrush(tx, tz, power)` (→ type cut, −1 nicked, 0 nothing), `setPlayer(px, py, z)` for the see-through window,
-  `shadeTex` (canopy density for PostFx). `JungleWorld.regrow(data, cut, seed)` between days.
+  `moveBody(p, dx, dz, r, {throughBrush, onBrush, solid, hit, nudge})` (`solid(tx, tz)` replaces the tile test; `hit` gets
+  `{obj}` / `{tx, tz}` of what stopped the body — wall splats; `nudge` = `CONFIG.player.nudge`, the player's corner
+  nudge round trunks and brush corners), `blockedCircle`, `addCollider(obj)`, the machete
+  `hitBrush(tx, tz, power)` (→ type cut, −1 nicked, 0 nothing), `setPlayer(px, py, z, x, vis)` for the see-through window
+  (and the player's outline; `vis.userData.outlineOverride` forces a colour, e.g. the perfect-dodge rim),
+  `shadeTex` (RG canopy density for PostFx: R full for upright cards, G with walkable trail / clearing tiles spared,
+  `ATMOS.trailShade`), `gradeTex` (per-district colour grade, `REGION_LOOK[key].grade`, blurred across borders).
+  `JungleWorld.regrow(data, cut, seed)` between days.
+- `Wading(scene)` (`src/world/Wading.js`, `update(dt)` / `dispose()`): characters on wadeable water are clipped at a
+  waterline (`WATER.line` texels, per-material clipping planes), lose their blob shadow, get a looping `fx_ripple`
+  and an `fx_splash` on entry.
+- `src/world/SporeLook.js`: the spore pod's look — `podVisual(assets)` (`spore_pod`, idle), `swellPod(vis)`, and
+  `SporeCloud.make(scene, x, z)` → 6–8 instanced `spore_puff_*` sprites (`SPORE_LOOK`; null without the art, then
+  SporePods falls back to its dithered disc). Gameplay stays in SporePods.
+- Combat (critic I): `scene.meleeHit(x, z, angle, spec, power)` returns how many creatures / nests / pods it struck
+  (`spec.noCut` skips undergrowth, `spec.shove` draws no blade arc). `Player`: `tryDeflect(attacker, kind, ax, az)`
+  (enemy contact / shots / lob landings call it first; true = deflected), `bleed(t)`, `root(t)`, the thrown `blade`.
+  `ExploreEnemy`: `hidden` (a Thorn Stalker under the brush: not hittable, no separation), `deflected(kind)`,
+  `stun(t)`, `stepBack(x, z, dist)` (the death beat), `chokeT`, the move in progress `mv`. `scene.shots`
+  (`ExploreShots`): `throwBlade({x, z, dir, spec, onCatch})` / `recallBlade(b)`, `sapAt(x, z, pad)` (sap puddles),
+  enemy shots / lobs carry `owner` (deflects bat globs back). Leading: lunges and the Feral spear aim ahead of the
+  player by `def.lead` / `spear.lead` × the time from the lock to impact (velocity capped at walking speed), and a
+  melee wind-up also starts when the player *will be* in reach after it (`CONFIG.expedition.attackers.predict`).
   Exports `makeCardMaterial`, `chunkCards(world, atlas, cut, x0, z0, w, h)`, `cardMesh(cards, atlas, mat)` (the night map reuses them).
 - `TerrainBaker(world, assets, terrainArt).bake(cx, cz)` → a 512 × 512 canvas for chunk (cx, cz). `world.blendAmp` tightens edges.
+  Jungle dirt / paving are baked lighter (`TERRAIN_VALUE`). Decals come from deterministic per-chunk candidates
+  (`_decalCands`, districts favour `REGION_LOOK[key].decals`); a decal yields to a same-key candidate of higher priority
+  within `DECALS.spacing` tiles across chunk borders. Bright texels of emissive decals (`EMISSIVE.decals`, glow fungus)
+  get canvas alpha `EMISSIVE.groundAlpha`; the ground material turns that into the PostFx emit code.
   Ruin paving is broken up in world space (missing slabs, moss, stains, cracks, rubble — `PAVING`).
 - `FloraAtlas(assets)`: one atlas of every static world sprite, grouped in `FAMILIES` (regex on manifest keys); `pick(fam, a, b)`.
   Brush families are colour-graded in the atlas (`BRUSH_LOOK`): low pale ferns, dark tall thickets, red-brown brambles.
 - The card shader's see-through window (`ATMOS.xray*`) is a round 8×8-Bayer fade around the player (no hard rim).
-- `DefenseGround.makePlinth(seed, wood)` → a texel-drawn stone / timber build-pad plinth (flat Lambert mesh, `userData.zOffset`);
-  size, face height and chipped corners vary per seed (`DEFENSE_VIEW.plinth`). Pads sit off the tile grid (`DEFENSE_MAP.pads` are fractional).
+- Night-board ground, plinths and lane tint: see "The night board" below.
 - Ruin paving with PixelLab art is sampled per slab (`PAVING.slab`): staggered rows, random flip/rotation, the star motif on only some slabs.
-- Creatures keep apart from the player and each other (`CROWD`, `ExploreEnemy._separate`, skipped mid-attack).
-- `Ambience(scene3d, world).update(dt, cx, cz, dusk)`: pollen, falling leaves, fireflies, light shafts.
-- `DefenseGround.buildDefenseGround(game, seed, laneTiles, tint)` → `{ group, update(dt), dispose() }`.
+- Creatures keep apart from the player and each other (`CROWD`, `ExploreEnemy._separate`, skipped mid-attack); waiting
+  ones hold flank / back slots (`ExploreEnemy._circle`, `attackers.flank` / `backArc`).
+- `Ambience(scene3d, world).update(dt, cx, cz, dusk)`: pollen, falling leaves, fireflies (emissive, drawn over the
+  foliage), light shafts.
 - Persistent state: `run.world` (`run.worldState(size, cell)` decodes it, `run.storeWorld(state)` stores it; bitsets in base64).
+
+## The night board — `src/data/defenseMap.js`, `src/world/DefenseGround.js`, `src/world/NightCamera.js`
+
+- **Maps:** `DEFENSE_MAPS` = `{ twin, crossing, ford }` (`MAP_KEYS`); each has `width/height` (23×15 field), `lanes`
+  (`{ name, short, bearing, points, forward }`: waypoint polyline from off-field left to the plaza; `bearing` = the compass
+  direction the lane faces in the jungle; `forward` = up to 2 forward-pad slots), `pads` (fractional tile coords),
+  `woodPads`, `core`, `coreRadius`, `plaza`, `lamps`, `stream` (ford), `trees/rubble/bushes`, `margin`. `DEFENSE_MAP` = twin
+  (legacy alias). Helpers: `mapFor(runOrKey)` (unknown → twin), `pickMapKey(seed)` (Run.create → `run.mapKey`),
+  `forwardSlots(map)` → `[{ lane, at, rank }]`, `padCount(map)` (pads + slots: Save validates `tower.pad < padCount`),
+  `laneForAngle(map, angle)` (jungle angle → the lane whose bearing is closest).
+- **Scene hooks** (`DefenseScene`): `this.map`, `laneForDistrict(key)` (the lane facing that area: region angle from
+  `worldForRun` → `laneForAngle`; stored as `this.dangerLane`, read by `_waveOpts()` → `buildWave({ dangerLane })`),
+  `_padSpots()` (map pads, then the forward slots opened by `run.world.pylons` on the lane facing each beacon; a slot with a
+  tower stays; pad index = `map.pads.length + slot`), `_laneTiles(lane?)`. Waves pick a lane with `lane % lanes.length`.
+  Leaks: `_noteLeak(src, dmg, count, lane)` feeds `nightStats`, the in-wave feed (`_leaks`, `DEFENSE_VIEW.leakRows`) and
+  `run.lastNight = { night, leaks: { type: { count, damage } } }` (Run.finish → Results "What got through");
+  `leakSummaryText(night)` is the banner line.
+- **NightCamera(scene, fit, bounds):** integer zoom k (`ks` = the allowed steps, `kDefault`), internal res = floor(window / k)
+  rounded to even through `game.setInternalRes`; the board viewport is `DEFENSE_VIEW.view` (UI units, panel on the right).
+  Default k = the largest that fits `fit` (the field), or 2 when only 1 fits, the day scale is ≥ 3 and 2 shows ≥
+  `zoom.prefer` of the field. Wheel (90 ms throttle, ignores `.ui-block`) and `+`/`−` step k keeping the point under the
+  cursor; right/middle drag pans after `zoom.dragThreshold` px (a still right click is replayed to the scene's input);
+  arrows pan, Home frames; clamped to `bounds`. `dayScale(vw, vh)` = the day's integer scale for a window.
+- **DefenseGround:** `buildDefenseGround(game, map, { seed, laneTiles, pads, tint })` → `{ group, world, stats: { cards,
+  dropped }, update, dispose }`: a stand-in jungle world (vertex levels from lane distance, the ford's stream → water/mud,
+  4-pass ≤1-level relaxation, stepping-stone fords), TerrainBaker chunks into one 2048² canvas, `wearLanes` (lighter trodden
+  centre band that flattens the dirt's mottling, two broken wobbly ruts, puddle/pebble decals — `DEFENSE_VIEW.wear`), a
+  dithered darker margin, plaza hazard stripes; cards from `chunkCards` **minus any whose opaque texels cover a lane, a pad
+  or the Relay** (`keepZones` + `coversKeep`, per-texel against the sprite's alpha). `GROUND` = `{ size, x0, z0 }`.
+  `makePlinth(seed, wood, grow)` → texel-drawn plinth (`userData.topW/topH` for markers). `laneTint(tiles, color, alpha)`
+  → a multiply-blended wet band along a lane (laneSlow reward).
+- **Look:** `DEFENSE_VIEW.post` runs the jungle's PostFx at full dark (moon tint × ambient, navy lift, vignette; no canopy, no
+  player light): enemy eyes and the Relay crystal (Emissive.js) and `lightPool`s (`DEFENSE_VIEW.glow`: lamps, Relay,
+  forward pads; `emit` = how far lit pixels escape the moonlight) stay bright. `post.on: false` = the older lit-scene look.
+  Units and the Relay don't write depth (painter's order), so occlusion silhouettes never fire on the board; flat
+  things therefore sort by renderOrder: ground lights / wet band −3, plinths −2, shadows, rings, pad markers, range and
+  chevrons −1, sprites 0. Units get the light code `post.unitLift` (`_lightCode(mat, share)`: alpha = 1 − share).
+- **Tower muzzles:** `JUICE.towerMuzzle[type]` = `{ color, 1, 2, 3, '3a', '3b' }` → `[x, y]` (x on a 32-wide scale,
+  y texels above the sprite bottom); `Tower.muzzle()` picks the level / branch (missing branch → level 3).
+  Protocol buttons show `PROTOCOL_ICONS[id]` sprites (src/data/protocols.js), the glyph as fallback.
 
 ## Screen-space lighting (`src/core/PostFx.js`)
 
-A scene that sets `this.post = new PostFx(game)` is rendered into a target and composited by one pass: canopy shade
-(`uniforms.tShade` = `JungleWorld.shadeTex`) with drifting dapples, darkness beyond `uLightR` around `uPlayer`,
-`uDark` (0 day → 1 night), `uAmbient`, `uTint`, grade, stepped vignette, `uHurt` pulse, `uLeaves` (foreground leaf
-frame). All steps are Bayer-dithered so light stays pixel art. Menus get it through `MenuBackdrop.post`.
+A scene that sets `this.post = new PostFx(game)` is rendered into a half-float target and composited by one pass.
+`post.setWorld(jungleWorld)` binds the canopy shade (`shadeTex`) and the district grade (`gradeTex`);
+`post.timeOfDay(dayFrac, dusk)` drives golden hour, moonlit night, the lamp pool around `uPlayer` and darkness
+(`ATMOS.cycle`). The pass also does drifting dapples, `uHurt` pulse, a hard-stepped undithered vignette and the
+foreground leaf frame (`fg_leaf_1..5`, `ATMOS.leafFrame`, whole sprites with lagging parallax; procedural fallback).
+**Light codes in the target's alpha** (`LIGHT_CODE`): ≥ 1.5 = upright card (full canopy shade), 1 = normal,
+< 1 = emissive share (1 − a ignores darkness, shade and vignette). Opaque materials write 1; `emitBlending(mat)` marks a
+material as emissive, `lightBlending(mat)` adds light. Dithers are Bayer and world-anchored (they move with the ground).
+The default framebuffer ignores alpha, so scenes without PostFx are unaffected. Menus get it through `MenuBackdrop.post`.
 
 ## Effects (`src/core/Fx.js`)
 
@@ -114,34 +257,113 @@ Juice (tuning in `JUICE`, `src/data/config.js`): `flash`, `muzzle`, `spark`, `li
 lightning), `decal` (dissolving splat), `corpse(visualRoot)` (death beat; Fx disposes the visual), `telegraph({style:'dashed'})`
 for friendly markers, `hitStop(t)` / `slowMo(time, scale)` with `dt *= fx.step(realDt)` in the scene update.
 `makeVisual(key, {ring})` adds the hostile ground ring; `resIcon(key)` / `resIconHtml(key)` (ui.js) draw pick_* sprite icons.
+`hitFlash(root)`: `JUICE.hitFlash.white` frames of white, then `tint` frames of red-orange, on the hit sprite only.
+Death splats (`decal` without `life`) are desaturated toward `JUICE.death.splatGround` and fade out in steps over
+`decalFade` s. `chargeLane` draws a dust-dither capsule with rounded ends and moving chevrons.
 
 ## UI helpers (`src/ui/ui.js`)
 
 `el('div.cls', attrs, ...children)`, `button(label, onClick, {disabled, reason, cls:'primary'|'danger'|'big', hotkey})`, `panel(cls, ...children)`,
+`modal(ui, title, body, buttons, { cancel, keys, extraKeys, guard })` (keyboard built in: primary focused, Enter / Space / E
+press it, arrows / W S / Tab move, Esc presses `cancel` — default the button with an "Esc" hotkey, else the safe one next
+to a danger button, else a lone button; a capture listener keeps these keys from the game; `keys: false` when the caller
+has its own KeyNav, like `screensKit.ask`; `guard` s of ignored keys after it opens),
 `resChip(key, amount)`, `resRow(res)`, `costLine(cost, haveRes)` (marks shortfalls red), `bar(cls, color)` → `{node, set(frac, text)}`,
-`toast(game.ui, text, 'good'|'bad'|'amber')` (game-time: `setToastsPaused(game.ui, true)` freezes them while paused), `modal(game.ui, title, body, buttons)`, `fmtTime(s)`.
+`toast(game.ui, text, 'good'|'bad'|'amber')` (game-time: `setToastsPaused(game.ui, true)` freezes them while paused), `fmtTime(s)`.
 CSS sizes: `calc(var(--u) * N)` = N px on a 960×540 stage (scales with the window; JS: `game.u`). Shared classes in `src/ui/style.css`.
 
 ## Run (`src/core/Run.js`) — the single source of truth
 
-Fields: `seed night phase relayHp relayMax playerHp meds weapon res{scrap,circuits,biofiber,intel} towers[] skills[] skillPoints district tonight lastExpedition stats`.
+Fields: `seed night phase relayHp relayMax playerHp meds weapon res{scrap,circuits,biofiber,intel} towers[] skills[] skillPoints items blade crafted relics[] district tonight lastExpedition stats`.
 
-- Districts: `districtChoices()`, `objectiveFor(district)`, `chooseDistrict(key)` (sets `tonight.threat`, extra groups, speed).
+- Modes (Stage 7, `src/data/modes.js`): `Run.create(meta, { mode: 'normal'|'long'|'daily', overgrowth, date })`. Fields
+  `mode overgrowth mods[] dailyDate kit offers[] goals[] areaCount sellRefund`. `isLongNight()`, `isDaily()`,
+  `mod(field)` (product of the run's modifiers' field, 1 if none), `modSum(field)`, `hasMod(field)`, `researchMult(meta)`
+  (Overgrowth / Daily / Archivist), `modeLabel()`, `isBossNight(night)` (6, and every 3rd night past 6 in the Long Night),
+  `nightHpMult(night)` = `healthMult(night) × mod('hpMult')` (DefenseScene / buildWave read it). Exported helpers:
+  `localDate()`, `dailySeed(date)`, `dailyMods(date)`, `dailyRecord(meta, date)`.
+- Districts: `districtChoices()` (weighted against past offers / visits, `AREA_OFFERS`; `areaCount` cards),
+  `canRerollAreas(meta)` / `rerollAreas(meta)` (Second Look), `objectiveFor(district)` (avoids recent goals; fixed once
+  chosen), `chooseDistrict(key)` (logs the offer and goal, sets `objective`, `tonight.threat` / `threat2` (Restless
+  Jungle, `secondThreat()`), extra groups, speed), `lootMults()` (today's container multipliers: the chosen area × Picked Over).
 - Resources: `canAfford(cost)`, `missing(cost)` → "Need 12 more Scrap", `spend(cost)`, `add(gain)`.
-- Skills: `hasSkill(id)`, `skillOptions(meta, salt)`, `takeSkill(id)`.
+- Skills (Stage 7 rework, `src/data/skills.js`): `hasSkill(id)` (old ids read through `SKILL_RENAMED` / `skillId`, so
+  `hasSkill('pack_rat_1')` sees Pack Rat), `setSkills(list)` (maps old ids, refunds a point per removed / duplicate one;
+  `fromSave` and `&skills=` use it), `branchCount(branch)`, `skillOffered(k, meta)` (req, needsUnlock, keystone needs
+  `SKILL_OFFERS.keystoneNeeds` of its branch), `skillCardCount(meta)`, `skillOptions(meta, salt)` (each card from an owned
+  branch with chance `SKILL_OFFERS.ownedShare`, fresh branches first, keystones × `keystoneWeight`),
+  `canRerollSkills(meta)` / `rerollSkills(meta)` (Fresh Ideas), `takeSkill(id)` (a skill's `relayMax` arrives repaired),
+  `skillMult(field)` (product over owned skills), `bountyMult()` (Salvage King; DefenseScene._kill).
+  Skill points: JungleScene `_grantSkillPoint(opts)` gives at most `CONFIG.expedition.maxSkillPoints` (1) a trip from the
+  goal / bonus tasks; **`_grantSkillPoint({ boss: true })` (an area boss kill) always adds one on top**.
 - Towers: `availableTowers(meta)`, `buildCost(type)` (includes the +5 Scrap per same-type tower, `buildSurcharge(type)`), `towerCount(type)`, `build(type, padIndex)`, `upgradeCost(t)` (null = max, `{}` = free), `upgrade(t)`,
-  `sellValue(t)`, `sell(t)`, `towerStats(t, relayFrac)` → merged stats with upgrades/skills/boons applied.
+  `sellValue(t)`, `sell(t)` (a fitted mod goes back to the bench), `towerStats(t, relayFrac)` → merged stats with
+  upgrades / boons, then every owned skill's and the fitted mod's `tower` block through the exported
+  `applyTowerMod(s, type, block, acc, relayFrac)` (filters `kinds` / `types` / `when.relayBelow`; `range` / `rate` /
+  `damage` multipliers; `mult` / `add` / `min` per field; flags `slowedBonus` → DefenseScene.damage, `seesBurrowed` →
+  Tower.pickTarget / bullet `canHit` via `canBeTargetedBy('any')`).
+- Crafting (`src/data/crafting.js`; fields `items {mod: n}`, `blade [recipe]`, `crafted {recipe: n}`, tower `mod`):
+  `craftBlocked(key)` (plain reason or null), `craft(key)`, `itemCount(mod)`, `addItem(mod, n)`, `modsOwned()`,
+  `modFits(rec, mod)`, `fitMod(rec, mod)` (free; swaps the old one back), `unfitMod(rec)`, `bladeMods()` (skills' and
+  machete upgrades' `blade` blocks stacked by `BLADE_STACK`), `prepScrapComing()` (stipend + Prepared Defenses not yet
+  paid), `cheapestTowerScrap(meta)`. `relayMax` adds skills' and crafted recipes' `relayMax`.
+- UI (`src/ui/workbench.js`): `workbenchView(game, {onCraft})` → `{node, refresh, craftIndex(i)}` (SummaryScene's
+  `step = 'bench'`), `showBench(run)`, `modRow(scene, tower)` (DefenseScene `_renderTower`), `codexKit(game)` (Codex).
+- Machete kit (`src/entities/BladeKit.js`): Player sets `this.kit = run.bladeMods()` and
+  `this.weapon = kitWeapon(WEAPONS[k], kit, bleeds)` once per trip (combo / hack-through time × `comboTime`, chop damage ×
+  `chopDamage`, `chop.cutRange` = Cleaver, throw `returnTime` / `returnDamage`, `onHit` on every melee spec);
+  `Bleeds(scene, dps, time)` ticks Serrated Edge (`update(dt)` from Player.update). Hooks read `player.kit`:
+  deflect window, riposte ×, fern-free speed / roll, plant-swing stamina, Duelist (`_perfectDodge`, riposte heal),
+  `player.heal(n)`, `player.onKill(e)` (JungleScene.onEnemyKilled → Second Wind). JungleScene.meleeHit calls
+  `spec.onHit?.(target)` per thing struck and cuts brush out to `spec.cutRange || spec.range`.
 - Relay: `repairAmount()`, `repairCost()` (prorated), `repair()`, `beginPrep()` (one-time per-night bonuses; returns notes), `emergencyPatch()`.
 - Intel (night prep): `decryptCost()`, `decrypt(game)` → Research; `sabotageCost()`, `sabotageBlocked()`, `sabotage()` → wave −10% once per night.
 - Wave size: `waveCountMult()` = `tonight.enemyCount` floored at `CONFIG.waveSizeFloor` (0.8); `waveCutCapped()`.
 - Expedition: `applyExpedition(result, game)` with
-  `{ district, extracted, died, carried:{…}, objectiveDone, boon, optionals:[{key,name,flag?,research?}], events:[{key,flag?}], skillPointsEarned, medsLeft, playerHp, kills }`.
-  Banks loot only if extracted, awards research, applies boons into `tonight`, stores `lastExpedition`.
-- Night end: `nightSurvived(game)` → `'next' | 'victory'`; `finish(game, victory)` → results record (clears the run save).
+  `{ district, extracted, died, carried:{…}, objectiveDone, boon, optionals:[{key,name,flag?,research?}], events:[{key,flag?}], skillPointsEarned, medsLeft, playerHp, kills, relics:[id] }`.
+  Banks loot only if extracted (else the salvage, clamped to what was carried), awards research, applies the goal's boon
+  into `tonight` only if extracted (else `summary.rewardLost`), sets `summary.dawnHp`, stores `lastExpedition`.
+  Death rules: `salvageFor(carried, dayT)` (`min(carried, max(floor, share × carried))` for Scrap; nothing with No Drone),
+  `dawnHp(hp)` (`max(hp + nightlyHeal, dawnHpFloor)`, Hard Dawn lowers the floor), `abandonTrip(game)` (Continue from
+  an `explore` snapshot settles the trip as abandoned).
+- Relics (`src/data/relics.js`; field `relics[]` = brought home): **`relicMod(field)` is the one place effects are read**
+  (combined by `FX_MODE`; Player / SporePods go through `scene.relicMod`). `hasRelic(id)`, `maxMeds()` (CONFIG + Medic's
+  Satchel; Player, briefing shop, crafting), `bankRelics(result, game, summary)` (from applyExpedition: home → pushed
+  into `relics`, night effects applied at once, `summary.relicsFound`; else `summary.relicsLost`),
+  `applyRelicsTonight(ids)` / `relicExtraGroups(ids)` (Hungry Idol's group, Storm Totem's `tonight.enemySpeed`; from
+  `chooseDistrict` and on banking), `relicHitMult(tower, enemyType, pushIdx)` (DefenseScene.damage: Rusted Bell, Cracked
+  Lens' first hit per push), `protocolDef(key)` (DefenseProtocols: cooldown / radius), `relicNightLines()` (night prep),
+  `seeRelics(game, ids)` / `readLore(game, id)` (the Codex: `meta.relicsSeen` / `meta.lore`, skipped for debug runs
+  unless `&save=1`). Also read in `lootMults`, `relayMax`, `buildCost` / `upgradeCost`, `towerStats`, `beginPrep`,
+  `salvageFor`.
+- Night end: `nightSurvived(game)` → `'next' | 'victory'` (a Long Night never returns `'victory'`: night 6 calls
+  `recordVictory(game)` and the run goes on); `recordVictory(game)` (once per run: victories, best, scarf, Overgrowth best,
+  victory Research); `finish(game, victory)` → results record `{ victory, won, mode, overgrowth, mods, dailyDate, ogBefore,
+  longBefore, dailyBefore, nights, night, kills, districts, peak, research, leaks, debug }` (clears the run save; `leaks`
+  is the night board's `run.lastNight.leaks` tally `{ type: { count, damage } }`, which Results turns into "What got through").
 - Research: `award(game, amount, reason)`, `awardBossDamage(game, fraction)`.
-- `rng(...parts)` — seeded stream for this night. `save('briefing'|'prep'|'wave')` snapshots for Continue ('wave' = restart that wave with the locked build).
+- `rng(...parts)` — seeded stream for this night. `save('briefing'|'explore'|'summary'|'prep'|'wave')` snapshots for Continue
+  ('explore' = settled as an abandoned trip, 'summary' = back to the summary, 'wave' = restart that wave with the locked build).
   `Save.patchRun(fn)` edits the saved snapshot in place (boss research given mid-wave). `Save.validRun(r)` is the full shape check.
 - `tonight`: `{ threat, boons[], freeUpgrades, freeRepair, towerRate, towerDamage, enemyCount, enemySpeed, laneSlow, extraGroups[] }`.
+
+## Research tree and meta (`src/data/unlocks.js`, `src/data/modes.js`, `src/core/Save.js`)
+
+- `RESEARCH_TREE[key]` = `{ branch, tier, col, cost, req?, available?, icon, short, name, desc, …effect fields }`;
+  `BRANCHES`; `UNLOCKS` is an alias and `UNLOCK_KEYS` lists the available nodes (old keys keep working).
+  `owns(meta, k)`, `missingReqs(meta, k)`, `nodeStatus(meta, k)` → `'owned' | 'reward' | 'locked' | 'open' | 'short'`,
+  `affordableNodes(meta)`, `nextGoal(meta)`, `ownedCount(meta)`, `KIT_KEYS`. Effects are read where they apply
+  (`Run.create`: stockpile, field_kit, scattergun, kits, scout_report, salvage_logic; the briefing: field_dressing's
+  `price`, beacon_codes, cartographer's `radius`; Run: second_look, field_notes, skill_reroll, wide_choice, archivist).
+- `OVERGROWTH { max, researchPerLevel, order[], mods{ key: { name, text, …field } } }`; `DAILY { mods, researchPerMod,
+  keepDays }`; `LONG_NIGHT { maxNight }`; `MODES`.
+- meta adds `startKit`, `overgrowth { best, level }`, `longNight { best }`, `daily { date: { nights, victory, runs } }`
+  (validated in `metaModes`, defaults when missing). `RUN_PHASES` lists the run snapshot phases.
+- The Codex (`src/data/relics.js`, `src/data/lore.js`): meta `relicsSeen[]`, `lore[]` (`metaCodex` keeps known ids
+  only); the run's `relics[]` and `world.relics / lore / visited` string lists are checked in `validRun` (missing = none).
+  `RELICS[id] = { name, rarity: 'C'|'R'|'X', when: 'day'|'night'|'both', text, down?, fx }`, `RELIC_SOURCES` (holds,
+  chances, rarity weights, magnet, map ranges), `drawRelic(rng, exclude, {rarity, weights})`, `relicLive(id, run)`;
+  `PLACE_NAMES`, `LANDMARK_NAMES`, `LANDMARK_KINDS`, `LORE_SPOTS`, `LORE_LOGS` (story order), `LORE_BY_ID`.
 
 ## Conventions
 
@@ -165,12 +387,28 @@ explicitly (computed from what it explains, so it never covers it).
 Simplicity pass (`src/data/guide.js`): `run.guided` (set by `startNewRun` on the player's first run, or `&guided=1` on a
 debug URL) makes `run.isGuidedDay()` true on night 1 — `districtChoices()` returns `[GUIDE.district]` and
 `objectiveFor()` returns `GUIDE.objective`. JungleScene then runs the coach (`_setupCoach` / `_updateCoach` /
-`_coachTip`: one instruction at a time, top-left) instead of the jungle hints; `FIRST_DAY` softens every run's day 1
-(`_chunkPop`, objective guards). `_homeOffered()` gates the Relay's "Head home" prompt (`RETURN_PROMPT`).
+`_coachTip`: one instruction at a time, top-left; steps carry an `id`: move, cut, crate, map, goal, loot, home) instead of
+the jungle hints; `FIRST_DAY` softens every run's day 1 (`_chunkPop`, objective guards). `_homeOffered()` gates the
+Relay's "Head home" prompt (`RETURN_PROMPT`). On the guided day `_sitesIn` prefers `data.guided.site`; `_guidedCrate()` /
+`_nearCrate(range, onTheWay)` pick the coached crate (route crates first; else a reachable trail-side one:
+`GUIDE.coach.cratePath / crateTrail`); `_coachCrate()` / `_coachMarks()` feed the in-world ◆ markers (`_placeMarks`,
+pooled pixel-diamond canvases) and the crate's edge arrow (`hud.arrowCrate`).
+**Verb tips** (`TIPS`, every run): `scene._tip(id, { urgent, cls, html, once, time })` queues a one-off tip for the
+coach line (once per profile in `meta.hints['tip_' + id]`; returns true when it shows / is queued, so callers can skip
+their plain toast); `_checkTips` holds the triggers (roll, deflect, bramble, throw, med), `_updateDiscovery` the beacon
+one, `_updateDay` sunset; `_updateTips` shows one at a time (urgent first, a calm one re-queued). `_coachTip(html, cls)`
+is a passing tip that isn't saved. Text: `TIPS.text`, `{action}` = the bound key (`scene._key(action)`).
+**HUD structure** (`_buildHud`): `hud.tlcol` (top-left column: `hud.tl` panel — other systems append into it, e.g. the
+relic strip — then `hud.coach`), `hud.tr` (minimap ring, `j-clock` = `hud.sun` + `hud.timer`, `hud.dayLbl`,
+`hud.timerSub`; the weather tag appends here), `hud.strip` (goal, `hud.ford`, home), the prompt, edge arrows
+(`arrowObj`, `arrowExt`, `arrowCrate`), `hud.lowhp`. The top centre is free for an area boss's bar. `--tx` on `hud.root` =
+the world's texel size in CSS px (HUD pixel icons scale by it); `--hudfade` = `JUICE.hudFade.opacity`. River wayfinding:
+`_updateFord(target)` sets `this._ford` (a `ford` marker on both maps, the strip's "cross at the stepping stones").
 DefenseScene `_readiness()` (→ `READINESS`) drives the "Your defense" line and `_tryStartWave()`'s confirm.
 `ui.shownResources(res)` / `resRow` hide zero currencies (Scrap always shows); `resChip(k, n, {short})` = icon + number.
 
 ## Per-mode CSS
 
 Each mode keeps its own stylesheet next to its scene (`src/ui/explore.css`, `src/ui/defense.css`, `src/ui/screens.css`) imported by that scene,
-so `style.css` stays the shared kit.
+so `style.css` stays the shared kit. `src/ui/meta.css` holds the Stage 7 run-systems screens (title modes and Overgrowth row,
+briefing extras, the Collection research tree, the Results "why").

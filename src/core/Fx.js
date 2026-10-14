@@ -107,14 +107,18 @@ function flameTexture(color) {
 // (darker wet core, base, lit rim, light from the top-left) with a Bayer-dithered fringe, so a splat
 // reads as a stain on the ground, not a black hole (critic F #14).
 const SPLAT_BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((v) => (v + 0.5) / 16);
-function splatTexture(color, variant, N = 16) {
-  return cached(`splat${color}${variant}:${N}`, () => {
+function splatTexture(color, variant, N = 16, ground = 0) {
+  return cached(`splat${color}${variant}:${N}:${ground}`, () => {
     const c = document.createElement('canvas');
     c.width = c.height = N;
     const g = c.getContext('2d');
     const img = g.createImageData(N, N);
     const rnd = seeded(97 + variant * 131);
-    const base = new THREE.Color(color), dark = new THREE.Color(shade(color, 0.78)), lite = new THREE.Color(shade(color, 1.3));
+    // critic H #7: a stain on the ground, not paint. `ground` (0..1) pulls the colour that far toward the
+    // ground colour (JUICE.death.splatGround) before the 3-tone ramp (wet core, base, lit rim) is built.
+    const tone = new THREE.Color(color).lerp(new THREE.Color(JUICE.death.splatGround || '#3b3122'), ground);
+    const hexOf = (k) => `#${tone.clone().multiplyScalar(k).getHexString()}`;
+    const base = new THREE.Color(hexOf(1)), dark = new THREE.Color(hexOf(0.74)), lite = new THREE.Color(hexOf(1.22));
     const k = N / 16, h = N / 2;
     const blobs = [[h, h, (3.6 + rnd() * 0.8) * k]];
     for (let i = 0; i < 6; i++) {
@@ -410,12 +414,12 @@ function ringSheet(rPx, color, color2, K) {
 
 /**
  * A Razorback's charge lane as ground damage, drawn for the exact direction (no texture rotation).
- * Two layers (critic G: the old dotted lines vanished over leaf litter and brush):
- *   base  — a dark 1-texel outline, a solid 2-texel bright red edge, a dithered red inner rim, a wide
- *           dithered dust band and the jagged central crack. Alpha carries the reveal order (near → far,
- *           Bayer-dithered front): lowering the material's alphaTest grows the lane.
- *   chev  — chevrons pointing along the charge plus a bright end bar. Alpha carries the phase along the
- *           lane, so sweeping the alphaTest makes the chevrons light up toward the charge direction (pulse).
+ * critic H #7: no hard rectangle; a capsule (rounded ends) of scuffed ground-dust dither with a dithered red rim
+ * that fades inward, the jagged central crack, and bright chevrons on top. Two layers:
+ *   base  — rim + dust + crack. Alpha carries the reveal order (near → far, Bayer-dithered front): lowering the
+ *           material's alphaTest grows the lane.
+ *   chev  — chevrons pointing along the charge. Alpha carries the phase along the lane, so sweeping the
+ *           alphaTest makes the chevrons light up toward the charge direction (pulse).
  * Returns { canvas, chev, ox, oz (texel offset of the canvas corner from the lane origin), W, H }.
  */
 function laneCanvas(dir, Lpx, Wpx, seed) {
@@ -442,13 +446,16 @@ function laneCanvas(dir, Lpx, Wpx, seed) {
     for (let i = 0; i < W; i++) {
       const x = ox + i + 0.5, z = oz + j + 0.5;
       const u = x * d.x + z * d.z, v = x * nrm.x + z * nrm.z;
-      if (u < 0 || u > Lpx || Math.abs(v) > hw) continue;
+      // Capsule: distance to the lane's centre segment, so both ends are round.
+      const cu = Math.max(hw * 0.5, Math.min(Lpx - hw * 0.5, u));
+      const edge = hw - Math.hypot(u - cu, v);
+      if (edge < 0 || u < -hw * 0.5 || u > Lpx + hw * 0.5) continue;
       const av = Math.abs(v);
       let col = null;
       const cv = v - crack(u);
-      if (av > hw - 1) col = '#2b0f14';                                                     // dark outline: reads on bright litter
-      else if (av > hw - 3) col = av > hw - 2 ? '#ff3b3b' : '#ff7a5c';                       // solid bright edge (lit inner texel)
-      else if (av > hw - 5) col = (i + j) & 1 ? '#a22633' : null;                            // dithered inner rim
+      const rb = bayer(i + 1, j + 2);
+      if (edge < 1.5) col = rb < 0.5 ? '#ff3b3b' : rb < 0.75 ? '#a22633' : null;              // dithered bright rim
+      else if (edge < 4) col = rb < 0.3 ? '#c8343a' : rb < 0.5 ? '#6e2a2c' : null;            // fading inner rim
       else if (Math.abs(cv) < 0.75) col = Math.floor(u) % 7 === 3 ? '#ff3b3b' : '#3e2731';  // the crack, with embers
       else if (Math.abs(cv) < 1.6) col = cv > 0 ? '#8f563b' : null;                          // lit lower lip (light from top-left)
       else {
@@ -460,19 +467,18 @@ function laneCanvas(dir, Lpx, Wpx, seed) {
           // wide scuffed dust band (hashed grit, no dot lattice), heavier where it paws
           const near = u < 24 ? 1.35 : 1;
           const t = hash2(i + seed, j);
-          if (t < dust * near * 0.35) col = '#e4a672';
-          else if (t < dust * near) col = '#b86f50';
+          if (t < dust * near * 0.35) col = '#c9a27c';
+          else if (t < dust * near) col = '#8f6a50';
           else if (t > 0.97) col = '#5a4430';
         }
       }
-      if (u > Lpx - 2 && av <= hw - 1) col = '#ff3b3b';                                     // end bar: where it stops
       if (col) {
-        const k = Math.min(1, (u / Lpx) * 0.9 + bayer(i + 1, j + 2) * 0.1);
+        const k = Math.max(0, Math.min(1, (u / Lpx) * 0.9 + bayer(i + 1, j + 2) * 0.1));
         px(base.img, W, i, j, col);
         base.img.data[(j * W + i) * 4 + 3] = Math.round(255 - k * 127);
       }
       // chevrons ">" along the charge: two arms meeting at the lane centre, 2 texels thick
-      if (av < hw - 5) {
+      if (edge > 5) {
         const uc = ((u % P) + P) % P;
         const arm = uc - (P * 0.5 - av * 0.75);
         if (arm >= 0 && arm < 2.2 && u > 4 && u < Lpx - 3) {
@@ -912,21 +918,40 @@ export class Fx {
   }
 
   /**
-   * White silhouette flash on a sprite visual (a white overlay sharing its texture, so it follows the
-   * frame and facing). Models fall back to flashVisual.
+   * Hit flash on a sprite visual (critic H #7): an overlay sharing its texture (so it follows the frame and
+   * facing) that shows JUICE.hitFlash.white frame(s) of flat white, then tint frame(s) of the sprite pushed
+   * toward red-orange, only on the sprite that was hit. Its edge texels stay dark ink, so two flashing
+   * bodies that overlap never melt into one white blob. `time` above JUICE.melee.whiteFlash (a heavy chop)
+   * adds a tint frame. Models fall back to flashVisual.
    */
   hitFlash(root, time = 0.08) {
     const vis = root?.userData.vis;
     if (!vis) return;
     if (vis.kind !== 'sprite' || !vis.body) { flashVisual(root, '#ffffff', time); return; }
+    const HF = JUICE.hitFlash || { white: 1, tint: 2, color: '#ff6a3d', mix: 0.6, ink: '#181425' };
     let o = root.userData.whiteOverlay;
     if (!o) {
       const mat = new THREE.SpriteMaterial({ map: vis.tex, color: '#ffffff', transparent: true, alphaTest: 0.5, depthWrite: false });
+      const G = vis.geom;
+      const U = {
+        uTexel: { value: new THREE.Vector2(1 / (G?.iw || 64), 1 / (G?.ih || 64)) },
+        uInk: { value: new THREE.Color(HF.ink) },
+        uMode: { value: 0 },
+        uMix: { value: HF.mix },
+      };
+      mat.userData.flash = U;
       mat.onBeforeCompile = (shader, r) => {
         THREE.SpriteMaterial.prototype.onBeforeCompile.call(mat, shader, r);   // keep the upright-card patch
-        shader.fragmentShader = shader.fragmentShader.replace('outgoingLight = diffuseColor.rgb;', 'outgoingLight = diffuse;');
+        Object.assign(shader.uniforms, U);
+        shader.fragmentShader = shader.fragmentShader
+          .replace('uniform float opacity;', 'uniform float opacity;\nuniform vec2 uTexel;\nuniform vec3 uInk;\nuniform float uMode, uMix;')
+          .replace('#include <map_fragment>', `vec4 sampledDiffuseColor = texture2D(map, vMapUv);
+	diffuseColor *= sampledDiffuseColor;
+	float vrEdge = step(texture2D(map, vMapUv + vec2(uTexel.x, 0.0)).a, 0.5) + step(texture2D(map, vMapUv - vec2(uTexel.x, 0.0)).a, 0.5)
+		+ step(texture2D(map, vMapUv + vec2(0.0, uTexel.y)).a, 0.5) + step(texture2D(map, vMapUv - vec2(0.0, uTexel.y)).a, 0.5);`)
+          .replace('outgoingLight = diffuseColor.rgb;', 'outgoingLight = vrEdge > 0.5 ? uInk : uMode < 0.5 ? diffuse : mix(sampledDiffuseColor.rgb, diffuse, uMix) * 1.12;');
       };
-      mat.customProgramCacheKey = () => 'vr-card-sprite-white';
+      mat.customProgramCacheKey = () => 'vr-card-sprite-hitflash';
       o = new THREE.Sprite(mat);
       o.name = 'whiteFlash';
       o.center.copy(vis.body.center);
@@ -937,9 +962,20 @@ export class Fx {
     o.position.copy(vis.body.position);
     o.scale.copy(vis.body.scale);
     o.visible = true;
+    const heavy = time > (JUICE.melee?.whiteFlash ?? 0.08) * 1.2 ? 1 : 0;
+    const frames = HF.white + HF.tint + heavy;
     const live = this.whites.find((w) => w.o === o);
-    if (live) live.t = Math.max(live.t, time);
-    else this.whites.push({ o, body: vis.body, t: time });
+    if (live) { live.n = 0; live.frames = Math.max(live.frames - live.n, frames); }
+    else this.whites.push({ o, body: vis.body, n: 0, frames, white: HF.white });
+    this._flashLook(o, 0, HF);
+  }
+
+  /** Colour of a hit-flash overlay on frame n (0-based): white, then the red-orange tint. */
+  _flashLook(o, n, HF = JUICE.hitFlash) {
+    const white = n < (HF?.white ?? 1);
+    o.material.color.set(white ? '#ffffff' : HF?.color || '#ff6a3d');
+    const U = o.material.userData.flash;
+    if (U) U.uMode.value = white ? 0 : 1;
   }
 
   /**
@@ -1062,14 +1098,19 @@ export class Fx {
 
   // ---------------------------------------------------------------- decals and deaths
 
-  /** Flat splat on the floor that dissolves pixel by pixel over its last second. */
+  /**
+   * Flat splat on the floor that dissolves pixel by pixel. Death splats (no o.life given) are desaturated toward
+   * the ground (JUICE.death.splatDesat) and fade over JUICE.death.decalFade of their decalLife; splats with an
+   * explicit life (sap puddles, hazards) keep their colour and dissolve over their last second.
+   */
   decal(pos, o = {}) {
     const D = JUICE.death;
     // Opaque pass + alphaTest: texels are either drawn solid or discarded (no blending), and the
     // per-texel alpha noise only decides *when* each texel disappears.
     // Lambert so the splat is lit like the floor it lies on (dark at night).
     const size = this._snap((o.radius ?? 0.5) * 2, 4);
-    const mat = new THREE.MeshLambertMaterial({ map: splatTexture(o.color ?? '#733e39', Math.floor(Math.random() * 3), Math.round(size * 32)), transparent: false, alphaTest: 0.45, depthWrite: false });
+    const death = o.life == null;
+    const mat = new THREE.MeshLambertMaterial({ map: splatTexture(o.color ?? '#733e39', Math.floor(Math.random() * 3), Math.round(size * 32), death ? (D.splatDesat ?? 0) : 0), transparent: false, alphaTest: 0.45, depthWrite: false });
     const m = new THREE.Mesh(this.quad, mat);
     m.rotation.x = -Math.PI / 2;
     m.rotation.z = Math.floor(Math.random() * 4) * Math.PI / 2;
@@ -1078,7 +1119,7 @@ export class Fx {
     m.renderOrder = 0;
     m.userData.pxSnap = true;   // texels on the pixel grid (the texture is size × 32 texels: 1:1)
     this.scene.add(m);
-    const it = { obj: m, t: 0, life: o.life ?? D.decalLife, kind: 'decal', mat, shared: true };
+    const it = { obj: m, t: 0, life: o.life ?? D.decalLife, kind: 'decal', mat, shared: true, fade: death ? (D.decalFade ?? 1) : 1 };
     this.items.push(it);
     this.decals.push(it);
     if (this.decals.length > D.maxDecals) { const old = this.decals.shift(); old.t = Math.max(old.t, old.life - 0.4); }
@@ -1213,8 +1254,9 @@ export class Fx {
         it.outer.material.opacity = k < 0.6 ? 1 : 0.55;
         it.core.visible = k < 0.75;
       } else if (it.kind === 'decal') {
-        const left = it.life - it.t;
-        if (left < 1) it.mat.alphaTest = 0.45 + 0.55 * (1 - Math.max(0, left));
+        // Dissolve over the last `fade` seconds, in whole steps (the per-texel alpha noise picks the order).
+        const left = it.life - it.t, F = it.fade || 1;
+        if (left < F) it.mat.alphaTest = 0.45 + 0.55 * Math.ceil((1 - Math.max(0, left) / F) * 12) / 12;
       } else if (it.kind === 'smear') {
         it.tex.offset.x = Math.min(it.n - 1, Math.floor(k * it.n)) / it.n;
       } else if (it.kind === 'dring') {
@@ -1275,13 +1317,15 @@ export class Fx {
       }
     }
 
-    // white hit-flash overlays follow their body (corpse squash, burrow offsets) and switch off
+    // hit-flash overlays follow their body (corpse squash, burrow offsets), count whole frames (white, then
+    // tint) and switch off — frames, not seconds, so a hit-stop shows the same 1 + 2 frames
     for (let i = this.whites.length - 1; i >= 0; i--) {
       const w = this.whites[i];
-      w.t -= dt;
       w.o.position.copy(w.body.position);
       w.o.scale.copy(w.body.scale);
-      if (w.t <= 0 || !w.o.parent) { w.o.visible = false; this.whites.splice(i, 1); }
+      if (w.n > 0) this._flashLook(w.o, w.n);
+      w.n++;
+      if (w.n > w.frames || !w.o.parent) { w.o.visible = false; this.whites.splice(i, 1); }
     }
 
     // corpses: flash → squash & pop → slide → fade

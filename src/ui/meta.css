@@ -1,0 +1,113 @@
+/* Run systems (Stage 7): title modes + Overgrowth, briefing extras (3 areas, finds, attack per path, med kits,
+   re-rolls), the Collection research tree, Results "why". Builds on screens.css / style.css.
+   Sizes are calc(var(--u) * N) = N px on a 960×540 stage; fonts snap to the pixel grid (--fq). */
+
+/* ---------------------------------------------------------------- title: Overgrowth row */
+.og-row {
+  display: flex; flex-direction: column; gap: calc(var(--u) * 3); padding: calc(var(--u) * 5) calc(var(--u) * 10);
+  border: 1px dashed #9a6a20; border-radius: calc(var(--u) * 3); background: rgba(24, 20, 37, 0.8);
+}
+.og-top { display: flex; align-items: center; gap: calc(var(--u) * 6); }
+.og-k { font-family: var(--font-label); color: var(--amber); letter-spacing: round(0.06em, var(--fpx)); text-transform: uppercase; font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); }
+.og-step { padding: calc(var(--u) * 1) calc(var(--u) * 7); min-width: 0; font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
+.og-val { min-width: calc(var(--u) * 26); text-align: center; color: #fff; font-size: max(var(--fq), round(calc(var(--u) * 15 - 0.01px), var(--fq))); }
+.og-top .small.muted { margin-left: auto; }
+.og-line { color: var(--text); line-height: 1.3; }
+
+/* ---------------------------------------------------------------- briefing */
+.mode-tag {
+  align-self: flex-start; font-size: max(var(--fq), round(calc(var(--u) * 10.5 - 0.01px), var(--fq))); color: var(--amber);
+  border: 1px solid #9a6a20; border-radius: calc(var(--u) * 2); padding: 0 calc(var(--u) * 6); background: rgba(0, 0, 0, 0.3); cursor: help;
+}
+.pip-more { color: var(--amber); font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); margin-left: calc(var(--u) * 3); }
+.district-cards.three { grid-template-columns: 1fr 1fr 1fr; }
+.district-cards.three .dc-body { padding: calc(var(--u) * 8) calc(var(--u) * 8); gap: calc(var(--u) * 5); }
+/* three narrow cards: each label sits over its line (the label column ate a third of the width) */
+.district-cards.three .dc-line { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.district-cards.three .dc-k { padding-top: 0; }
+.district-cards.three .dc-more { white-space: nowrap; flex: none; }
+.dc-finds { color: #c8f0b8; }
+.dc-reward .muted { font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); }
+.choose-head .reroll-btn { align-self: center; }
+.reroll-btn .hotkey { margin-left: calc(var(--u) * 6); }
+.reroll-row { display: flex; justify-content: flex-end; margin-top: calc(var(--u) * 6); }
+.attack { display: flex; flex-direction: column; gap: calc(var(--u) * 5); }
+.path-row { display: flex; flex-direction: column; gap: calc(var(--u) * 3); padding: calc(var(--u) * 4) 0; border-top: 1px solid rgba(90, 105, 136, 0.35); }
+.path-name { font-family: var(--font-label); font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); letter-spacing: round(0.08em, var(--fpx)); text-transform: uppercase; color: var(--muted); }
+.shop-row {
+  display: flex; align-items: center; gap: calc(var(--u) * 6); margin-top: calc(var(--u) * 6); padding: calc(var(--u) * 5) calc(var(--u) * 6);
+  border: 1px dashed #3e8948; border-radius: calc(var(--u) * 3);
+}
+.shop-row .small-btn { white-space: nowrap; }
+
+/* ---------------------------------------------------------------- collection: research tree */
+.collection-screen .content.research { display: flex; flex-direction: column; gap: calc(var(--u) * 6); padding-top: calc(var(--u) * 6); padding-bottom: calc(var(--u) * 6); }
+.collection-screen .content.research .intro { margin: 0; }
+.rt-wrap { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: calc(var(--u) * 10); }
+.rt-branch {
+  display: flex; flex-direction: column; gap: calc(var(--u) * 4); padding: calc(var(--u) * 6);
+  border: calc(var(--u) * 2) solid var(--panel-edge); border-top: calc(var(--u) * 3) solid var(--bc); border-radius: calc(var(--u) * 3);
+  background: rgba(24, 20, 37, 0.55);
+}
+.rt-head { display: flex; align-items: baseline; gap: calc(var(--u) * 6); }
+.rt-head b { color: var(--bc); font-size: max(var(--fq), round(calc(var(--u) * 13 - 0.01px), var(--fq))); }
+.rt-head .small.muted { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.rt-body { position: relative; }
+.rt-lines { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.rt-lines svg { position: absolute; left: 0; top: 0; overflow: visible; }
+.rt-lines path { fill: none; stroke: #5a6988; }
+.rt-lines path.lit { stroke: var(--bc); }
+.rt-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: calc(var(--u) * 8) calc(var(--u) * 6); }
+.rt-node {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; column-gap: calc(var(--u) * 4); row-gap: 0;
+  align-items: center; min-width: 0; padding: calc(var(--u) * 3) calc(var(--u) * 4); min-height: calc(var(--u) * 36);
+  text-align: left; background: #1e2238; border: calc(var(--u) * 2) solid #3a4466; border-radius: calc(var(--u) * 3);
+  font-size: max(var(--fq), round(calc(var(--u) * 10.5 - 0.01px), var(--fq))); line-height: 1.15;
+}
+.rt-node > .vicon { grid-row: 1 / span 2; }
+.rt-node .rt-name { color: var(--text); white-space: normal; overflow-wrap: anywhere; align-self: end; }
+.rt-node > :last-child { align-self: start; justify-self: start; }
+.rt-node .rt-tag { font-size: max(var(--fq), round(calc(var(--u) * 9.5 - 0.01px), var(--fq))); white-space: nowrap; }
+.rt-node .res { font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); }
+.rt-node .res.short b { color: #ff9090; }
+.rt-node.owned { border-color: var(--bc); background: rgba(38, 92, 66, 0.45); }
+.rt-node.owned .rt-name { color: #fff; }
+.rt-node.open { border-color: var(--amber); box-shadow: 0 0 calc(var(--u) * 6) rgba(254, 174, 52, 0.4); }
+.rt-node.locked { opacity: 0.55; border-style: dashed; }
+.rt-node.reward { border-style: dashed; border-color: #9a6a20; }
+.rt-node.sel { outline: calc(var(--u) * 2) solid #fff; outline-offset: calc(var(--u) * 1); }
+.rt-node:hover { background: #2c3352; }
+.rt-detail {
+  display: flex; align-items: center; gap: calc(var(--u) * 10); padding: calc(var(--u) * 6) calc(var(--u) * 10);
+  border: calc(var(--u) * 2) solid var(--panel-edge); border-left: calc(var(--u) * 4) solid var(--bc); border-radius: calc(var(--u) * 3);
+  background: rgba(38, 43, 68, 0.6); min-height: calc(var(--u) * 40);
+}
+.rt-detail .grow { display: flex; flex-direction: column; gap: calc(var(--u) * 2); min-width: 0; }
+.rt-dname b { color: #fff; }
+.rt-buy { display: flex; flex-direction: column; align-items: flex-end; gap: calc(var(--u) * 2); }
+.rt-loadout { display: flex; gap: calc(var(--u) * 20); flex-wrap: wrap; }
+.rt-loadout .weapon-toggle .seg { flex-direction: row; width: auto; flex-wrap: wrap; }
+.rt-loadout .weapon-toggle .seg-btn { width: auto; }
+.stat-grid.modes { margin-top: calc(var(--u) * 8); }
+
+/* ---------------------------------------------------------------- results */
+.res-mode { color: var(--amber); cursor: help; }
+.res-why {
+  text-align: left; padding: calc(var(--u) * 5) calc(var(--u) * 8); border: 1px solid #a22633; border-radius: calc(var(--u) * 3);
+  background: rgba(162, 38, 51, 0.18); font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); line-height: 1.3;
+}
+.results-panel.long .res-headline { color: var(--accent); }
+
+/* ---------------------------------------------------------------- title: compact menu (modes open) */
+.menu-col.compact { gap: calc(var(--u) * 5); }
+.menu-col.compact .menu-btn { padding: calc(var(--u) * 4) calc(var(--u) * 12); }
+.menu-col.compact .mlabel { font-size: max(var(--fq), round(calc(var(--u) * 15 - 0.01px), var(--fq))); }
+.menu-col.compact .msub { font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu-pair { display: flex; gap: calc(var(--u) * 5); }
+.menu-pair .menu-btn { flex: 1 1 0; min-width: 0; }
+.menu-pair .mbtn { min-width: 0; }
+.menu-pair .menu-btn { padding-right: calc(var(--u) * 30); }
+/* the research nudge inside the records panel (bottom right) */
+.title-stats .title-nudge { width: auto; margin-top: calc(var(--u) * 4); }
+/* results: four tiles in a 2 × 2 grid (Total Research folded into "Research earned") */
+.results-panel .res-grid .stat-tile.stat-tile:last-child { grid-column: auto; }

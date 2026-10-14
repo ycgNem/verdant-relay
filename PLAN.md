@@ -44,11 +44,15 @@ verdant-relay/
       Fx.js                  particles, rings, bolts, telegraphs, corpses/splats, muzzle flashes, hit-stop, floating text
       Run.js                 run state: districts, resources, costs w/ skills, towers, boons, Intel, research, saves
       Save.js                versioned localStorage meta + run (strict validation)
-      Music.js               procedural WebAudio music (title/day/night/boss/results/defeat)
-      Sfx.js  Input.js  rng.js
+      Music.js               procedural WebAudio music (title/day/dusk/night/boss/results/defeat) + jungle combat layer
+      Sfx.js                 audio engine: mix buses → compressor → limiter, synthesized one-shots, play / playAt (positional)
+      AmbientAudio.js        jungle beds (wind, insects, cicadas, water, rain) + bird / cricket / frog calls
+      AudioDirector.js       reads the scene: ambience profile, footsteps, heartbeat, E-hold ticks, combat music, alarms
+      synth.js  Input.js  rng.js
     data/                    ALL tuning lives here
       config.js (player, expedition byNight, relay, intel, pixel, JUICE, ui) towers.js enemies.js waves.js
-      jungle.js (world gen, DAY, POP, ATMOS, REGION_LOOK) districts.js objectives.js skills.js unlocks.js defenseMap.js visuals.js music.js
+      jungle.js (world gen, DAY, POP, ATMOS, REGION_LOOK) districts.js objectives.js skills.js crafting.js unlocks.js defenseMap.js visuals.js music.js audio.js
+      guide.js (guided day, verb TIPS, readiness) hud.js (maps, HUD) controls.js (key bindings)
     world/
       JungleGen.js           the persistent 192×192 jungle: regions, rivers, sites, trails, undergrowth, trees, loot, pylons
       JungleWorld.js         chunk streaming, upright-card foliage, collision, cutting, canopy shade
@@ -60,6 +64,7 @@ verdant-relay/
       collide.js             ray-cast helpers (telegraph lengths)
     entities/
       Player.js              machete: 3-hit combo, charged chop, dodge roll, stamina, hurt/i-frames, meds
+      BladeKit.js            the run's machete kit (skills + Workbench upgrades): derived weapon spec, Serrated Edge bleed
       ExploreEnemy.js        spawn/idle/chase/windup/attack/recover/stunned state machine, flow-field pathing, brush slip/crash
       ExploreShots.js        pooled bullets, bolts, sap globs, cutter sweep
       DefenseEnemy.js        waypoint follower, slow/root, burrow, spit, seed burst, Colossus phases + enrage
@@ -70,6 +75,7 @@ verdant-relay/
       MenuBackdrop.js        a slow drift over the jungle around the Relay behind the menus
     ui/
       ui.js screensKit.js hints.js JungleMap.js   DOM helpers, menu kit, one-time hints, jungle minimap/Tab map (fog of war)
+      workbench.js           camp crafting UI: the Workbench step, night prep's mod socket row, Codex skills / recipes
       style.css screens.css explore.css jungle.css defense.css
 ```
 
@@ -134,6 +140,65 @@ simpler to the public's eye.
 - [x] Simplicity pass: guided first day, plain-language UI, decluttered HUD/menus/night prep, one colour language
       (tuning in `src/data/guide.js`; DESIGN.md §8)
 - [x] Newcomer playtest (fresh-eyes critic) + fixes
+
+### Stage 7: Harsh-critic overhaul and expansion (2026-10-13)
+Five critics (`critique/critic_H` art, `I` combat, `J` design/content, `K` tower defense, `L` first hour/UX/audio) agreed:
+gorgeous assets, shallow game. The night-3 cliff ends runs, the night is spectating, the boss can't be killed, upgrades
+are a trap, walking beats every enemy, the jungle is silent, districts look alike, and there is ~15–20% of a $10–15
+roguelite's content. Work is split into agent-owned streams (each keeps DESIGN/ARCH/STYLE in sync).
+
+Wave A — feel, look, sound
+- [x] Audio: jungle ambience bed, footsteps by surface, mix buses + compressor, positional world sounds, split overloaded
+      sounds, missing tower/hold/extract sounds, dusk mood + combat layer, master/ambience volume + mute (critic L §7)
+- [x] Combat: tracking lunges, no stacking, silhouettes never over the player, stamina/cutting rework, Feral spawn fix,
+      **deflect/riposte**, roll buffer + perfect-dodge reward, **environmental kills**, **Feral spear throw**,
+      **Thorn Stalker**, **machete throw (F)**, status effects, corner nudge, breakpoints, elite second move (critic I)
+- [x] Jungle visuals: value hierarchy (lit paths), per-district grades, golden-hour dusk + emissive night, world-anchored
+      dithers, hand-drawn leaf frame, water waterline/ripples, effect palette, Feral palette swap, prop clearance (critic H)
+- [ ] Art: hand-made leaf frame, ripple/splash, spore pod/puffs, wordmark logo, unlock icons, panel frame; PixelLab
+      (last 10 of the 300 cap) Relay, pylon, four district hero ruins, area-boss sprites
+
+Wave B — the night becomes a game (critic K + J M1/M2)
+- [x] Night board: integer-scale pixel-exact night with zoom/pan camera, lanes clear of scenery, no enemy-on-enemy x-ray,
+      decluttered board, **map variants** (lanes face the jungle; the area's danger enters from its side; online beacons
+      add forward pads), 720p UI fit, leak feed + breakdown, truthful per-lane readiness, visible rewards.
+      Done: `NightCamera` (whole zooms, wheel / + − / right-middle drag / arrows / Home), 23×15 field that fits ×1 at
+      720p and ×2 at 1080p/1440p, `DEFENSE_MAPS` twin / crossing / ford (`run.mapKey` from the seed), `laneForDistrict`
+      danger lane, beacon forward pads, per-texel card filter on lanes/pads, painter's-order units (no silhouettes),
+      jungle PostFx night grade with emissive eyes/crystal and lamp light pools, worn trails, quiet pads/rings, wet-lane
+      and glint rewards, compact build list + Upgrade/Sell row + styled tooltips, leak feed / banner line /
+      `run.lastNight`. Readiness content is the mechanics stream's (laid out here)
+- [ ] Night mechanics: **Relay Protocols** (active abilities during waves), **mid-night pushes** with build lulls and
+      call-early, **L3 branches** + upgrade economics, tank counters, **killable boss siege**, Seed Carrier/Mortar fix,
+      **wave variants**, smoothed HEALTH_MULT (no N3 cliff), Relay stipend, post-night salvage pick, 3× speed
+- [x] Run systems: death rules (salvage ≤ carried, dawn HP, reward needs extraction, home confirm, mid-day quit =
+      abandon), honest area cards, **research tree** (21 nodes in 3 branches + 3 hidden future towers), **Overgrowth
+      1–10**, **Long Night** endless, daily seed, clean title, Results "what got through". (Camp crafting landed with
+      the skill rework below, the Workbench.) Not done: the hidden tower nodes (Sap Cannon, Lure Totem, Bramble
+      Wall) wait for a stage that builds the towers
+
+Wave C — the jungle gets content (critic J M3–M5, M7, N2, N4; critic L UX)
+- [x] **Relics** (24; lost sites, landmark shrines, hidden caches, bosses; carried until home), Codex: `src/data/relics.js`
+      (11 common / 9 rare / 4 cursed, every effect read through `Run.relicMod`), strongboxes at lost majors (~4 a
+      jungle), a pick-of-two shrine at every landmark (5), 12% of hidden caches, `scene.dropRelic` for area bosses;
+      carried on the HUD, banked on getting home, lost on going down; summary Found / Lost, night prep lines, Codex
+      Relics N/24 with silhouettes (`meta.relicsSeen`). Icons `relic_<id>` (pixel-art `manifest.v3relics.json`)
+- [ ] **Events wired** + 5 new goal types (Escort, Hold the uplink, Track the Alpha, Haul, Purge the bloom)
+- [ ] **Area bosses** (one per area from day 3; a kill removes that area's danger for the run), later-day creatures
+- [x] Named landmarks + lore logs: every major site and landmark named (`src/data/lore.js`; big map once mapped, a
+      banner on first entry), landmark extras (radio mast maps 40 tiles, glasshouse heals 40), 20 data logs read in
+      story order (~10 spots a jungle, ~3–4 a run), kept in `meta.lore` and re-readable in the Codex
+- [ ] **Weather / day modifiers**
+- [x] Skill rework (machete branch, keystones, weighted offers) + **camp crafting**: 22 skills in 4 branches (Scavenger,
+      **Machete**: Riposte Master / Second Wind / Brush Dancer / Cleaver / Hunter, Engineer, Warden), one ★ keystone each
+      (Salvage King, Duelist, Chain Reaction, Grove Warden) after 2 of its branch, offers 60% toward owned branches,
+      1 point a trip + 1 per area boss (~6–8 skills a run), old ids mapped (Pack Rat I+II, Long Sightlines + Overclock, …;
+      removed → refunded point). The **Workbench** step after the summary (`src/data/crafting.js`): 4 tower mods (one
+      socket per tower, fitted in night prep), 3 machete upgrades, med kit, Relay plating; Codex sections (critic J §3,
+      §8, M7, M9)
+- [ ] UX: teach every verb in context, HUD legibility, keyboard parity, settings (rebinding, fullscreen), river/beacon
+      wayfinding, a guided day that pays
+- [ ] Fresh critic round on the result
 
 ## Acceptance checklist
 

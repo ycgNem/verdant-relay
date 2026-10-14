@@ -2,16 +2,24 @@
 //
 // Phases:
 //   prep  build / upgrade / sell / set targeting / repair, read the wave preview, then Start Wave.
-//   wave  enemies spawn from the night's schedule; no building, upgrades or repairs. Pause, 1×/2×.
-//   won   "Night N survived" banner, then next night's briefing (or results after night 6).
+//   wave  a push is running: enemies spawn from its schedule; no building, upgrades or repairs.
+//         Pause, 1×/2×/3×, targeting, Relay Protocols (Q/W/E, DefenseProtocols.js).
+//   lull  between two pushes (DEFENSE.lull s, real time): build / upgrade / sell / repair like prep;
+//         "Call next push" (N) ends it early for Scrap. Once a push has finished spawning, the next one
+//         can also be called while its last enemies still walk in (no lull, full bonus).
+//   won   "Night N survived" banner with the salvage pick, then next night's briefing (or results).
 //   lost  the Relay fell: banner, then results.
+// Rules entry points: startWave → _startPush(k) → _step (spawns, protocols, push end → lull / _endNight),
+// damage → _kill (bounties, Seed Carrier blast tag, boss), enemyReachedCore / spitAtCore / bossSlam → coreHit.
 //
 // Run state (resources, towers, relay HP) lives in game.run (src/core/Run.js) — this scene only
 // keeps views of it (Tower / DefenseEnemy objects) and the transient wave state.
 //
 // Saving: every prep action re-saves the 'prep' snapshot; Start Wave saves a 'wave' snapshot (build
-// locked, Relay HP as the wave began). Continue from 'wave' re-enters here and restarts the wave at
-// once. Surviving saves the next 'briefing' immediately (before the banner); a defeat clears the save.
+// locked, Relay HP as the wave began, run.wavePush 0). A lull saves a 'wave' snapshot with run.wavePush =
+// the next push (and again after every lull action). Continue from 'wave' re-enters here: push 0 restarts
+// the night at once; a later push re-enters its lull. Surviving saves the next 'briefing' immediately
+// (before the banner); a defeat clears the save.
 
 import * as THREE from 'three';
 import { buildDefenseGround, makePlinth } from '../world/DefenseGround.js';
@@ -24,10 +32,20 @@ import { Fx } from '../core/Fx.js';
 import { PixelCamera } from '../core/PixelView.js';
 import { updateVisual, flashVisual, setAnim } from '../core/Assets.js';
 import { CONFIG, RESOURCE_KEYS } from '../data/config.js';
-import { TOWERS, TARGET_RULES, TARGET_RULE_TEXT, TARGET_RULE_LABEL } from '../data/towers.js';
+import { TOWERS, TARGET_RULES, TARGET_RULE_TEXT, TARGET_RULE_LABEL, BRANCH_KEYS, branchOf } from '../data/towers.js';
 import { DEFENSE_ENEMIES } from '../data/enemies.js';
-import { WAVES, HEALTH_MULT, DEFENSE } from '../data/waves.js';
-import { DEFENSE_MAP, DEFENSE_VIEW } from '../data/defenseMap.js';
+import { WAVE_VARIANTS, DEFENSE, SALVAGE, healthMult, waveFor, variantFor } from '../data/waves.js';
+import { PROTOCOLS } from '../data/protocols.js';
+import { ProtocolDeck } from './DefenseProtocols.js';
+import { forecastNight } from './DefenseForecast.js';
+import { DEFENSE_MAP, DEFENSE_VIEW, mapFor, forwardSlots, laneForAngle } from '../data/defenseMap.js';
+import { NightCamera } from '../world/NightCamera.js';
+import { laneTint } from '../world/DefenseGround.js';
+import { worldForRun, compass } from '../world/JungleGen.js';
+import { DISTRICT_KEYS } from '../data/districts.js';
+import { radialGlowTexture, lightPool } from '../core/PixelGlow.js';
+import { PostFx } from '../core/PostFx.js';
+import { GROUND } from '../world/DefenseGround.js';
 import { DISTRICTS } from '../data/districts.js';
 import { SKILLS } from '../data/skills.js';
 import { Lane, DefenseEnemy } from '../entities/DefenseEnemy.js';
@@ -35,13 +53,14 @@ import { Tower } from '../entities/Tower.js';
 import { Projectiles } from '../entities/Projectiles.js';
 import { openSettingsOverlay } from './SettingsScene.js';
 import { READINESS } from '../data/guide.js';
+import { modRow } from '../ui/workbench.js';
+import { relicIcon, relicTitle } from '../ui/relics.js';
 
 const DEG = Math.PI / 180;
 const UI_W = 960, UI_H = 540;   // UI unit space (see style.css --u)
 
 // Skills that change the defense, shown in the preview's modifier list.
-const DEFENSE_SKILLS = ['efficient_assembly', 'circuit_recovery', 'long_sightlines', 'field_tuning', 'overclock', 'emergency_patch',
-  'reinforced_core', 'prepared_defenses', 'watchtower_network', 'last_stand', 'rapid_response', 'living_barricade'];
+// (Skills that change the defense carry `night: true` in src/data/skills.js.)
 
 /**
  * Scale a wave's total enemy count by `mult` (boons, Intel sabotage). The change is applied to the
@@ -67,57 +86,93 @@ function scaleWaveCount(groups, mult) {
 
 /**
  * Build tonight's spawn schedule from data. Steps:
- *  1. Take the authored groups for this night (WAVES[night − 1]).
- *  2. District threats add `tonight.extraGroups`. They are scheduled mid-wave, spread evenly between
- *     DEFENSE.extraGroupFrom and extraGroupTo of the authored wave's length, alternating lanes (the
- *     first goes to the lane with fewer authored enemies). Each uses the enemy type's own spawn gap;
- *     its count is scaled by DEFENSE.threatScale[night − 1] (smaller threats on the first nights).
+ *  1. Take tonight's variant (waveFor(night, variantFor(run)): A/B/C per run and night, generated past
+ *     night 6). Groups belong to pushes; `at` counts from the start of their push.
+ *  2. District threats add `tonight.extraGroups`. They come in push DEFENSE.extraPush (the last push if the
+ *     night has fewer), spread evenly between DEFENSE.extraGroupFrom and extraGroupTo of that push's length.
+ *     They take `opts.dangerLane` (the map lane facing tonight's area, when the map has one) or else
+ *     alternate lanes, the first going to the lane with fewer authored enemies. Each uses the enemy type's
+ *     own spawn gap; its count is scaled by DEFENSE.threatScale[night − 1] (smaller threats early).
  *  3. tonight.enemyCount (objective boons, optional flags, Intel sabotage) scales the whole wave's
  *     count (see scaleWaveCount). The cuts stack but are floored at CONFIG.waveSizeFloor (−20%).
- *  4. Groups expand into one spawn event per enemy, sorted by time.
- * Per-enemy modifiers (HP × HEALTH_MULT[night − 1], tonight.enemySpeed, laneSlow, Rapid Response)
- * are applied when each enemy spawns / moves, not here.
+ *  4. Lanes are taken % opts.lanes (a map may have 2 or 3 lanes). Groups expand into one spawn event per
+ *     enemy { push, t (from its push's start), lane, type, hpMult? }, sorted by push, then time.
+ * Per-enemy modifiers (HP × healthMult(night) or the group's hpMult, tonight.enemySpeed, laneSlow,
+ * Rapid Response) are applied when each enemy spawns / moves, not here.
+ * Returns { variant, name, groups, events, pushes (count), pushEvents ([[events]]), total, perLane, duration }.
  */
-export function buildWave(run) {
-  const night = Math.max(1, Math.min(WAVES.length, run.night));
+export function buildWave(run, opts = {}) {
+  const night = Math.max(1, run.night);
+  const nLanes = Math.max(1, opts.lanes || DEFENSE_MAP.lanes.length);
   const t = run.tonight || {};
   const mult = run.waveCountMult ? run.waveCountMult() : Math.max(CONFIG.waveSizeFloor ?? 0, t.enemyCount ?? 1);
-  const groups = WAVES[night - 1].map((g) => ({ ...g, extra: false }));
-  const length = Math.max(...groups.map((g) => g.at + g.gap * (g.count - 1)));
-  const load = [0, 0];
+  const variant = variantFor(run);
+  const W = waveFor(night, variant);
+  const groups = W.groups.map((g) => ({ ...g, push: g.push || 0, lane: ((g.lane % nLanes) + nLanes) % nLanes, extra: false }));
+  const pushes = W.pushes;
+  const xp = Math.min(pushes - 1, DEFENSE.extraPush ?? 0);
+  const inPush = groups.filter((g) => g.push === xp);
+  const length = Math.max(1, ...inPush.map((g) => g.at + g.gap * (g.count - 1)));
+  const load = new Array(nLanes).fill(0);
   for (const g of groups) load[g.lane] += g.count;
-  let lane = load[0] <= load[1] ? 0 : 1;
+  let lane = load.indexOf(Math.min(...load));
   const extras = t.extraGroups || [];
+  const scale = DEFENSE.threatScale?.[Math.min(DEFENSE.threatScale.length, night) - 1] ?? 1;
   extras.forEach((x, i) => {
     const f = extras.length === 1
       ? (DEFENSE.extraGroupFrom + DEFENSE.extraGroupTo) / 2
       : DEFENSE.extraGroupFrom + (DEFENSE.extraGroupTo - DEFENSE.extraGroupFrom) * (i / (extras.length - 1));
     const def = DEFENSE_ENEMIES[x.type];
     groups.push({
-      at: Math.round(length * f * 10) / 10, lane, type: x.type,
-      count: Math.max(1, Math.round(x.count * (DEFENSE.threatScale?.[night - 1] ?? 1))), gap: x.gap ?? def?.gap ?? 1, extra: true,
+      push: xp, at: Math.round(length * f * 10) / 10, lane: opts.dangerLane ?? lane, type: x.type,
+      count: Math.max(1, Math.round(x.count * scale)), gap: x.gap ?? def?.gap ?? 1, extra: true,
     });
-    lane = 1 - lane;
+    lane = (lane + 1) % nLanes;
   });
   scaleWaveCount(groups, mult);
   const events = [];
   for (const g of groups) {
     if (!DEFENSE_ENEMIES[g.type]) continue;
-    for (let k = 0; k < g.count; k++) events.push({ t: g.at + k * g.gap, lane: g.lane, type: g.type });
+    for (let k = 0; k < g.count; k++) events.push({ push: g.push, t: g.at + k * g.gap, lane: g.lane, type: g.type, hpMult: g.hpMult });
   }
-  events.sort((a, b) => a.t - b.t);
+  events.sort((a, b) => a.push - b.push || a.t - b.t);
+  const pushEvents = Array.from({ length: pushes }, (_, k) => events.filter((e) => e.push === k));
   // Preview: counts per lane per type (in order of first appearance).
-  const perLane = [new Map(), new Map()];
+  const perLane = Array.from({ length: nLanes }, () => new Map());
   for (const e of events) perLane[e.lane].set(e.type, (perLane[e.lane].get(e.type) || 0) + 1);
-  return { groups, events, total: events.length, perLane, duration: events.length ? events[events.length - 1].t : 0 };
+  return {
+    variant, name: W.name, groups, events, pushes, pushEvents, total: events.length, perLane,
+    duration: pushEvents.reduce((s, p) => s + (p.length ? p[p.length - 1].t : 0), 0),
+  };
 }
 
-/** Is this enemy type new tonight (not in any earlier night's authored wave)? */
+/** Is this enemy type new tonight (not in any earlier night's waves, any variant)? */
 function isNewType(type, night) {
-  return !WAVES.slice(0, night - 1).some((w) => w.some((g) => g.type === type));
+  return !WAVE_VARIANTS.slice(0, night - 1).some((vs) => vs.some((v) => v.groups.some((g) => g.type === type)));
 }
 
 const fmt = (n, d = 1) => (Math.round(n * 10 ** d) / 10 ** d).toString();
+
+/** Readable name of a Relay-damage source: an enemy type key, 'sap' (Spitter globs) or 'colossus' (slams). */
+export function leakName(src, plural = false) {
+  if (src === 'sap') return 'Spitter sap';
+  if (src === 'colossus') return plural ? 'Colossus slams' : 'Colossus slam';
+  const n = DEFENSE_ENEMIES[src]?.name || src;
+  return plural ? `${n}s` : n;
+}
+
+/**
+ * One line on what got through tonight, worst first: "4 Ruin Guards −40 · Spitter sap −20 · 2 Razorbacks −18"
+ * (from nightStats / run.lastNight { leaks: count per source, leakHp: damage per source }). '' if nothing.
+ */
+export function leakSummaryText(night, max = 4) {
+  const hp = night?.leakHp || {}, n = night?.leaks || {};
+  const rows = Object.keys(hp).filter((k) => hp[k] > 0).sort((a, b) => hp[b] - hp[a]);
+  if (!rows.length) return '';
+  const part = (k) => (k === 'sap' ? `${leakName(k)} −${Math.round(hp[k])}`
+    : `${n[k] > 1 ? `${n[k]} ` : ''}${leakName(k, n[k] > 1)} −${Math.round(hp[k])}`);
+  return rows.slice(0, max).map(part).join(' · ') + (rows.length > max ? ' · …' : '');
+}
 
 export class DefenseScene {
   constructor(game) {
@@ -139,7 +194,10 @@ export class DefenseScene {
     this.three.background = new THREE.Color(DEFENSE_VIEW.background);
     // Orthographic, exactly 32 px per tile (sprites 1:1), rendered at DEFENSE_VIEW.res (1280×720).
     this.camera = new PixelCamera({ dist: 30, near: 0.5, far: 300 });
-    game.assets.setTint(DEFENSE_VIEW.spriteTint);
+    // Night grade (critic H §4.4–4.5): the jungle's PostFx at full dark (DEFENSE_VIEW.post): moonlit blue, while
+    // glowing texels (eyes, the Relay crystal) and light pools keep their colour. Off: the older lit-scene look.
+    this._buildPost();
+    game.assets.setTint(this.spriteTint);
 
     // Tonight's night number / modifiers as they were when the scene opened: run.nightSurvived()
     // advances run.night and clears run.tonight before the "survived" banner, and the HUD and side
@@ -149,10 +207,15 @@ export class DefenseScene {
     this.district = run.district;
     const resumeWave = run.phase === 'wave';
 
-    this.lanes = DEFENSE_MAP.lanes.map((d, i) => new Lane(d, i));
-    this.corePos = new THREE.Vector3(DEFENSE_MAP.core.x, 0, DEFENSE_MAP.core.y);
-    this.coreRadius = DEFENSE_MAP.coreRadius;
-    this.hpMult = HEALTH_MULT[Math.max(0, Math.min(HEALTH_MULT.length, run.night) - 1)] ?? 1;
+    // The run's night map (src/data/defenseMap.js; run.mapKey, 'twin' for old saves).
+    this.map = mapFor(run);
+    this.lanes = this.map.lanes.map((d, i) => new Lane(d, i));
+    this.corePos = new THREE.Vector3(this.map.core.x, 0, this.map.core.y);
+    this.coreRadius = this.map.coreRadius;
+    // Enemy health tonight: the night curve (healthMult) × any run modifier (Run.nightHpMult, e.g. Overgrowth).
+    this.hpMult = run.nightHpMult ? run.nightHpMult() : healthMult(run.night);
+    // The lane facing tonight's area: its danger group comes down it (buildWave via _waveOpts).
+    this.dangerLane = this.laneForDistrict(this.district);
 
     this._makeShared();
     this.fx = new Fx(game, this.three, this.camera);
@@ -164,8 +227,7 @@ export class DefenseScene {
     this._buildPads();
     this._buildIndicators();
     this._buildChevrons();
-    game.setInternalRes(...DEFENSE_VIEW.res);
-    this._fitCamera();
+    this._fitCamera();   // NightCamera: integer zoom (pixel-exact like the day), framed on the board
 
     // State
     this.phase = 'prep';
@@ -187,7 +249,12 @@ export class DefenseScene {
     this.endTimer = 0;
     this.coreHitT = 0;
     this.overUi = false;
-    this.wave = buildWave(run);
+    this.wave = buildWave(run, this._waveOpts());
+    // Night bookkeeping for the rules (leaks by type, protocol casts, boss outcome) and the salvage pick.
+    this.nightStats = { leaks: {}, leakHp: {}, protocols: 0, bossKilled: false, bossSpent: false, callEarly: 0 };
+    this.pushIdx = -1;
+    this.lullT = 0;
+    this.protocols = new ProtocolDeck(this);
 
     this._buildUI();
     this._bindInput();
@@ -203,7 +270,7 @@ export class DefenseScene {
     const bossLane = this.wave.events.find((e) => DEFENSE_ENEMIES[e.type]?.boss)?.lane;
     this._hintQueue = [
       { id: 'def_boss_target', pos: 'map-bottom-left', when: () => this.phase === 'prep' && bossLane != null,
-        html: `The <b>${DEFENSE_ENEMIES.colossus.name}</b> comes down the <b>${this.lanes[bossLane ?? 0]?.name}</b> tonight. Select the towers covering it and set targeting to <b>Toughest</b> (<span class="key">T</span>) so they focus the boss; leave the other path on <b>First in line</b>.` },
+        html: `The <b>${DEFENSE_ENEMIES.colossus.name}</b> comes down the <b>${this.lanes[bossLane ?? 0]?.name}</b> in the last push. Set <b>one or two</b> towers deep on its path to <b>Toughest</b> (<span class="key">T</span>); keep the rest on <b>First in line</b> for its escort. On the plaza it stops and slams the Relay until it dies.` },
       { id: 'def_build', pos: 'map-bottom-left', when: () => this.phase === 'prep', spot: () => this._padHintSpot(),
         html: 'Enemies walk the dirt paths to your base. <b>Click a glowing square</b> beside a path to build a tower there.' },
       { id: 'def_select', pos: 'map-bottom-left', when: () => this.phase === 'prep' && this.towers.length > 0,
@@ -216,8 +283,12 @@ export class DefenseScene {
         html: `You found <b>Intel</b>. Spend it under the enemy list: <b>Read it</b> (${CONFIG.intel.decryptCost} Intel → ${CONFIG.intel.decryptResearch} Research, kept forever) or <b>Disrupt the attack</b> (${CONFIG.intel.sabotageCost} Intel → ${Math.round((1 - CONFIG.intel.sabotageWave) * 100)}% fewer enemies tonight).` },
       { id: 'def_wave', pos: 'map-bottom-left', when: () => this.phase === 'wave',
         html: 'Enemies that reach the Relay damage it. Pause with <span class="key">Esc</span>, speed up with <span class="key">F</span>.' },
+      { id: 'def_protocol', pos: 'map-bottom-left', when: () => this.phase === 'wave' && this.protocols.keys.length > 0 && this.waveTime > 6,
+        html: `<b>Relay Protocols</b>: press <span class="key">${PROTOCOLS.vine_snare.hotkey}</span> (or its button on the right), then click the path: <b>Vine Snare</b> roots every enemy in the circle for 2 s. It recharges in ${PROTOCOLS.vine_snare.cooldown} s.` },
+      { id: 'def_lull', pos: 'map-bottom-left', when: () => this.phase === 'lull',
+        html: `A lull between pushes: you can <b>build, upgrade and repair</b> now. The next push comes when the timer runs out, or <b>call it early</b> (<span class="key">N</span>) for bonus Scrap.` },
       { id: 'def_boss', pos: 'map-bottom-left', when: () => this.phase === 'wave' && !!this.boss,
-        html: 'The <b>Canopy Colossus</b> roots itself to spawn Crawlers (the <b style="color:#63c74d">filled green disc</b> around it), then charges along the <b>red</b> path. Your Mortar Pod landings show as <b style="color:#feae34">dashed amber rings</b>. At 60% health it <b>roars and enrages</b>: its bark hardens, it charges faster, and Skitters sprout with its roots. Slow it and focus fire.' },
+        html: 'The <b>Canopy Colossus</b> roots itself to spawn Crawlers (the <b style="color:#63c74d">filled green disc</b> around it), then charges along the <b>red</b> path — a <b>Vine Snare</b> on it cancels the charge. At 60% health it <b>roars and enrages</b>: it charges faster and Skitters sprout with its roots. On the plaza it stops and <b>slams the Relay</b> every few seconds until it dies.' },
     ];
     this._curHint = null;
 
@@ -232,22 +303,43 @@ export class DefenseScene {
       },
       setSpeed: (n) => { this.speed = Math.max(0.25, Math.min(16, n)); this._refreshTop(true); return this.speed; },
       money: (n = 500) => { run.add({ scrap: n, circuits: Math.ceil(n / 25), biofiber: Math.ceil(n / 25) }); this.sideDirty = true; this._refreshTop(true); return { ...run.res }; },
-      state: () => ({ phase: this.phase, waveTime: this.waveTime, enemies: this.enemies.length, toSpawn: this.events ? this.events.length - this.spawnIdx : this.wave.total, relayHp: run.relayHp, res: { ...run.res }, towers: run.towers.length }),
+      state: () => ({ phase: this.phase, waveTime: this.waveTime, push: this.pushIdx, pushes: this.wave.pushes, lullT: this.lullT, enemies: this.enemies.length, toSpawn: this.events ? this.events.length - this.spawnIdx : this.wave.total, relayHp: run.relayHp, res: { ...run.res }, towers: run.towers.length, variant: this.wave.name }),
+      callNext: () => this.callNextPush(),
+      cast: (key, x, z) => this.protocols.cast(key, { x, z }),
     };
     this._alive = true;
 
-    // Continue from a mid-wave quit: the build was locked when the wave began, so restart it now.
+    // Continue from a mid-wave quit: push 0 restarts the night with the build locked when it began; a
+    // later push re-enters the lull before it (the snapshot was taken there, build as it stood).
     if (resumeWave) {
-      this.startWave();
-      toast(game.ui, `Night ${this.night}: the wave restarts — your build was locked when it began`, 'amber', 3.5);
-      // A short "get ready" beat before the restarted wave runs (DEFENSE.resumeReady seconds).
-      this.readyT = DEFENSE.resumeReady || 0;
-      if (this.readyT > 0) {
-        this.readyEl = el('div.df-ready', {}, el('div.df-ready-t', 'Get ready'), el('div.df-ready-s', ''));
-        this.uiRoot.append(this.readyEl);
+      const k = Math.max(0, Math.min((this.wave.pushes || 1) - 1, run.wavePush || 0));
+      this.startWave(k);
+      if (k > 0) {
+        toast(game.ui, `Night ${this.night}: back in the lull before push ${k + 1} of ${this.wave.pushes}`, 'amber', 3.5);
+      } else {
+        toast(game.ui, `Night ${this.night}: the wave restarts — your build was locked when it began`, 'amber', 3.5);
+        // A short "get ready" beat before the restarted wave runs (DEFENSE.resumeReady seconds).
+        this.readyT = DEFENSE.resumeReady || 0;
+        if (this.readyT > 0) {
+          this.readyEl = el('div.df-ready', {}, el('div.df-ready-t', 'Get ready'), el('div.df-ready-s', ''));
+          this.uiRoot.append(this.readyEl);
+        }
       }
     }
   }
+
+  /** buildWave options from this map: lane count, and the lane facing tonight's area if the map has one. */
+  _waveOpts() {
+    const dl = typeof this.dangerLane === 'function' ? this.dangerLane(this.district) : this.dangerLane;
+    return { lanes: this.lanes.length, dangerLane: Number.isInteger(dl) && dl >= 0 && dl < this.lanes.length ? dl : undefined };
+  }
+
+  /** Flares (Relay Protocols): is p lit? / damage multiplier for a tower standing at p. */
+  litAt(p) { return this.protocols?.litAt(p) ?? false; }
+  flareMult(p) { return this.protocols?.flareMult(p) ?? 1; }
+
+  /** Build / upgrade / sell / repair are open (prep, or a lull between pushes). */
+  get canBuild() { return this.phase === 'prep' || this.phase === 'lull'; }
 
   exit() {
     if (!this._alive) return;
@@ -260,6 +352,12 @@ export class DefenseScene {
     this.enemies = [];
     for (const t of this.towers) t.dispose();
     this.towers = [];
+    this.protocols?.dispose();
+    this.cam?.dispose();
+    this._tip?.remove();
+    this.post?.dispose();
+    this._postShade?.dispose();
+    this.post = null;
     this.projectiles.dispose();
     this.fx.dispose();
     for (const v of this._visuals) game.assets.disposeVisual(v);
@@ -376,8 +474,35 @@ export class DefenseScene {
     return m;
   }
 
+  /** The night grade (DEFENSE_VIEW.post): a PostFx pass with no canopy, no player light, the moon at full dark. */
+  _buildPost() {
+    const P = DEFENSE_VIEW.post;
+    this.post = null;
+    this.lightCfg = DEFENSE_VIEW.light;
+    this.spriteTint = DEFENSE_VIEW.spriteTint;
+    if (!P?.on) return;
+    this.post = new PostFx(this.game);
+    this._postShade = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat);
+    this._postShade.needsUpdate = true;
+    this.post.setWorld({ shadeTex: this._postShade, gradeTex: null, size: GROUND.size });
+    const U = this.post.uniforms;
+    U.uTint.value.setRGB(...P.tint);
+    U.uAmbient.value = P.ambient;
+    U.uDark.value = 0;
+    U.uLightR.value = 1e6;     // no player light radius: the whole board is lit
+    U.uLamp.value = 0;
+    U.uDapple.value = 0;
+    U.uCardK.value = 1;        // no stepped card shade (it would dither every card)
+    U.uMoonFloor.value = P.moonFloor;
+    U.uNightLift.value.set(...P.lift);
+    U.uEmit.value = P.emit;
+    U.uVignette.value = P.vignette;
+    this.lightCfg = { ...DEFENSE_VIEW.light, ...P.light };
+    this.spriteTint = P.spriteTint;
+  }
+
   _buildLights() {
-    const L = DEFENSE_VIEW.light;
+    const L = this.lightCfg;
     this.three.add(new THREE.HemisphereLight(L.hemiSky, L.hemiGround, L.hemi));
     const moon = new THREE.DirectionalLight(L.moon, L.moonI);
     moon.position.set(-12, 20, -8);
@@ -387,19 +512,61 @@ export class DefenseScene {
     this.coreLight.position.set(this.corePos.x, 2.4, this.corePos.z);
     this.three.add(this.coreLight);
     this.coreLightColor = new THREE.Color(L.core);
-    for (const [x, y] of DEFENSE_MAP.lamps || []) {
+    for (const [x, y] of this.map.lamps || []) {
       const l = new THREE.PointLight(L.lamp, L.lampI, L.lampDist, 1);
       l.position.set(x + 0.5, 1.9, y + 0.5);
       this.three.add(l);
+      // Amber light pool on the ground (dithered, texel-exact: PixelGlow), like the jungle's lit spots.
+      this._glowPool(x + 0.5, y + 0.8, DEFENSE_VIEW.glow.lamp);
     }
   }
 
-  /** Tiles covered by lanes (tile keys "x,y"), including the off-map extension to the left edge. */
-  _laneTiles() {
+  /**
+   * Stepped light pool (PixelGlow) on the ground at (x, z). With the night grade it is a light source
+   * (lightPool: the pixels it lights skip the moonlight); otherwise a plain additive decal. Returns the mesh;
+   * _setGlow(m, k) scales its brightness.
+   */
+  _glowPool(x, z, G) {
+    let m;
+    if (this.post) {
+      m = lightPool(G);
+      m.material.opacity = G.emit ?? 1;   // alpha only: how far the lit pixels escape the moonlight
+      this._track(m.geometry);
+      this._track(m.material);
+    } else {
+      const tex = radialGlowTexture(Math.round(G.w * 32), Math.round(G.h * 32), { steps: G.steps, power: G.power });
+      m = new THREE.Mesh(this._track(new THREE.PlaneGeometry(Math.round(G.w * 32) / 32, Math.round(G.h * 32) / 32)),
+        this._track(new THREE.MeshBasicMaterial({ map: tex, color: G.color, transparent: true, opacity: G.strength, depthWrite: false, blending: THREE.AdditiveBlending })));
+      m.userData.pxSnap = true;
+    }
+    m.userData.glow = { color: new THREE.Color(G.color).multiplyScalar(G.strength ?? 1), strength: G.strength ?? 1 };
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, 0.021, z);
+    m.renderOrder = -3;   // ground light: before plinths (−2), ground marks (−1) and every sprite (0)
+    this.three.add(m);
+    return m;
+  }
+
+  /** Brightness of a _glowPool mesh: k × its configured strength (lightPool ignores opacity: scale the colour). */
+  _setGlow(m, k) {
+    const g = m?.userData.glow;
+    if (!g) return;
+    if (this.post) m.material.color.copy(g.color).multiplyScalar(k);
+    else m.material.opacity = g.strength * k;
+  }
+
+  /**
+   * Tiles covered by lanes (tile keys "x,y"), including each trail's off-field run back to the edge of the
+   * ground (`map.margin.left` tiles, along the first segment's direction).
+   */
+  _laneTiles(laneIndex = null) {
     const set = new Set();
-    const X0 = -DEFENSE_MAP.margin.left;
-    for (const lane of DEFENSE_MAP.lanes) {
-      const pts = [[X0, lane.points[0][1]], ...lane.points];
+    const back = this.map.margin?.left ?? 12;
+    this.map.lanes.forEach((lane, li) => {
+      if (laneIndex != null && li !== laneIndex) return;
+      const [p0, p1] = lane.points;
+      const dx = Math.sign(p1[0] - p0[0]), dy = Math.sign(p1[1] - p0[1]);
+      const pts = laneIndex != null ? lane.points : [[p0[0] - dx * back, p0[1] - dy * back], ...lane.points];
       for (let i = 1; i < pts.length; i++) {
         const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
         const n = Math.max(Math.abs(bx - ax), Math.abs(by - ay));
@@ -407,18 +574,92 @@ export class DefenseScene {
           set.add(`${Math.round(ax + ((bx - ax) * k) / n)},${Math.round(ay + ((by - ay) * k) / n)}`);
         }
       }
-    }
+    });
     return set;
   }
 
   /**
    * Ground and jungle: the same blended terrain and foliage cards as the day jungle
-   * (src/world/DefenseGround.js), lit by the night lights, sprites tinted like the units.
+   * (src/world/DefenseGround.js), lit by the night lights, sprites tinted like the units. Cards that would
+   * cover a lane, a pad (forward pads too) or the Relay are dropped there.
    */
   _buildGround() {
-    this.ground = buildDefenseGround(this.game, this.run.seed, this._laneTiles(), DEFENSE_VIEW.spriteTint);
+    const pads = this._padSpots().map(({ at: [x, y] }) => ({ x: x + 0.5, z: y + 0.5 }));
+    this.ground = buildDefenseGround(this.game, this.map, { seed: this.run.seed, laneTiles: this._laneTiles(), pads, tint: this.spriteTint });
     this.three.add(this.ground.group);
     this._track(this.ground);
+    // Visible rewards: a slowed path (tonight.laneSlow, e.g. "pumps flood the north path") is tinted wet.
+    const ls = this.tonight?.laneSlow;
+    if (ls && this.map.lanes[ls.lane % this.map.lanes.length]) {
+      const R = DEFENSE_VIEW.rewards;
+      const tiles = [...this._laneTiles(ls.lane % this.map.lanes.length)].map((k) => k.split(',').map(Number)).filter(([x, y]) => x >= 0);
+      const m = laneTint(tiles, R.laneTint, R.laneTintAlpha, this.run.seed);
+      if (m) { this.three.add(m); this._track({ dispose: m.userData.dispose }); this.laneTintMesh = m; }
+    }
+  }
+
+  // ------------------------------------------------------------------ map: pads, beacons, area directions
+
+  /** The jungle (cached per run) for directions: area bearings and beacons. Null if it can't be built. */
+  _jungle() {
+    if (this._jungleData === undefined) {
+      try { this._jungleData = worldForRun(this.game, this.run, DISTRICT_KEYS); } catch (e) { console.warn(e); this._jungleData = null; }
+    }
+    return this._jungleData;
+  }
+
+  /**
+   * The lane facing an area (district key) on this map: the trail whose compass bearing is closest to the
+   * direction of that area's sector from the Relay in this run's jungle. The area's danger group (the
+   * district threat, tonight.extraGroups) enters by it. null when unknown.
+   */
+  laneForDistrict(key) {
+    const ri = DISTRICT_KEYS.indexOf(key);
+    const data = ri >= 0 ? this._jungle() : null;
+    const a = data?.regionAngles?.[ri];
+    if (a == null) return null;
+    return laneForAngle(this.map, a);
+  }
+
+  /** Compass word for an area's direction from the Relay ("north-east"), or ''. */
+  _districtDir(key) {
+    const ri = DISTRICT_KEYS.indexOf(key);
+    const a = ri >= 0 ? this._jungle()?.regionAngles?.[ri] : null;
+    return a == null ? '' : compass(Math.cos(a), Math.sin(a));
+  }
+
+  /**
+   * Every pad spot of the map: its pads, then each forward slot that is open — a beacon (pylon) switched on
+   * in the jungle opens the next forward slot on the lane facing it (DEFENSE_MAPS[*].lanes[*].forward).
+   * A slot with a tower already on it stays (a save, or a beacon from an earlier night). Pad index =
+   * map.pads.length + slot index, stable for the run. → [{ i, at: [x, y], forward?, beacon? }]
+   */
+  _padSpots() {
+    if (this._spots) return this._spots;
+    const map = this.map, base = map.pads.length;
+    const spots = map.pads.map((at, i) => ({ i, at }));
+    const slots = forwardSlots(map);
+    const open = new Map();
+    const on = new Set(this.run.world?.pylons || []);
+    const data = on.size ? this._jungle() : null;
+    if (data) {
+      const used = new Map();
+      for (const p of data.pylons) {
+        if (!on.has(p.id)) continue;
+        const li = laneForAngle(map, Math.atan2(p.z - data.center.z, p.x - data.center.x));
+        const rank = used.get(li) || 0;
+        used.set(li, rank + 1);
+        const si = slots.findIndex((s) => s.lane === li && s.rank === rank);
+        if (si >= 0) open.set(si, { district: DISTRICT_KEYS[p.region] || null, dir: compass(p.x - data.center.x, p.z - data.center.z) });
+      }
+    }
+    slots.forEach((s, si) => {
+      const i = base + si;
+      const beacon = open.get(si) || (this.run.towers.some((t) => t.pad === i) ? { district: null, dir: '' } : null);
+      if (beacon) spots.push({ i, at: s.at, forward: true, lane: s.lane, beacon });
+    });
+    this._spots = spots;
+    return spots;
   }
 
   _addVisual(key, x, z, opts) {
@@ -431,62 +672,143 @@ export class DefenseScene {
 
   _buildScenery() {
     // Trees, rocks and the jungle border are foliage cards in the ground (DefenseGround); lamps stay sprites.
-    for (const [x, y] of DEFENSE_MAP.lamps || []) this._addVisual('lamp_post', x + 0.5, y + 0.5);
+    for (const [x, y] of this.map.lamps || []) this._addVisual('lamp_post', x + 0.5, y + 0.5);
   }
 
   _buildCore() {
     this.coreVis = this._addVisual('relay_core', this.corePos.x, this.corePos.z);
-    // Cyan glow decal under the core.
-    const geom = this._track(new THREE.CircleGeometry(1.7, 32));
-    const mat = this._track(new THREE.MeshBasicMaterial({ color: '#2ce8f5', transparent: true, opacity: 0.18, depthWrite: false, blending: THREE.AdditiveBlending }));
-    this.coreGlow = new THREE.Mesh(geom, mat);
-    this.coreGlow.rotation.x = -Math.PI / 2;
-    this.coreGlow.position.set(this.corePos.x, 0.03, this.corePos.z);
-    this.three.add(this.coreGlow);
+    // Painter's order only (no depth write): an enemy walking up behind the Relay never x-rays through it.
+    this._noDepthWrite(this.coreVis);
+    // Cyan light pool under the core (dithered, texel-exact: PixelGlow); its strength pulses in _frameVisuals.
+    this.coreGlow = this._glowPool(this.corePos.x, this.corePos.z + 0.2, DEFENSE_VIEW.glow.core);
   }
 
-  _buildPads() {
-    // Pad marker: a dashed 1-texel rim hugging the plinth's top face (texel-exact, 32 × 32 = one tile),
-    // with solid corners — reads as "build here" without the old hazard-bracket look.
+  /**
+   * Units and buildings draw in painter's order (sorted by their feet) instead of writing depth, so the
+   * occlusion silhouettes (Assets.js, depthFunc GREATER) only ever fire for scenery — never enemy-on-enemy,
+   * tower-on-enemy or Relay-on-enemy (critic K §4.2). Cards still write depth, so a tree in front of an
+   * enemy still shows its silhouette. Idempotent (flags the visual).
+   */
+  _noDepthWrite(root) {
+    const vis = root?.userData?.vis;
+    if (!vis || vis._noDW) return;
+    vis._noDW = true;
+    root.traverse((o) => {
+      if (o.isSprite && o.name !== 'silhouette' && o.name !== 'cardMask' && o.material) o.material.depthWrite = false;
+      // Ground marks (blob shadow, hostile ring) draw before every sprite: with no depth writes a later-sorted
+      // shadow would tint the base of the sprite standing on it.
+      if (o.name === 'shadow' || o.name === 'ring') o.renderOrder = -1;
+    });
+    // Night grade: units and towers stand a little out of the moonlight (readable without hostile rings).
+    if (this.post && vis.body?.isSprite) this._lightCode(vis.body.material, DEFENSE_VIEW.post.unitLift);
+  }
+
+  /**
+   * PostFx light code for an alpha-tested material: its texels write alpha 1 − share, so the night grade lights
+   * them `share` of the way back to full colour (0 = moonlit like the ground, 1 = emissive). Colour blends as usual.
+   */
+  _lightCode(mat, share) {
+    if (!mat || !(share > 0)) return;
+    mat.blending = THREE.CustomBlending;
+    mat.blendEquation = THREE.AddEquation;
+    mat.blendSrc = THREE.SrcAlphaFactor;
+    mat.blendDst = THREE.OneMinusSrcAlphaFactor;
+    mat.blendEquationAlpha = THREE.AddEquation;
+    mat.blendSrcAlpha = THREE.ConstantAlphaFactor;
+    mat.blendDstAlpha = THREE.OneMinusSrcAlphaFactor;
+    mat.blendAlpha = 1 - Math.min(1, share);
+    mat.needsUpdate = true;
+  }
+
+  /** Widest / tallest tower sprite frame (texels), so plinths and markers grow with bigger tower art. */
+  _towerArt() {
+    if (this._art) return this._art;
+    let w = 32, h = 48;
+    for (const type of Object.keys(TOWERS)) {
+      for (const key of [type, `${type}_2`, `${type}_3`]) {
+        const info = this.game.assets.spriteInfo?.(key);
+        const img = info?.tex?.image;
+        if (!img) continue;
+        const def = info.def || {};
+        w = Math.max(w, def.fw || Math.floor(img.width / (def.frames || 1)));
+        h = Math.max(h, def.fh || img.height);
+      }
+    }
+    return (this._art = { w, h });
+  }
+
+  /** A dashed 1-texel rim (solid corners) w × h texels: the "build here" / selected pad marker. */
+  _markerTex(w, h) {
+    this._markerTexs ||= new Map();
+    const key = `${w}x${h}`;
+    if (this._markerTexs.has(key)) return this._markerTexs.get(key);
     const c = document.createElement('canvas');
-    c.width = c.height = 32;
+    c.width = w; c.height = h;
     const g = c.getContext('2d');
     g.fillStyle = '#ffffff';
-    const rx0 = 1, rx1 = 30, ry0 = 2, ry1 = 29;
+    const rx0 = 0, rx1 = w - 1, ry0 = 0, ry1 = h - 1;
     for (let x = rx0; x <= rx1; x++) if (((x - rx0) & 3) < 2 || x - rx0 < 3 || rx1 - x < 3) { g.fillRect(x, ry0, 1, 1); g.fillRect(x, ry1, 1, 1); }
     for (let y = ry0; y <= ry1; y++) if (((y - ry0) & 3) < 2 || y - ry0 < 3 || ry1 - y < 3) { g.fillRect(rx0, y, 1, 1); g.fillRect(rx1, y, 1, 1); }
     const tex = this._track(new THREE.CanvasTexture(c));
     tex.magFilter = tex.minFilter = THREE.NearestFilter;
     tex.generateMipmaps = false;
-    this.markerGeom = this._track(new THREE.PlaneGeometry(1, 1));
-    this.markerTex = tex;
-    // Occupied pads keep their corner brackets in the tower's type colour (towers are small at night
-    // zoom: the coloured pad says "Arc" vs "Beacon" vs "Snare" at a glance). One material per type.
-    this.typeMarkMats = {};
+    const out = { tex, geom: this._track(new THREE.PlaneGeometry(w / 32, h / 32)) };
+    this._markerTexs.set(key, out);
+    return out;
+  }
 
-    this.pads = DEFENSE_MAP.pads.map(([x, y], i) => {
-      // In-world stone / timber plinth (DefenseGround.makePlinth) instead of the metal pad sprite.
-      const base = makePlinth(i * 7 + 3, DEFENSE_VIEW.woodPlinths?.includes(i));
-      base.position.set(x + 0.5, 0.02, y + 0.5 + base.userData.zOffset);
-      this.three.add(base);
-      this._track(base.geometry, base.material, base.material.map);
-      if (i === 0) this.padBaseY = 0;
-      const mat = this._track(new THREE.MeshBasicMaterial({ map: tex, color: '#feae34', transparent: true, opacity: 0.6, depthWrite: false }));
-      const marker = new THREE.Mesh(this.markerGeom, mat);
-      marker.rotation.x = -Math.PI / 2;
-      marker.position.set(x + 0.5, this.padBaseY + 0.03, y + 0.5);
-      marker.renderOrder = 2;
-      marker.userData.pxSnap = true;
-      this.three.add(marker);
-      return { i, x: x + 0.5, z: y + 0.5, base, marker, mat };
-    });
-    const selMat = this._track(new THREE.MeshBasicMaterial({ map: tex, color: '#2ce8f5', transparent: true, opacity: 0.95, depthWrite: false }));
-    this.selMarker = new THREE.Mesh(this.markerGeom, selMat);
-    this.selMarker.rotation.x = -Math.PI / 2;
-    this.selMarker.userData.pxSnap = true;
-    this.selMarker.renderOrder = 3;
+  /**
+   * Build pads: an in-world stone / timber plinth per pad (DefenseGround.makePlinth), sized from the widest
+   * tower sprite, with a dashed rim marker hugging its top face. Forward pads (open beacon slots) get a
+   * cyan-trimmed marker. this.pads is indexed by pad index (map pads, then every forward slot); closed
+   * forward slots are entries with `closed: true` and nothing drawn.
+   */
+  _buildPads() {
+    // Occupied pads may keep corner brackets in the tower's type colour (DEFENSE_VIEW.typeBrackets).
+    this.typeMarkMats = {};
+    this.padBaseY = 0;
+    const grow = Math.max(0, this._towerArt().w - 32);
+    const spots = new Map(this._padSpots().map((s) => [s.i, s]));
+    const total = this.map.pads.length + forwardSlots(this.map).length;
+    const wood = this.map.woodPads || [];
+    this.pads = [];
+    for (let i = 0; i < total; i++) {
+      const s = spots.get(i);
+      const at = s ? s.at : (i < this.map.pads.length ? this.map.pads[i] : forwardSlots(this.map)[i - this.map.pads.length].at);
+      const [x, y] = at;
+      const pad = { i, x: x + 0.5, z: y + 0.5, closed: !s, forward: !!s?.forward, beacon: s?.beacon || null, lane: s?.lane };
+      if (s) {
+        const base = makePlinth(i * 7 + 3, wood.includes(i), grow);
+        base.position.set(x + 0.5, 0.02, y + 0.5 + base.userData.zOffset);
+        this.three.add(base);
+        this._track(base.geometry, base.material, base.material.map);
+        const mw = Math.round(base.userData.topW * 32) + 2, mh = Math.round(base.userData.topH * 32) + 2;
+        const mk = this._markerTex(mw, mh);
+        const mat = this._track(new THREE.MeshBasicMaterial({ map: mk.tex, color: '#feae34', transparent: true, opacity: 0.6, depthWrite: false }));
+        const marker = new THREE.Mesh(mk.geom, mat);
+        marker.rotation.x = -Math.PI / 2;
+        marker.position.set(x + 0.5, this.padBaseY + 0.03, y + 0.5);
+        marker.renderOrder = -1;   // ground mark: under the tower standing on it
+        marker.userData.pxSnap = true;
+        marker.visible = false;
+        this.three.add(marker);
+        Object.assign(pad, { base, marker, mat, topW: base.userData.topW, topH: base.userData.topH });
+        if (pad.forward) {
+          // Forward pad: a small cyan beacon lamp at its back-left corner (your beacon's light).
+          const lamp = this._glowPool(x + 0.5, y + 0.5, DEFENSE_VIEW.glow.forward);
+          pad.glow = lamp;
+        }
+      } else {
+        // Closed slot: a hidden marker so code that hides markers wholesale keeps working.
+        const marker = new THREE.Object3D();
+        marker.visible = false;
+        Object.assign(pad, { base: null, marker, mat: null });
+      }
+      this.pads.push(pad);
+    }
+    // Legacy selection marker (kept for code that toggles it); pad markers turn cyan when selected now.
+    this.selMarker = new THREE.Object3D();
     this.selMarker.visible = false;
-    this.three.add(this.selMarker);
   }
 
   /** Shared material for the type-coloured pad brackets under a tower (see Tower.refreshVisual). */
@@ -509,7 +831,7 @@ export class DefenseScene {
     this.rangeMin = new THREE.Mesh(T(new THREE.RingGeometry(0.94, 1, 48)), this.rangeRingMat);
     this.rangeOuter = new THREE.Group();
     this.rangeOuter.add(fill, ring);
-    for (const m of [fill, ring, this.rangeMin]) { m.rotation.x = -Math.PI / 2; m.renderOrder = 4; }
+    for (const m of [fill, ring, this.rangeMin]) { m.rotation.x = -Math.PI / 2; m.renderOrder = -1; }   // on the ground, under sprites
     this.range.add(this.rangeOuter, this.rangeMin);
     this.range.position.y = 0.05;
     this.range.visible = false;
@@ -539,7 +861,7 @@ export class DefenseScene {
       const n = Math.floor(lane.total / 2.2);
       for (let i = 0; i < n; i++) {
         const m = new THREE.Mesh(geom, this.chevMat);
-        m.renderOrder = 2;
+        m.renderOrder = -1;   // on the trail, under the enemies walking it
         this.three.add(m);
         this.chevrons.push({ m, lane, d: (i / n) * lane.total });
       }
@@ -547,7 +869,7 @@ export class DefenseScene {
   }
 
   _updateChevrons(dt) {
-    const show = this.phase === 'prep';
+    const show = this.canBuild;
     const p = new THREE.Vector3(), d = new THREE.Vector3();
     for (const c of this.chevrons) {
       c.m.visible = show;
@@ -562,19 +884,106 @@ export class DefenseScene {
   }
 
   /**
-   * Fixed camera: the night map renders at DEFENSE_VIEW.res with 1 tile = 32 px, so the 30×17 field
-   * is 960×544 px. It is placed (on whole pixels) centred inside DEFENSE_VIEW.view — the part of the
-   * stage left of the side panel and below the top bar (960×540 UI units).
+   * Per-frame board furniture (critic H fix 9 — show things when they matter):
+   *  · pad markers: the selected pad (cyan, also under a tower); while placing, every empty pad (green);
+   *    the hovered pad (white); otherwise empty pads show a dim static rim only while you can afford a
+   *    tower, and pulse only during the very first prep; built pads show nothing (no orange dot);
+   *  · units draw in painter's order (_noDepthWrite) so silhouettes only fire for scenery;
+   *  · hostile rings only under the hovered enemy, the selected tower's current target and the boss;
+   *  · visible rewards: towers glint while tonight's towerRate / towerDamage reward applies.
+   */
+  _updateBoard(dt) {
+    const t = this.game.time, run = this.run, P = DEFENSE_VIEW.pads;
+    const build = this.canBuild;
+    if (build && (this._affordT = (this._affordT || 0) - dt) <= 0) {
+      this._affordT = 0.25;
+      this._anyAffordable = run.availableTowers(this.game.meta).some((ty) => run.canAfford(run.buildCost(ty)));
+    }
+    const firstPrep = this.phase === 'prep' && this.night === 1 && this.towers.length === 0;
+    for (const p of this.pads) {
+      if (p.closed || !p.mat) continue;
+      const tw = this._towerOn(p.i);
+      const hovered = p.i === this.hoverPad, selected = p.i === this.selPad;
+      let show = false, color = p.forward ? '#2ce8f5' : '#feae34', op = P.idleOpacity;
+      if (selected) { show = true; color = '#2ce8f5'; op = tw ? 0.7 + 0.3 * Math.sin(t * 5) : 1; }
+      else if (!build || tw) show = false;
+      else if (this.placing) { show = true; color = hovered ? '#ffffff' : '#63c74d'; op = hovered ? 1 : 0.45 + 0.25 * Math.sin(t * 3 + p.i * 0.7); }
+      else if (hovered) { show = true; color = '#ffffff'; op = 1; }
+      else if (firstPrep) { show = true; op = P.pulse[0] + P.pulse[1] * Math.sin(t * 3 + p.i * 0.7); }
+      else if (this._anyAffordable) show = true;
+      p.marker.visible = show;
+      if (show) { p.mat.color.set(color); p.mat.opacity = op; }
+    }
+    for (const tw of this.towers) this._noDepthWrite(tw.visual);
+    if (this.post && !this._hpLit && this.hpMats) {
+      // Enemy health bars keep their colours at night (emissive light code).
+      this._hpLit = true;
+      for (const m of Object.values(this.hpMats)) this._lightCode(m, DEFENSE_VIEW.post.barLift);
+    }
+    // Hovered enemy (for its ring and name tag) and the selected tower's target.
+    this.hoverEnemy = this._pickEnemy();
+    const selT = this._towerOn(this.selPad);
+    const k = selT?.stats?.kind;
+    const target = selT && k && k !== 'support' && k !== 'snare' && selT.pickTarget ? selT.pickTarget(this.enemies, selT.stats) : null;
+    for (const e of this.enemies) {
+      if (!e.visual || e.removed) continue;
+      this._noDepthWrite(e.visual);
+      if (e._ring === undefined) e._ring = e.visual.getObjectByName('ring') || null;
+      if (e._ring) e._ring.visible = e === this.hoverEnemy || e === target || !!e.boss;
+    }
+    // Rewards that boost towers tonight: a small glint over every tower now and then.
+    const tn = this.tonight;
+    if (!this.paused && (tn?.towerRate > 1 || tn?.towerDamage > 1)) {
+      const R = DEFENSE_VIEW.rewards;
+      for (const tw of this.towers) {
+        tw._glintT = (tw._glintT ?? ((tw.rec.pad * 0.61) % R.glintEvery)) - dt;
+        if (tw._glintT > 0) continue;
+        tw._glintT = R.glintEvery;
+        this.fx.flash({ x: tw.pos.x + 0.22, y: this.padBaseY + tw.height * 0.85, z: tw.pos.z + 0.05 }, { color: tn.towerDamage > 1 ? '#feae34' : '#fee761', size: 0.3, life: 0.14 });
+      }
+    }
+  }
+
+  /** The enemy under the mouse (screen-space box around its sprite), or null. */
+  _pickEnemy() {
+    if (!this.mouse?.inside || this.overUi || !this.enemies?.length) return null;
+    const mx = this.mouse.x, my = this.mouse.y, cam = this.camera, v = this._v3 || (this._v3 = new THREE.Vector3());
+    let best = null, bd = Infinity;
+    for (const e of this.enemies) {
+      if (e.dead || e.removed || !e.visual) continue;
+      const b = this.game.project(v.set(e.pos.x, 0, e.pos.z), cam);
+      const top = this.game.project(v.set(e.pos.x, e.height, e.pos.z), cam);
+      const hw = Math.max(8, Math.abs(top.y - b.y) * 0.35);
+      if (mx < b.x - hw || mx > b.x + hw || my < top.y || my > b.y + 4) continue;
+      const d = Math.abs(mx - b.x) + Math.abs(my - (b.y + top.y) / 2) * 0.5;
+      if (d < bd) { bd = d; best = e; }
+    }
+    return best;
+  }
+
+  /** Clamp a stage point (CSS px) so a DOM tag of `node` stays inside the map viewport. */
+  _clampToView(p, node) {
+    const vp = this.cam?.vp;
+    if (!vp) return p;
+    const s = this.game.stage.clientWidth / this.game.width;   // CSS px per internal px
+    const w = node?.offsetWidth || 0, h = node?.offsetHeight || 0;
+    return { x: Math.max(vp.x0 * s + 4, Math.min(vp.x1 * s - w - 4, p.x)), y: Math.max(vp.y0 * s + 2, Math.min(vp.y1 * s - h - 2, p.y)) };
+  }
+
+  /**
+   * The night camera (src/world/NightCamera.js): pixel-exact integer zoom through the same pipeline as the
+   * day (internal size = window ÷ k), 32 px per tile. Default: the largest zoom at which the whole board
+   * (the field plus the lane mouths) fits the map viewport left of the side panel; wheel / + − zoom, right /
+   * middle drag and the arrow keys pan (clamped to the field + DEFENSE_VIEW.zoom.margin). Home re-frames.
    */
   _fitCamera() {
-    const V = DEFENSE_VIEW, cam = this.camera, g = this.game;
-    cam.setSize(g.width, g.height);
-    const W = g.width, H = g.height, ppu = cam.ppu;
-    const fw = DEFENSE_MAP.width * ppu, fh = DEFENSE_MAP.height * ppu;
-    const x0 = (V.view.x0 / UI_W) * W, x1 = (V.view.x1 / UI_W) * W;
-    const y0 = (V.view.y0 / UI_H) * H, y1 = (V.view.y1 / UI_H) * H;
-    // World (0, 0) — the field's top-left corner — lands on this internal pixel.
-    cam.placeAt(0, 0, x0 + Math.max(0, (x1 - x0 - fw) / 2), y0 + Math.max(0, (y1 - y0 - fh) / 2));
+    if (!this.cam) {
+      const m = this.map, M = DEFENSE_VIEW.zoom.margin;
+      this.cam = new NightCamera(this,
+        { x0: -0.2, z0: 0, x1: m.width, z1: m.height },
+        { x0: -M - 0.5, z0: -M, x1: m.width + M, z1: m.height + M });
+    }
+    this.cam.frame();
   }
 
   // =================================================================== UI
@@ -598,12 +1007,21 @@ export class DefenseScene {
       b.dataset.speed = s;
       return b;
     });
+    // Zoom (NightCamera): − / + step the integer zoom; the label says the texel scale. Hidden when the
+    // window allows only one zoom.
+    this.zoomLbl = el('span.df-zoomlbl');
+    this.zoomOut = button('−', () => { this.cam?.zoomStep(-1); this._refreshTop(true); }, { title: 'Zoom out (mouse wheel, −). Drag with the right mouse button or use the arrow keys to look around; Home re-frames.', cls: 'df-icon df-zbtn' });
+    this.zoomIn = button('+', () => { this.cam?.zoomStep(1); this._refreshTop(true); }, { title: 'Zoom in (mouse wheel, +). Drag with the right mouse button or use the arrow keys to look around; Home re-frames.', cls: 'df-icon df-zbtn' });
+    this.zoomBox = el('div.df-zoom', {}, this.zoomOut, this.zoomLbl, this.zoomIn);
+    // The top bar fits 1280×720 with every currency and three speeds: short resource chips (names in the
+    // tooltip), no "WAVE" label, and the controls never shrink (critic K §5.1: 2× was off-screen).
     this.top = el('div.df-top.ui-block', {},
       this.topNight,
       el('div.df-relay', {}, el('span.df-lbl', { title: 'Relay Core health. The run ends at 0.' }, '♥ RELAY'), this.relayBar.node),
       this.resHost,
       el('div.grow'),
       this.waveStat,
+      this.zoomBox,
       el('div.df-ctrl', {}, this.pauseBtn, ...this.speedBtns),
     );
 
@@ -611,7 +1029,12 @@ export class DefenseScene {
     this.sideHead = el('div.df-head');
     this.sideBody = el('div.df-body.scroll');
     this.sideFoot = el('div.df-foot');
-    this.side = el('div.df-side.panel.ui-block', {}, this.sideHead, this.sideBody, this.sideFoot);
+    // Relay Protocol buttons (pushes and lulls): built once and kept out of the panel's re-renders, so a
+    // click on them is never lost to a refresh mid-press (ProtocolDeck.panel / frame).
+    this.protoBar = el('div.df-protobar', { style: { display: 'none' } });
+    // Leak feed (pushes and lulls): what got through to the Relay tonight, newest first (_pushLeakFeed).
+    this.leakFeed = el('div.df-leaks', { style: { display: 'none' } });
+    this.side = el('div.df-side.panel.ui-block', {}, this.sideHead, this.sideBody, this.leakFeed, this.protoBar, this.sideFoot);
     // Fade the bottom edge while more content sits below the scroll fold.
     this.sideBody.addEventListener('scroll', () => this._sideMore());
 
@@ -634,10 +1057,82 @@ export class DefenseScene {
 
     root.append(this.top, this.side, this.bossBox);
     game.ui.append(root);
+    this._bindTips();
     this.sideDirty = true;
     this._topKey = {};
     this._refreshTop(true);
     this._renderSide();
+  }
+
+  /**
+   * Styled in-game tooltips instead of native `title`s (critic K §5.5: they took ~1 s and were unstyled):
+   * any element under the night UI with `data-tip` (HTML) shows it at once — beside the side panel for
+   * panel items, under the top bar for its items. `_tipify(root)` turns `title` attributes (buttons,
+   * resource chips) into `data-tip` after each render.
+   */
+  _bindTips() {
+    this._tip = el('div.df-tip', { style: { display: 'none' } });
+    this.uiRoot.append(this._tip);
+    this._tipFor = null;
+    this._listen(this.uiRoot, 'pointerover', (e) => {
+      const t = e.target.closest?.('[data-tip]');
+      if (t !== this._tipFor) this._showTip(t && this.uiRoot.contains(t) ? t : null);
+    });
+    this._listen(this.uiRoot, 'pointerout', (e) => {
+      if (!e.relatedTarget || !this._tipFor?.contains(e.relatedTarget)) {
+        const t = e.relatedTarget?.closest?.('[data-tip]');
+        if (t !== this._tipFor) this._showTip(t && this.uiRoot.contains(t) ? t : null);
+      }
+    });
+    this._tipify(this.uiRoot);
+  }
+
+  _showTip(t) {
+    this._tipFor = t;
+    if (!t) { this._tip.style.display = 'none'; return; }
+    this._tip.innerHTML = t.dataset.tip;
+    this._tip.style.display = '';
+    this._placeTip();
+  }
+
+  /** Position the tooltip next to its anchor, inside the stage. */
+  _placeTip() {
+    const t = this._tipFor, tip = this._tip;
+    if (!t?.isConnected) { this._tipFor = null; tip.style.display = 'none'; return; }
+    const sr = this.game.stage.getBoundingClientRect(), r = t.getBoundingClientRect();
+    const u = this.game.u, tw = tip.offsetWidth, th = tip.offsetHeight;
+    let x, y;
+    if (t.closest('.df-side')) {
+      x = this.side.getBoundingClientRect().left - sr.left - tw - 6 * u;   // left of the side panel
+      y = r.top - sr.top;
+    } else {
+      x = r.left - sr.left + r.width / 2 - tw / 2;                       // under the element
+      y = r.bottom - sr.top + 4 * u;
+      // Top-bar tips (speed, zoom) stay off the side panel: they'd cover its title. End them at its left edge.
+      const sl = this.side ? this.side.getBoundingClientRect().left - sr.left : 0;
+      if (sl > 0 && x + tw > sl - 4 * u) x = sl - tw - 4 * u;
+    }
+    x = Math.max(4 * u, Math.min(sr.width - tw - 4 * u, x));
+    y = Math.max(4 * u, Math.min(sr.height - th - 4 * u, y));
+    tip.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+  }
+
+  /** Move native `title` tooltips under `root` to the styled tooltip (data-tip, HTML-escaped). */
+  _tipify(root) {
+    const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+    for (const n of root.querySelectorAll('[title]')) {
+      const s = n.getAttribute('title');
+      n.removeAttribute('title');
+      // Inside something that already has a tip (a cost chip on a tower card): the outer tip wins.
+      if (s && !n.dataset.tip && !n.parentElement?.closest('[data-tip]')) n.dataset.tip = esc(s);
+    }
+    // A re-render replaced the hovered element: pick up its replacement under the pointer.
+    if (this._tipFor && !this._tipFor.isConnected) {
+      const sr = this.game.stage.getBoundingClientRect();
+      const at = this.mouse ? document.elementFromPoint(sr.left + this.mouse.x, sr.top + this.mouse.y) : null;
+      const t = at?.closest?.('[data-tip]');
+      this._showTip(t && this.uiRoot.contains(t) ? t : null);
+    }
   }
 
   _bindInput() {
@@ -671,11 +1166,15 @@ export class DefenseScene {
   _refreshTop(force = false) {
     const run = this.run;
     const k = this._topKey;
-    const nightTxt = `${this.night}|${this.phase}`;
+    const nightTxt = `${this.night}|${this.phase}|${this.pushIdx}`;
     if (force || k.night !== nightTxt) {
       k.night = nightTxt;
-      const sub = { prep: 'Preparation', wave: 'Wave in progress', won: 'Night survived', lost: 'Relay down' }[this.phase];
-      this.topNight.replaceChildren(el('b', `NIGHT ${this.night}`), el('span.muted', ` / ${CONFIG.nights}`), el('div.df-phase', sub));
+      const P = this.wave.pushes || 1, pk = Math.max(0, this.pushIdx) + 1;
+      const sub = {
+        prep: 'Preparation', wave: P > 1 ? `Push ${pk} of ${P}` : 'Wave in progress', lull: `Lull · push ${Math.min(P, pk + 1)} next`,
+        won: 'Night survived', lost: 'Relay down',
+      }[this.phase];
+      this.topNight.replaceChildren(el('b', `NIGHT ${this.night}`), el('span.muted', this.run.isLongNight?.() ? ' · Long Night' : ` / ${CONFIG.nights}`), el('div.df-phase', sub));
     }
     const hpTxt = `${Math.ceil(run.relayHp)}|${run.relayMax}`;
     if (force || k.hp !== hpTxt) {
@@ -687,21 +1186,23 @@ export class DefenseScene {
     const resTxt = RESOURCE_KEYS.map((r) => run.res[r]).join('|');
     if (force || k.res !== resTxt) {
       k.res = resTxt;
-      this.resHost.replaceChildren(resRow(run.res));
-      if (this.phase === 'prep') this.sideDirty = true;
+      // Icon + number (the name is in the tooltip): every currency fits the bar at 720p.
+      this.resHost.replaceChildren(resRow(run.res, { short: true }));
+      this._tipify(this.resHost);
+      if (this.canBuild) this.sideDirty = true;
     }
     // Wave status
     let wTxt;
     if (this.phase === 'prep') wTxt = `p|${this.wave.total}`;
-    else wTxt = `w|${this._toGo()}|${Math.floor(this._progress() * 100)}`;
+    else wTxt = `w|${this._toGo()}|${Math.floor(this._progress() * 100)}|${this.phase === 'lull' ? Math.ceil(this.lullT) : ''}`;
     if (force || k.wave !== wTxt) {
       k.wave = wTxt;
       if (this.phase === 'prep') {
         this.waveStat.replaceChildren(el('span.df-lbl', 'TONIGHT'), el('b', `${this.wave.total}`), el('span.muted', ' enemies'));
       } else {
         // "N to go" = alive + not yet spawned, so it matches the per-path counts.
-        this.waveBar.set(this._progress(), `${Math.floor(this._progress() * 100)}%`);
-        this.waveStat.replaceChildren(el('span.df-lbl', 'WAVE'), this.waveBar.node, el('span.df-left', {}, el('b', String(this._toGo())), el('span.muted', ' to go')));
+        this.waveBar.set(this._progress(), this.phase === 'lull' ? `next ${Math.ceil(this.lullT)}s` : `${Math.floor(this._progress() * 100)}%`);
+        this.waveStat.replaceChildren(this.waveBar.node, el('span.df-left', {}, el('b', String(this._toGo())), el('span.muted', ' to go')));
       }
     }
     const ctlTxt = `${this.paused}|${this.speed}`;
@@ -710,6 +1211,19 @@ export class DefenseScene {
       this.pauseBtn.textContent = this.paused ? '▶' : '❚❚';
       this.pauseBtn.classList.toggle('selected', this.paused);
       for (const b of this.speedBtns) b.classList.toggle('selected', Number(b.dataset.speed) === this.speed);
+    }
+    const cam = this.cam;
+    const zTxt = cam ? `${cam.k}|${cam.ks.join(',')}` : '';
+    if (force || k.zoom !== zTxt) {
+      k.zoom = zTxt;
+      const many = cam && cam.ks.length > 1;
+      this.zoomBox.style.display = many ? '' : 'none';
+      if (many) {
+        this.zoomLbl.textContent = cam.label;
+        this.zoomOut.classList.toggle('disabled', !cam.canZoomOut);
+        this.zoomIn.classList.toggle('disabled', !cam.canZoomIn);
+      }
+      this._tipify(this.top);
     }
   }
 
@@ -720,37 +1234,38 @@ export class DefenseScene {
   }
 
   /**
-   * Rough readiness for tonight (READINESS, src/data/guide.js): tower damage over a wave's worth of fire vs
-   * the wave's total health. → { ratio, level: 'weak' | 'risky' | 'strong', dps, hp }.
+   * Readiness for tonight (READINESS, src/data/guide.js) from a forecast of the night (DefenseForecast.js):
+   * a fast 1-D replay of tonight's pushes against the towers' real stats, the path each tower covers, slows,
+   * tanks and Spitters, plus the Relay Protocols as damage-equivalents. → { level: 'weak' | 'risky' |
+   * 'strong', lost (expected Relay loss), lo, hi, lanes: [{ name, short, lost, dots 0–3 }], ratio }.
+   * Cached until the build, the wave or the Relay changes.
    */
   _readiness() {
-    const run = this.run, Rd = READINESS;
-    let dps = 0, slow = 0, beacons = 0;
-    for (const rec of run.towers) {
-      const st = run.towerStats(rec, run.relayHp / run.relayMax);
-      const rate = st.cooldown > 0 ? 1 / st.cooldown : 0;
-      if (st.kind === 'bullet') dps += st.damage * rate * (st.fifthShotMult ? 1 + (st.fifthShotMult - 1) / 5 : 1);
-      else if (st.kind === 'chain') { let m = 1, f = 1; for (let i = 0; i < (st.chains || 0); i++) { f *= st.chainFalloff || 0.7; m += f * 0.6; } dps += st.damage * rate * m; }
-      else if (st.kind === 'mortar') dps += st.damage * rate * 2;
-      else if (st.kind === 'snare') slow += Rd.slowValue;
-      else if (st.kind === 'support') beacons += 1;
-    }
-    dps = dps * (1 + beacons * Rd.supportValue) + slow;
-    let hp = 0;
-    for (const e of this.wave.events) hp += (DEFENSE_ENEMIES[e.type]?.hp || 0) * this.hpMult;
-    const secs = Rd.waveSeconds[Math.min(Rd.waveSeconds.length, this.night) - 1] || 30;
-    const ratio = hp > 0 ? (dps * secs) / hp : 9;
-    return { ratio, dps, hp, level: ratio < Rd.weak ? 'weak' : ratio < Rd.ok ? 'risky' : 'strong' };
+    const run = this.run;
+    const key = `${this.night}|${run.towers.map((t) => `${t.pad}${t.type}${t.level}${t.branch || ''}${t.target}${t.rangeMod || ''}`).join(',')}`
+      + `|${this.wave.total}|${Math.round(run.relayHp)}|${this.protocols.keys.join(',')}|${run.skills.length}`;
+    if (this._rdKey === key && this._rd) return this._rd;
+    this._computeTowerStats();
+    this._rd = forecastNight(this);
+    this._rdKey = key;
+    return this._rd;
   }
 
-  /** Start Wave from the button / Space: a weak-looking defense asks once (press again within a few s). */
-  _tryStartWave() {
+  /**
+   * Start Wave from the button / Space. A weak-looking defense asks first: the button turns into
+   * "Start anyway" for DEFENSE.startGuard.confirm s, and only that button or Shift+Space starts it
+   * (`how`: 'button' | 'space' | 'shift'), so a plain Space double-tap can't skip the warning.
+   */
+  _tryStartWave(how = 'button') {
     if (this.phase !== 'prep') return;
     const r = this._readiness();
-    if (r.level === 'weak' && !(this.startArmed && this.game.time < this.startArmed)) {
-      this.startArmed = this.game.time + 4;
+    const armed = this.startArmed && this.game.time < this.startArmed;
+    if (r.level === 'weak' && (!armed || how === 'space')) {
+      if (!armed) this.startArmed = this.game.time + DEFENSE.startGuard.confirm;
       this.game.sfx.play('error');
-      toast(this.game.ui, this.towers.length ? 'Your defense looks too weak for tonight. Build or upgrade more, or press Start again.' : 'You have no towers! Build some first, or press Start again.', 'bad', 3);
+      toast(this.game.ui, armed ? 'To start anyway, click Start anyway or press Shift+Space.'
+        : this.towers.length ? 'Your defense looks too weak for tonight. Build or upgrade more, or click Start anyway (Shift+Space).'
+          : 'You have no towers! Build some first, or click Start anyway (Shift+Space).', 'bad', 3);
       this.sideDirty = true;
       return;
     }
@@ -772,7 +1287,7 @@ export class DefenseScene {
     let mode = 'preview';
     if (this.placing) mode = 'placing';
     else if (t) mode = 'tower';
-    else if (this.selPad >= 0 && this.phase === 'prep') mode = 'build';
+    else if (this.selPad >= 0 && this.canBuild) mode = 'build';
     this.sideMode = mode;
     const head = this.sideHead, body = this.sideBody, foot = this.sideFoot;
     head.replaceChildren();
@@ -786,7 +1301,28 @@ export class DefenseScene {
     // A different panel (or another tower) starts at the top: the wave preview's THREAT block must not
     // stay scrolled out of view from an earlier panel.
     const sideKey = `${mode}|${this.selPad}|${this.phase}`;
-    if (sideKey !== this._sideKey) { this._sideKey = sideKey; body.scrollTop = 0; }
+    if (sideKey !== this._sideKey) {
+      this._sideKey = sideKey;
+      body.scrollTop = 0;
+    }
+    this._renderLeakFeed();   // (ends with _keepActInView: the feed's height changes the body's)
+    this._tipify(this.side);
+  }
+
+  /**
+   * A tower panel taller than its space (720p, or the leak feed and protocols showing mid-wave): scroll just
+   * enough to keep the row you act on in view — Upgrade / Sell (and the line under it) while building, the
+   * targeting buttons during a push.
+   */
+  _keepActInView() {
+    const body = this.sideBody;
+    if (!body) return;
+    const act = this.sideMode === 'tower' && (body.querySelector('.df-act') || body.querySelector('.df-targets'));
+    if (act) {
+      const last = act.classList.contains('df-act') ? act.nextElementSibling || act : act;
+      const over = last.getBoundingClientRect().bottom - body.getBoundingClientRect().bottom;
+      if (over > 0) body.scrollTop += Math.ceil(over) + 2;
+    }
     this._sideMore();
   }
 
@@ -797,10 +1333,26 @@ export class DefenseScene {
 
   _renderBuild(head, body) {
     const run = this.run;
-    head.append(el('h2', 'Build a tower'), el('div.small.muted', 'Pick one · Esc to cancel · hover for exact numbers'));
-    run.availableTowers(this.game.meta).forEach((type, i) => body.append(this._towerCard(type, i, () => this._build(type, this.selPad))));
+    const pad = this.pads[this.selPad];
+    const fwd = pad?.forward ? (pad.beacon?.dir ? `Forward pad · your ${pad.beacon.dir} beacon` : 'Forward pad') : null;
+    head.append(el('h2', 'Build a tower'), el('div.small.muted', fwd || 'Pick one · Esc cancels · hover for numbers'));
+    // Compact list (critic K §5.3): one row per tower — icon, name, price, one plain line — so every tower
+    // fits at 1280×720 without scrolling (6 today, room for ~9). Bars and exact numbers are in the tooltip.
+    const list = el('div.df-cards');
+    run.availableTowers(this.game.meta).forEach((type, i) => list.append(this._towerCard(type, i, () => this._build(type, this.selPad))));
+    body.append(list);
     const locked = Object.keys(TOWERS).filter((k) => !run.isTowerUnlocked(k, this.game.meta));
     if (locked.length && this.game.meta.lifetime.runs > 1) body.append(el('div.small.muted.df-note', `🔒 ${locked.map((k) => TOWERS[k].name).join(', ')}: unlock with Research (Collection).`));
+  }
+
+  /** HTML for a tower's tooltip: name, plain line, strength bars as text, exact numbers, price notes. */
+  _towerTip(type, extra = '') {
+    const def = TOWERS[type];
+    const P = def.pips || {};
+    const bars = [['Power', 'damage'], ['Slow', 'slow'], ['Boost', 'boost'], ['Speed', 'speed'], ['Range', 'range']]
+      .filter(([, k]) => k in P).map(([l, k]) => `${l} <span class="df-tipbar">${'■'.repeat(P[k] || 0)}<i>${'■'.repeat(3 - (P[k] || 0))}</i></span>`).join('  ');
+    return `<b>${def.name}</b><div>${def.desc || def.line || ''}</div>${bars ? `<div class="df-tipbars">${bars}</div>` : ''}`
+      + `<div class="df-tipnum">${this._statSummary(this._previewStats(type))}</div>${extra}`;
   }
 
   _towerCard(type, i, onPick) {
@@ -811,10 +1363,10 @@ export class DefenseScene {
     const reason = ok ? null : run.missing(cost);
     const owned = run.towerCount(type);
     const surcharge = run.buildSurcharge(type);
-    // Plain card: name, price, one line, three strength bars. The exact numbers are in the tooltip.
-    const exact = `${def.name}: ${def.desc}\n${this._statSummary(this._previewStats(type))}`;
+    const notes = (surcharge ? `<div class="amber">+${surcharge} Scrap: you own ${owned} (each ${def.name} raises the next one's price, so mixing types pays)</div>` : '')
+      + (reason ? `<div class="bad">${reason}</div>` : '');
     const card = el(`div.df-card${ok ? '' : '.disabled'}`, {
-      title: reason ? `${reason}\n${exact}` : exact,
+      'data-tip': this._towerTip(type, notes),
       onclick: () => {
         if (!ok) { this.game.sfx.play('error'); toast(this.game.ui, reason, 'bad'); return; }
         onPick();
@@ -822,23 +1374,22 @@ export class DefenseScene {
       onmouseenter: () => { this.hoverType = type; },
       onmouseleave: () => { if (this.hoverType === type) this.hoverType = null; },
     },
-    el('div.df-cardicon', {}, this._iconFor('tower', type, 26), el('span.df-hk', String(i + 1))),
+    el('div.df-cardicon', {}, this._iconFor('tower', type, 22), i < 9 ? el('span.df-hk', String(i + 1)) : null),
     el('div.df-cardmain', {},
-      el('div.df-cardtop', {}, el('b', def.name), el('span.grow'), costLine(cost, run.res)),
-      el('div.df-desc', def.line || def.desc),
-      this._pips(def),
-      surcharge ? el('div.df-desc.amber', { title: `Each ${def.name} you own adds ${CONFIG.towerSurcharge} Scrap to the next one, so mixing tower types pays.` },
-        `+${surcharge} Scrap: you own ${owned} (each one raises the price)`) : null,
-      reason ? el('div.df-desc.bad', reason) : null,
-    ));
+      el('div.df-cardtop', {}, el('b', def.name), el('span.grow'), surcharge ? el('span.df-sur', `+${surcharge}`) : null, costLine(cost, run.res)),
+      el('div.df-desc', def.line || def.desc)));
     return card;
   }
 
-  /** Damage / speed / range as 1–3 pips (TOWERS[*].pips). */
+  /**
+   * Strength as 1–3 pips (TOWERS[*].pips): the rows a tower has, in this order — Power (damage), Slow
+   * (Snare Vine), Boost (Pulse Beacon), Speed, Range. Pips must tell the truth (critic K #7).
+   */
   _pips(def) {
     const P = def.pips;
     if (!P) return null;
-    return el('div.df-pips', {}, [['Power', 'damage'], ['Speed', 'speed'], ['Range', 'range']].map(([lbl, k]) =>
+    const rows = [['Power', 'damage'], ['Slow', 'slow'], ['Boost', 'boost'], ['Speed', 'speed'], ['Range', 'range']].filter(([, k]) => k in P);
+    return el('div.df-pips', {}, rows.map(([lbl, k]) =>
       el('span.df-piprow', {}, el('span.df-pipl', lbl), el('span.df-pipbar', {}, [1, 2, 3].map((n) => el(`i${n <= (P[k] || 0) ? '.on' : ''}`))))));
   }
 
@@ -867,28 +1418,36 @@ export class DefenseScene {
     const lvl = t.rec.level;
     head.append(
       el('div.row', {}, this._iconFor('tower', t.rec.type, 26), el('div', {}, el('h2', def.name),
-        el('div.df-level', {}, [1, 2, 3].map((n) => el(`span.df-pip${n <= lvl ? '.on' : ''}`)), el('span.small.muted', ` Level ${lvl} of 3`)))),
+        el('div.df-level', {}, [1, 2, 3].map((n) => el(`span.df-pip${n <= lvl ? '.on' : ''}`)),
+          el('span.small.muted', ` Level ${lvl} of 3${branchOf(t.rec) ? ` · ${branchOf(t.rec).name}` : ''}`)))),
     );
-    body.append(el('div.small', def.line || def.desc));
+    // During a push the panel is short on room (leak feed, protocols): the description moves to the name's tooltip.
+    if (this.canBuild) body.append(el('div.small', def.line || def.desc));
+    else head.querySelector('h2')?.setAttribute('title', def.line || def.desc);
 
     // Stats (effective: upgrades, skills, boons and beacon buffs applied).
     const rows = [];
     const rate = 1 / (s.cooldown / (1 + t.buffRate));
     if (s.kind === 'bullet') {
-      rows.push(['Damage', fmt(s.damage) + (s.fifthShotMult ? ` (×${s.fifthShotMult} every 5th)` : '')], ['Attacks', `${fmt(rate, 2)}/s`], ['Range', fmt(s.range)]);
+      rows.push(['Damage', fmt(s.damage) + (s.fifthShotMult ? ` (×${s.fifthShotMult} every 5th)` : '') + (s.bigBonus ? ` (×${s.bigBonus} vs big enemies)` : '')], ['Attacks', `${fmt(rate, 2)}/s`], ['Range', fmt(s.range)]);
+      if (s.pierce) rows.push(['Shields', 'ignored']);
       if (s.slowOnHit) rows.push(['Slow', `${Math.round((1 - s.slowOnHit) * 100)}% for ${s.slowTime}s${s.slowRadius ? ', splashes' : ''}`]);
     } else if (s.kind === 'chain') {
-      rows.push(['Damage', `${fmt(s.damage)} (−${Math.round((1 - s.chainFalloff) * 100)}% per jump)`], ['Chains', `${s.chains} extra targets`], ['Attacks', `${fmt(rate, 2)}/s`], ['Range', fmt(s.range)]);
+      rows.push(['Damage', s.chains ? `${fmt(s.damage)} (−${Math.round((1 - s.chainFalloff) * 100)}% per jump)` : fmt(s.damage)], ['Chains', `${s.chains} extra targets`], ['Attacks', `${fmt(rate, 2)}/s`], ['Range', fmt(s.range)]);
+      if (s.stun) rows.push(['Stun', `${s.stun}s (not bosses)`]);
       if (s.chainSlow) rows.push(['Slow', `${Math.round((1 - s.chainSlow) * 100)}% for ${s.slowTime}s`]);
     } else if (s.kind === 'mortar') {
       rows.push(['Damage', `${fmt(s.damage)} blast`], ['Blast radius', fmt(s.blastRadius)], ['Attacks', `${fmt(rate, 2)}/s`], ['Range', `${fmt(s.minRange)}–${fmt(s.range)}`]);
       if (s.burnDps) rows.push(['Burning sap', `${s.burnDps}/s for ${s.burnTime}s`]);
+      if (s.bomblets) rows.push(['Bomblets', `${s.bomblets} × ${s.bombletDamage}`]);
     } else if (s.kind === 'snare') {
       rows.push(['Slow', `${Math.round((1 - s.slowMult) * 100)}% for ${s.slowTime}s`], ['Pulse', `every ${fmt(s.cooldown / (1 + t.buffRate), 2)}s`], ['Range', fmt(s.range)]);
-      if (s.rootTime) rows.push(['Root', `${s.rootTime}s (each enemy once per ${s.rootCooldown}s)`]);
+      if (s.rootTime) rows.push(['Root', `${s.rootTime}s, big enemies ${s.bigRoot || 0}s (each once per ${s.rootCooldown}s)`]);
+      if (s.damage >= 5) rows.push(['Thorns', `${fmt(s.damage)} per pulse`]);
     } else if (s.kind === 'support') {
       rows.push(['Buff', `+${Math.round(s.buffRate * 100)}% attack speed`], ['Range', fmt(s.range)]);
       if (s.bonusAttackChance) rows.push(['Bonus attack', `${Math.round(s.bonusAttackChance * 100)}% chance`]);
+      if (s.buffDamage) rows.push(['Spotting', `+${Math.round(s.buffDamage * 100)}% damage, +${Math.round((s.buffRange || 0) * 100)}% range`]);
       const n = this.towers.filter((o) => o !== t && o.def.kind !== 'support' && o.pos.distanceTo(t.pos) <= s.range + 0.01).length;
       rows.push(['Buffing', `${n} tower${n === 1 ? '' : 's'}`]);
     }
@@ -897,6 +1456,9 @@ export class DefenseScene {
     const pips = this._pips(def);
     if (pips) { pips.title = rows.map(([a, b]) => `${a}: ${b}`).join(' · '); body.append(pips); }
     if (t.dmgDealt) body.append(el('div.small.muted', `Damage tonight: ${Math.round(t.dmgDealt)}`));
+    // The tower's one Workbench mod socket (src/ui/workbench.js: fit / swap / take out in prep and lulls).
+    const modR = modRow(this, t);
+    if (modR) body.append(modR);
 
     // Targeting: from night 2 (night 1 towers shoot the enemy first in line).
     if (['bullet', 'chain', 'mortar'].includes(s.kind) && this.night >= 2) {
@@ -905,52 +1467,67 @@ export class DefenseScene {
         const b = button(TARGET_RULE_LABEL[r], () => this._setTarget(t, r), { title: TARGET_RULE_TEXT[r], cls: t.rec.target === r ? 'selected df-tgt' : 'df-tgt' });
         return b;
       })));
-      body.append(el('div.small.muted', TARGET_RULE_TEXT[t.rec.target]));
+      // (Each rule's plain explanation is its button's tooltip: the panel must fit at 1280×720 with Upgrade/Sell.)
     }
 
-    // Upgrade
+    // Upgrade (level 3 is a choice of two branches: two half buttons, each with its own price).
     const up = def.upgrades[lvl - 1];
-    const wave = this.phase !== 'prep';
+    const wave = !this.canBuild;
     if (wave) {
       // Upgrades and selling are locked mid-wave: keep the panel short so nothing is clipped.
-      body.append(el('div.small.muted.df-note', up ? `Next upgrade (after the attack): ${up.desc}` : '★ Max level'));
+      const next = up?.branches ? `level 3: ${Object.values(up.branches).map((b) => b.name).join(' or ')}` : up?.desc;
+      body.append(el('div.small.muted.df-note', up ? `Next upgrade (in a lull or after the attack): ${next}` : '★ Max level'));
       return;
     }
-    body.append(el('h3', 'Upgrade'));
+    const notes = [];   // lines under the Upgrade / Sell row
+    let upBtn = null;
     if (!up) {
       body.append(el('div.small.good', '★ Max level'));
+    } else if (up.branches) {
+      body.append(el('h3', { title: "Level 3 is a choice of two: pick one. It can't be changed later." }, 'Level 3: pick one ', el('span.small.muted', '(final)')));
+      let anyReason = null, free = false;
+      const row = el('div.df-intel.df-branches', {}, BRANCH_KEYS.map((bk) => {
+        const b = up.branches[bk];
+        const cost = run.upgradeCost(t.rec, bk);
+        free = Object.keys(cost).length === 0;
+        const reason = run.canAfford(cost) ? null : run.missing(cost);
+        anyReason = anyReason || reason;
+        return button(el('span', {}, el('b', b.name), el('span.df-bline', b.line), costLine(cost, run.res)),
+          () => this._upgrade(t, bk), { disabled: !!reason, reason, cls: 'df-half df-branch', title: `${b.name}: ${b.line}${reason ? ` (${reason})` : ''}` });
+      }));
+      body.append(row);
+      if (free) body.append(el('div.small.good', 'Free upgrade: tonight\'s reward.'));
+      else if (anyReason) body.append(el('div.small.bad', anyReason));
     } else {
       const cost = run.upgradeCost(t.rec);
       const ok = run.canAfford(cost);
       const free = Object.keys(cost).length === 0;
       const discount = !free && run.hasSkill('field_tuning') && !run.tonight.fieldTuningUsed;
       const reason = wave ? 'Not during a wave' : ok ? null : run.missing(cost);
-      body.append(el('div.small', {}, el('b.amber', `Level ${lvl + 1}: `), up.desc));
-      const btn = button(el('span', {}, 'Upgrade ', costLine(cost, run.res)), () => this._upgrade(t), { disabled: !!reason, reason, hotkey: 'U', cls: 'primary df-wide' });
-      body.append(btn);
-      if (free) body.append(el('div.small.good', 'Free upgrade: tonight\'s reward.'));
-      else if (discount) body.append(el('div.small.good', `Field Tuning: first upgrade tonight is ${Math.round((1 - SKILLS.field_tuning.scrapMult) * 100)}% off Scrap.`));
-      if (reason) body.append(el('div.small.bad', reason));
+      body.append(el('div.small.df-upline', {}, el('b.amber', `Upgrade to level ${lvl + 1}: `), up.desc));
+      upBtn = button(el('span', {}, 'Upgrade', costLine(cost, run.res)), () => this._upgrade(t), { disabled: !!reason, reason, hotkey: 'U', cls: 'primary', title: `Level ${lvl + 1}: ${up.desc}${reason ? ` (${reason})` : ''}` });
+      if (free) notes.push(el('div.small.good', 'Free upgrade: tonight\'s reward.'));
+      else if (discount) notes.push(el('div.small.good', `Field Tuning: first upgrade tonight is ${Math.round((1 - SKILLS.field_tuning.scrapMult) * 100)}% off Scrap.`));
+      if (reason) notes.push(el('div.small.bad', reason));
     }
 
-    // Sell
+    // Sell: beside Upgrade (critic K §5.4: one short row, both on screen at 720p); the refund rule is in its tooltip.
     const v = run.sellValue(t.rec);
     const armed = this.sellArmed && this.sellArmed.pad === t.rec.pad;
     const sellReason = wave ? 'Not during a wave' : null;
     const refundNote = `Refunds ${Math.round(CONFIG.sellRefund * 100)}% of ${t.rec.spent.scrap || 0} Scrap spent (rounded down). Components aren't refunded.`;
-    // The refund rule sits in the heading row (short) and the button tooltip, so nothing is cut off below the button.
-    body.append(el('h3.df-sellhead', {}, 'Sell', el('span.small.muted', ` · get back ${Math.round(CONFIG.sellRefund * 100)}% of the Scrap`)));
-    const sellBtn = button(el('span', {}, armed ? 'Confirm sell ' : 'Sell for ', resChip('scrap', v, { short: true })), () => this._sell(t), {
-      disabled: !!sellReason, reason: sellReason, hotkey: 'S', cls: armed ? 'danger df-wide df-sellarmed' : 'df-wide', title: refundNote,
+    const sellBtn = button(el('span', {}, armed ? 'Confirm' : 'Sell', resChip('scrap', v, { short: true })), () => this._sell(t), {
+      disabled: !!sellReason, reason: sellReason, hotkey: 'S', cls: armed ? 'danger df-sellarmed' : '', title: refundNote,
     });
     if (armed) {
       // Shrinking bar: how long the confirm stays armed (continues across panel re-renders).
       const left = Math.max(0, this.sellArmed.until - this.game.time);
       sellBtn.append(el('span.df-sellbar', { style: { animationDuration: `${DEFENSE.sellConfirm}s`, animationDelay: `${-(DEFENSE.sellConfirm - left).toFixed(2)}s` } }));
     }
-    body.append(sellBtn);
+    body.append(el(`div.df-act${upBtn ? '' : '.df-act1'}`, {}, upBtn, sellBtn));
+    body.append(...notes);
     if (armed) {
-      body.append(el('div.small.bad', 'Click again (or press S) to confirm.'));
+      body.append(el('div.small.bad', 'Click Sell again (or press S) to confirm.'));
       requestAnimationFrame(() => sellBtn.scrollIntoView({ block: 'nearest' }));
     }
   }
@@ -967,7 +1544,18 @@ export class DefenseScene {
     const thr = tn.threat;
     if (thr) {
       // Tag kept short: wide pixel caps would wrap a district name onto 2–3 lines.
-      body.append(el('div.df-threat', { title: `Danger from ${DISTRICTS[this.district]?.name || 'the area'} you visited` }, el('div.df-tag.bad', '⚠ Danger tonight'), el('div.small', thr.text)));
+      // Which path it comes down: the one facing the area you visited (laneForDistrict; ⚠ on that lane's tag).
+      const dl = this.lanes[this.dangerLane];
+      const dir = this._districtDir(this.district);
+      // Name the area's direction only when the path really faces it (both trails face west: an area to the east
+      // still comes down the nearer one, and "lies east" beside "South path" would read wrong).
+      const ri = DISTRICT_KEYS.indexOf(this.district);
+      const ang = ri >= 0 ? this._jungle()?.regionAngles?.[ri] : null;
+      const bearing = this.map.lanes[this.dangerLane]?.bearing;
+      const faces = ang != null && bearing != null && Math.abs(((ang * 180 / Math.PI - bearing) % 360 + 540) % 360 - 180) <= 67.5;
+      const area = DISTRICTS[this.district]?.name || 'the area';
+      const via = dl ? el('div.small.df-via', `Comes down the ${dl.name.replace(/lane/i, 'path')}${dir && faces ? ` (${area} lies ${dir})` : `, the side nearest ${area}`}.`) : null;
+      body.append(el('div.df-threat', { title: `Danger from ${DISTRICTS[this.district]?.name || 'the area'} you visited` }, el('div.df-tag.bad', '⚠ Danger tonight'), el('div.small', thr.text), via));
     }
     const boons = tn.boons || [];
     if (boons.length) {
@@ -977,7 +1565,7 @@ export class DefenseScene {
     // Per-lane counts (in a wave: what's still to spawn).
     let perLane = this.wave.perLane;
     if (inWave && this.events) {
-      perLane = [new Map(), new Map()];
+      perLane = this.lanes.map(() => new Map());
       for (let i = this.spawnIdx; i < this.events.length; i++) {
         const e = this.events[i];
         perLane[e.lane].set(e.type, (perLane[e.lane].get(e.type) || 0) + 1);
@@ -1001,16 +1589,17 @@ export class DefenseScene {
       body.append(box);
     });
 
-    // Boss tip: lane-split targeting decides the fight.
+    // Boss tip (critic K #3: putting every tower on Toughest abandons the escort).
     const bossEv = this.wave.events.find((e) => DEFENSE_ENEMIES[e.type]?.boss);
     if (bossEv && !inWave) {
       body.append(el('div.small.df-note', {}, el('b.amber', 'Boss tip: '),
-        `set towers covering the ${this.lanes[bossEv.lane].name} to `, el('b', TARGET_RULE_LABEL.strongest), ' so they focus the Colossus.'));
+        `set one or two towers deep on the ${this.lanes[bossEv.lane].name.replace(/lane/i, 'path')} to `, el('b', TARGET_RULE_LABEL.strongest),
+        '; keep the rest on ', el('b', TARGET_RULE_LABEL.first), '. A Vine Snare cancels its charge.'));
     }
 
     // New enemy notes
     if (!inWave) {
-      const types = new Set([...this.wave.perLane[0].keys(), ...this.wave.perLane[1].keys()]);
+      const types = new Set(this.wave.perLane.flatMap((m) => [...m.keys()]));
       const fresh = [...types].filter((t) => isNewType(t, night));
       for (const tpe of fresh) {
         const d = DEFENSE_ENEMIES[tpe];
@@ -1032,11 +1621,14 @@ export class DefenseScene {
     if (t.towerRate !== 1) mods.push(`Towers attack ${Math.round((t.towerRate - 1) * 100)}% faster`);
     if (t.towerDamage !== 1) mods.push(`Towers deal ${Math.round((t.towerDamage - 1) * 100)}% more damage`);
     if (t.freeUpgrades > 0) mods.push(`${t.freeUpgrades} free tower upgrade${t.freeUpgrades > 1 ? 's' : ''} left`);
-    const skills = run.skills.filter((k) => DEFENSE_SKILLS.includes(k) && SKILLS[k]);
-    if (mods.length || skills.length) {
+    const skills = run.skills.filter((k) => SKILLS[k]?.night);
+    const relics = run.relicNightLines?.() || [];   // relics that work at night, with live values (src/data/relics.js)
+    if (mods.length || skills.length || relics.length) {
       body.append(el('div.df-mods', {}, el('div.df-tag', 'Also tonight'),
         mods.map((m) => el('div.small', '• ' + m)),
-        skills.map((k) => el('div.small.accent', { title: SKILLS[k].desc }, `◆ ${SKILLS[k].name}: ${SKILLS[k].desc}`))));
+        skills.map((k) => el('div.small.accent', { title: SKILLS[k].desc }, `${SKILLS[k].icon || '◆'} ${SKILLS[k].name}: ${SKILLS[k].num || SKILLS[k].desc}`)),
+        relics.map((r) => el('div.small.df-relic', { title: relicTitle(r.id) }, relicIcon(this.game, r.id, 11), ` ${r.name}: ${r.text}`,
+          r.down ? el('span.rl-down', ` · ${r.down}`) : null))));
     }
     if (!inWave) body.append(el('div.small.muted.df-note', 'Click a glowing square to build. Click a tower to upgrade it.'));
   }
@@ -1062,13 +1654,21 @@ export class DefenseScene {
           title: `Disrupt the attack: spend ${I.sabotageCost} Intel for ${cut}% fewer enemies tonight (once per night).${sReason ? ` ${sReason}.` : ''}`,
         })));
     }
+    // Late-game Scrap sink: trade Scrap for a Circuit or Biofiber (DEFENSE.exchange), with the wave preview,
+    // once you hold enough Scrap for it to matter.
+    const X = DEFENSE.exchange;
+    if (this.canBuild && this.sideMode === 'preview' && run.res.scrap >= X.showAt && run.exchangeLeft() > 0) {
+      foot.append(el('div.df-intel.df-exchange', {}, X.gives.map((k) => button(
+        el('span', {}, 'Trade ', costLine({ scrap: X.scrap }, run.res), el('span.df-arrow', ' → '), costLine({ [k]: 1 })),
+        () => this._exchange(k), { cls: 'df-half', title: `Trade ${X.scrap} Scrap for 1 ${k === 'circuits' ? 'Circuit' : 'Biofiber'} (${run.exchangeLeft()} trade${run.exchangeLeft() === 1 ? '' : 's'} left tonight).` }))));
+    }
     // Repair and Emergency Patch: side by side as half buttons when both show (keeps the footer short
-    // so the wave preview above keeps its room), full width otherwise.
-    const patchOn = run.hasSkill('emergency_patch') && (prep || DEFENSE.emergencyPatchInWave) && (this.phase === 'prep' || this.phase === 'wave');
+    // so the wave preview above keeps its room), full width otherwise. Repairs work in prep and lulls.
+    const patchOn = run.hasSkill('emergency_patch') && (prep || DEFENSE.emergencyPatchInWave) && ['prep', 'wave', 'lull'].includes(this.phase);
     const damaged = run.relayHp < run.relayMax;   // Repair shows only when there is something to repair
-    const halves = prep && patchOn && damaged;
+    const halves = this.canBuild && patchOn && damaged;
     const pair = halves ? el('div.df-intel') : foot;
-    if (prep && damaged) {
+    if (this.canBuild && damaged) {
       const full = run.relayHp >= run.relayMax;
       const cost = run.repairCost();
       const reason = full ? 'Relay at full health' : run.missing(cost);
@@ -1089,24 +1689,73 @@ export class DefenseScene {
     }
     if (halves) foot.append(pair);
     if (prep) {
-      // Readiness: one plain line (and a meter) before Start Wave; a weak defense asks before starting.
+      // Readiness (critic K §4.6 / L §6.2): per path and a predicted Relay loss from the night forecast;
+      // a weak defense asks before starting.
       const r = this._readiness();
       const armed = this.startArmed && this.game.time < this.startArmed;
       const say = {
-        weak: this.towers.length ? "Too weak: this probably won't hold" : 'No towers yet: enemies will walk right in',
-        risky: 'Risky: the Relay may take some damage',
+        weak: this.towers.length ? 'Too weak: expect heavy damage' : 'No towers yet: enemies will walk right in',
+        risky: 'Risky: the Relay will take damage',
         strong: 'Looks strong',
       }[r.level];
-      foot.append(el(`div.df-rd-line.${r.level}`, { title: `Rough estimate: your towers' damage over the attack vs the enemies' total health (${Math.round(r.ratio * 100)}%).` },
-        el('span.df-rd-k', 'Your defense'),
-        el('span.df-meter', {}, [0, 1, 2].map((n) => el(`i${n <= ({ weak: 0, risky: 1, strong: 2 })[r.level] ? '.on' : ''}`))),
-        el('span.df-rd-t', say)));
-      foot.append(button(el('span', {}, armed ? '▶ Start anyway' : '▶ Start Wave'), () => this._tryStartWave(), { hotkey: 'Space', cls: `primary big df-wide df-start${armed ? ' df-armed' : ''}` }));
+      const dots = (n) => '●'.repeat(n) + '○'.repeat(3 - n);
+      const expect = r.hi <= 0 ? 'expect no Relay damage' : r.lo <= 0 ? `expect up to −${r.hi} Relay health` : `expect −${r.lo} to −${r.hi} Relay health`;
+      foot.append(el(`div.df-rd-line.${r.level}`, {
+        title: `Forecast: tonight's pushes replayed against your towers' damage, the stretch of path each one covers, slows and tanks${this.protocols.keys.length ? ', counting your Relay Protocols' : ''}. Predicted Relay loss ~${r.lost}.`,
+      },
+      el('span.df-rd-k', 'Your defense'),
+      el('span.df-meter', {}, [0, 1, 2].map((n) => el(`i${n <= ({ weak: 0, risky: 1, strong: 2 })[r.level] ? '.on' : ''}`))),
+      el('span.df-rd-t', say)));
+      foot.append(el('div.small.df-rd-lanes', {},
+        r.lanes.map((l, i) => el('span.df-rd-lane', { title: `${l.name}: about ${l.lost} Relay damage from this path` }, i ? ' · ' : '', `${l.short} `, el(`b.df-rd-dots.d${l.dots}`, dots(l.dots)))),
+        el('span.muted', ` · ${expect}`)));
+      foot.append(button(el('span', {}, armed ? '▶ Start anyway' : '▶ Start Wave'), () => this._tryStartWave('button'), { hotkey: armed ? 'Shift+Space' : 'Space', cls: `primary big df-wide df-start${armed ? ' df-armed' : ''}` }));
+    } else if (this.phase === 'lull') {
+      // Between pushes: the countdown, and the call-early button (+Scrap for the time skipped).
+      const bonus = this._callBonus();
+      foot.append(el('div.small.amber', `Lull: push ${this.pushIdx + 2} of ${this.wave.pushes} comes in ${Math.ceil(this.lullT)} s. Build and repair now.`));
+      foot.append(button(el('span', {}, '▶ Call next push', bonus > 0 ? el('span.good', ` +${bonus} Scrap`) : null), () => this.callNextPush(),
+        { hotkey: 'N', cls: 'primary big df-wide df-start df-callnext', title: `Start the next push now: +${DEFENSE.callEarly.scrap} Scrap for every ${DEFENSE.callEarly.every} s of the lull you skip.` }));
     } else if (this.phase === 'wave') {
-      foot.append(el('div.small.muted', this.night >= 2
-        ? "You can't build until the attack ends. You can still change a tower's targeting."
-        : "You can't build until the attack ends."));
+      const P = this.wave.pushes || 1;
+      const canCall = this._canCallEarly();
+      foot.append(el('div.small.muted', P > 1
+        ? `Push ${this.pushIdx + 1} of ${P}. You can build in the lull after it.${this.night >= 2 ? ' Targeting can change any time.' : ''}`
+        : this.night >= 2 ? "You can't build until the attack ends. You can still change a tower's targeting." : "You can't build until the attack ends."));
+      if (canCall) {
+        foot.append(button(el('span', {}, '▶ Call next push now', el('span.good', ` +${this._callBonus()} Scrap`)), () => this.callNextPush(),
+          { hotkey: 'N', cls: 'df-wide df-callnext', title: 'Skip the lull: the next push starts while these enemies are still on the field.' }));
+      }
     }
+  }
+
+  /** Scrap paid for calling the next push now (DEFENSE.callEarly: per `every` s of lull skipped). */
+  _callBonus() {
+    const C = DEFENSE.callEarly;
+    const left = this.phase === 'lull' ? this.lullT : DEFENSE.lull;
+    return Math.floor(Math.max(0, left) / C.every) * C.scrap;
+  }
+
+  /** The current push has finished spawning and another one follows: it can be called early. */
+  _canCallEarly() {
+    return this.phase === 'wave' && this.pushIdx < (this.wave.pushes || 1) - 1 && this._pushSpawned();
+  }
+
+  _exchange(kind) {
+    const run = this.run;
+    if (!this.canBuild) return;
+    if (!run.exchange(kind)) { this.game.sfx.play('error'); toast(this.game.ui, run.exchangeLeft() ? run.missing({ scrap: DEFENSE.exchange.scrap }) : 'No more trades tonight', 'bad'); return; }
+    this.game.sfx.play('build');
+    toast(this.game.ui, `Traded ${DEFENSE.exchange.scrap} Scrap for 1 ${kind === 'circuits' ? 'Circuit' : 'Biofiber'}`, 'good', 2);
+    this._saveBuild();
+    this.sideDirty = true;
+    this._refreshTop();
+  }
+
+  /** Save after a build action: a 'prep' snapshot in prep, a lull 'wave' snapshot (resumes at the next push) in a lull. */
+  _saveBuild() {
+    if (this.phase === 'prep') this.run.save('prep');
+    else if (this.phase === 'lull') { this.run.wavePush = this.pushIdx + 1; this.run.save('wave'); }
   }
 
   // =================================================================== actions
@@ -1123,7 +1772,7 @@ export class DefenseScene {
   _build(type, pad) {
     const run = this.run;
     const game = this.game;
-    if (this.phase !== 'prep' || pad < 0 || this._towerOn(pad)) return false;
+    if (!this.canBuild || pad < 0 || this._towerOn(pad)) return false;
     const cost = run.buildCost(type);
     if (!run.canAfford(cost)) { game.sfx.play('error'); toast(game.ui, run.missing(cost), 'bad'); return false; }
     const rec = run.build(type, pad);
@@ -1134,7 +1783,7 @@ export class DefenseScene {
     this.fx.ring(t.pos, { color: '#feae34', radius: 0.9, life: 0.35 });
     this.fx.burst(t.pos, { color: '#c0cbdc', color2: '#feae34', count: 14, speed: 2, up: 3, life: 0.5, size: 0.07, y: 0.3 });
     if (rec.refunded) toast(game.ui, 'Circuit Recovery: +1 Circuit refunded', 'good');
-    run.save('prep');
+    this._saveBuild();
     this.selPad = pad;
     this.placing = null;
     this.hoverType = null;
@@ -1143,22 +1792,29 @@ export class DefenseScene {
     return true;
   }
 
-  _upgrade(t) {
+  /** Upgrade a tower; at the level-3 branch point `branch` ('a' | 'b') is required (the U key asks). */
+  _upgrade(t, branch) {
     const run = this.run;
     const game = this.game;
-    if (this.phase !== 'prep' || !t) return;
-    const cost = run.upgradeCost(t.rec);
+    if (!this.canBuild || !t) return;
+    const branches = run.upgradeBranches(t.rec);
+    if (branches && !BRANCH_KEYS.includes(branch)) {
+      toast(game.ui, `Level 3: pick ${Object.values(branches).map((b) => b.name).join(' or ')} in the panel`, 'amber', 2.4);
+      return;
+    }
+    const cost = run.upgradeCost(t.rec, branch);
     if (!cost) { toast(game.ui, 'Already at max level', 'amber'); return; }
     if (!run.canAfford(cost)) { game.sfx.play('error'); toast(game.ui, run.missing(cost), 'bad'); return; }
     const free = Object.keys(cost).length === 0;
-    if (!run.upgrade(t.rec)) { game.sfx.play('error'); return; }
+    if (!run.upgrade(t.rec, branch)) { game.sfx.play('error'); return; }
     t.refreshVisual();
     game.sfx.play('build');
     this.fx.ring(t.pos, { color: '#fee761', radius: 1.1, life: 0.45 });
     this.fx.burst(t.pos, { color: '#fee761', color2: '#feae34', count: 18, speed: 1.6, up: 4, life: 0.6, size: 0.07, y: 0.5 });
-    this.fx.text(t.pos, `LEVEL ${t.rec.level}`, { color: '#fee761', cls: 'big', y: this.padBaseY + t.height + 0.7, life: 1 });
+    const bn = branchOf(t.rec)?.name;
+    this.fx.text(t.pos, bn ? bn.toUpperCase() : `LEVEL ${t.rec.level}`, { color: '#fee761', cls: 'big', y: this.padBaseY + t.height + 0.7, life: 1 });
     if (free) toast(game.ui, 'Free upgrade used', 'good');
-    run.save('prep');
+    this._saveBuild();
     this.sideDirty = true;
     this._refreshTop();
   }
@@ -1166,7 +1822,7 @@ export class DefenseScene {
   _sell(t) {
     const run = this.run;
     const game = this.game;
-    if (this.phase !== 'prep' || !t) return;
+    if (!this.canBuild || !t) return;
     if (!this.sellArmed || this.sellArmed.pad !== t.rec.pad) {
       this.sellArmed = { pad: t.rec.pad, until: game.time + DEFENSE.sellConfirm };
       this.sideDirty = true;
@@ -1179,7 +1835,7 @@ export class DefenseScene {
     game.sfx.play('sell');
     this.fx.burst(t.pos, { color: '#c0cbdc', count: 12, speed: 2, up: 2.5, life: 0.4, size: 0.07, y: 0.3 });
     this.fx.text(t.pos, '', { html: `+${v} ${resIconHtml('scrap')}`, color: '#c0cbdc', y: this.padBaseY + t.height + 0.4 });
-    run.save('prep');
+    this._saveBuild();
     this.sideDirty = true;
     this._refreshTop();
   }
@@ -1187,22 +1843,22 @@ export class DefenseScene {
   _setTarget(t, rule) {
     if (!t || !TARGET_RULES.includes(rule)) return;
     t.rec.target = rule;
-    if (this.phase === 'prep') this.run.save('prep');
+    this._saveBuild();
     this.sideDirty = true;
   }
 
   _repair() {
     const run = this.run;
     const game = this.game;
-    if (this.phase !== 'prep') return;
+    if (!this.canBuild) return;
     if (run.repairAmount() <= 0) { toast(game.ui, 'Relay at full health', 'amber'); return; }
     if (!run.canAfford(run.repairCost())) { game.sfx.play('error'); toast(game.ui, run.missing(run.repairCost()), 'bad'); return; }
     const before = run.relayHp;
     if (!run.repair()) return;
-    game.sfx.play('pickup');
+    game.sfx.play('repair');
     this.fx.burst(this.corePos, { color: '#2ce8f5', color2: '#63c74d', count: 16, speed: 1.5, up: 3, life: 0.6, size: 0.07, y: 1 });
     this.fx.text(this.corePos, `+${Math.round(run.relayHp - before)} HP`, { color: '#63c74d', cls: 'big', y: 3 });
-    run.save('prep');
+    this._saveBuild();
     this.sideDirty = true;
     this._refreshTop();
   }
@@ -1213,7 +1869,7 @@ export class DefenseScene {
     if (this.phase !== 'prep') return;
     if (!run.decrypt(game)) { game.sfx.play('error'); toast(game.ui, run.missing(run.decryptCost()) || 'Can\'t decrypt now', 'bad'); return; }
     run.save('prep');
-    game.sfx.play('pickup');
+    game.sfx.play('decrypt');
     toast(game.ui, `Decrypted Intel: +${CONFIG.intel.decryptResearch} Research Data`, 'good', 2.2);
     this.sideDirty = true;
     this._refreshTop();
@@ -1226,7 +1882,7 @@ export class DefenseScene {
     const why = run.sabotageBlocked();
     if (why || !run.sabotage()) { game.sfx.play('error'); toast(game.ui, why || 'Can\'t sabotage now', 'bad'); return; }
     const before = this.wave.total;
-    this.wave = buildWave(run);
+    this.wave = buildWave(run, this._waveOpts());
     run.save('prep');
     game.sfx.play('zap');
     toast(game.ui, `Sabotage: ${before - this.wave.total} fewer enemies tonight`, 'good', 2.4);
@@ -1238,7 +1894,7 @@ export class DefenseScene {
     const run = this.run;
     const before = run.relayHp;
     if (!run.emergencyPatch()) { this.game.sfx.play('error'); return; }
-    this.game.sfx.play('pickup');
+    this.game.sfx.play('repair');
     this.fx.text(this.corePos, `+${Math.round(run.relayHp - before)} HP`, { color: '#63c74d', cls: 'big', y: 3 });
     this.fx.ring(this.corePos, { color: '#63c74d', radius: 2, life: 0.5 });
     this.sideDirty = true;
@@ -1297,27 +1953,92 @@ export class DefenseScene {
     this.confirmOv.classList.add('x-pause');
   }
 
-  startWave() {
+  /**
+   * The night begins. `fromPush` > 0 (Continue from a lull snapshot) skips the pushes already fought and
+   * re-enters the lull before that push.
+   */
+  startWave(fromPush = 0) {
     if (this.phase !== 'prep') return;
     const game = this.game;
-    this.phase = 'wave';
     this.waveTime = 0;
-    this.wave = buildWave(this.run);
+    this.wave = buildWave(this.run, this._waveOpts());
     this.events = this.wave.events;
-    this.spawnIdx = 0;
     this.totalEnemies = 0;
     this.resolved = 0;
+    this.startHp = this.run.relayHp;
+    this.protocols.cancelAim();
+    if (fromPush > 0) {
+      // Earlier pushes count as done (the progress bar and "to go" include them as resolved).
+      const i = this.events.findIndex((e) => e.push >= fromPush);
+      this.spawnIdx = i < 0 ? this.events.length : i;
+      this.totalEnemies = this.resolved = this.spawnIdx;
+      this.pushIdx = fromPush - 1;
+      this._enterLull(false);
+    } else {
+      this.spawnIdx = 0;
+      // Snapshot with the build locked: quitting mid-push restarts the night (or the lull it reached).
+      this.run.wavePush = 0;
+      this.run.save('wave');
+      game.sfx.play('wave_horn');
+      toast(game.ui, `Night ${this.night}: they're coming!`, 'bad', 2);
+      this._startPush(0);
+    }
+    this.sideDirty = true;
+    this._refreshTop(true);
+  }
+
+  /** Push `k` starts spawning (DEFENSE: lulls between pushes, call-early bonus). */
+  _startPush(k) {
+    const game = this.game;
+    this.phase = 'wave';
+    this.pushIdx = k;
+    this.pushT = 0;
+    this.lullT = 0;
     this.placing = null;
     this.hoverType = null;
     if (this.selPad >= 0 && !this._towerOn(this.selPad)) this.selPad = -1;
     this.sellArmed = null;
     for (const p of this.pads) p.marker.visible = false;
-    // Snapshot with the build locked: quitting mid-wave restarts this wave, never the prep.
-    this.run.save('wave');
-    game.sfx.play('alarm');
-    toast(game.ui, `Night ${this.night}: they're coming!`, 'bad', 2);
+    if (k > 0) {
+      game.sfx.play('wave_horn');
+      toast(game.ui, `Push ${k + 1} of ${this.wave.pushes}: here they come!`, 'bad', 1.8);
+    }
+    this.spaceGuardT = game.time + DEFENSE.startGuard.pauseGrace;   // a double-tap Space doesn't start-then-pause
     this.sideDirty = true;
     this._refreshTop(true);
+  }
+
+  /** Every enemy of the current push has spawned. */
+  _pushSpawned() {
+    return !this.events || this.spawnIdx >= this.events.length || this.events[this.spawnIdx].push > this.pushIdx;
+  }
+
+  /** The current push is over (spawned out, field clear): a lull before the next one. Saves a lull snapshot. */
+  _enterLull(save = true) {
+    this.phase = 'lull';
+    this.lullT = DEFENSE.lull;
+    this.selPad = this._towerOn(this.selPad) ? this.selPad : -1;
+    this.sideDirty = true;
+    if (save) {
+      this.run.wavePush = this.pushIdx + 1;
+      this.run.save('wave');
+      this.game.sfx.play('night_won');
+      toast(this.game.ui, `Push ${this.pushIdx + 1} held! Build, upgrade or repair before the next one.`, 'good', 2.6);
+    }
+    this._refreshTop(true);
+  }
+
+  /** "Call next push": from a lull (+Scrap for the lull time skipped) or once this push has spawned out (full bonus). */
+  callNextPush() {
+    if (!(this.phase === 'lull' || this._canCallEarly())) return false;
+    const bonus = this._callBonus();
+    if (bonus > 0) {
+      this.run.add({ scrap: bonus });
+      this.nightStats.callEarly += bonus;
+      this.fx.text(this.corePos, '', { html: `+${bonus} ${resIconHtml('scrap')}`, color: '#63c74d', cls: 'big', y: 3.4, life: 1 });
+    }
+    this._startPush(this.pushIdx + 1);
+    return true;
   }
 
   // =================================================================== combat hooks (entities call these)
@@ -1340,7 +2061,7 @@ export class DefenseScene {
     if (e.boss) {
       this.boss = e;
       this.bossBox.style.display = '';
-      this.game.sfx.play('alarm');
+      this.game.sfx.play('boss_roar');
       this.game.shake(4, 0.4);
       toast(this.game.ui, `☠ The ${DEFENSE_ENEMIES[type].name} approaches on the ${this.lanes[lane].name}!`, 'bad', 3);
       this._bossEntry = { lane, until: this.game.time + DEFENSE.bossEntry };
@@ -1348,9 +2069,19 @@ export class DefenseScene {
     return e;
   }
 
-  /** Apply damage from a tower / zone. Handles numbers, boss research and kills. */
+  /**
+   * Apply damage from a tower / zone / protocol. Handles numbers, boss research and kills.
+   * opts: { source (tower, credited), crit, silent, pierce (ignores resistances), protocol }.
+   */
   damage(e, amount, type, opts = {}) {
     if (!e || e.dead || e.removed || amount <= 0) return 0;
+    // Seed Carrier blast tag (critic K #9): any blast hit in its last few seconds destroys the seeds.
+    if (type === 'blast') e.blastT = this.waveTime;
+    // Thorn Coating (a Workbench tower mod, crafting.js): more damage to slowed / rooted / stunned enemies.
+    const sb = opts.source?.stats?.slowedBonus;
+    if (sb && (e.slowMult < 0.999 || e.slows?.size > 0 || e.rootT > 0 || e.stunT > 0)) amount *= sb;
+    // Relics (Run.relicHitMult): Rusted Bell vs Razorbacks / Ruin Guards, Cracked Lens on a tower's first hit each push.
+    if (opts.source?.rec && this.run.relicHitMult) amount *= this.run.relicHitMult(opts.source, e.type, this.pushIdx);
     const dealt = e.hit(amount, type, opts);
     if (opts.source) opts.source.dmgDealt = (opts.source.dmgDealt || 0) + dealt;
     if (!opts.silent && (dealt >= DEFENSE.damageNumbersMin || opts.crit) && this.fx.texts.length < DEFENSE.maxFloatingText) {
@@ -1375,7 +2106,7 @@ export class DefenseScene {
     run.stats.kills += 1;
     if (d.bounty) {
       // Fractional bounties accumulate; whole Scrap is paid as it adds up.
-      this._bountyAcc = (this._bountyAcc || 0) + d.bounty;
+      this._bountyAcc = (this._bountyAcc || 0) + d.bounty * (run.bountyMult?.() ?? 1);   // Salvage King: ×2
       const pay = Math.floor(this._bountyAcc + 1e-6);
       if (pay > 0) {
         this._bountyAcc -= pay;
@@ -1389,11 +2120,13 @@ export class DefenseScene {
     this.fx.flash({ x: e.pos.x, y: e.height * 0.45, z: e.pos.z }, { color: d.color || '#ead4aa', size: 0.45 + (d.size || 0.6) * 0.4, life: 0.07 });
     this.fx.decal(e.pos, { color: shade(d.color || '#3e8948', JUICE.death.decalShade), radius: (0.25 + (d.size || 0.6) * 0.35) * JUICE.death.decalSize });
     if (!e.burrowed) this.fx.corpse(e.detachVisual(), { dx: e.dir.x, dz: e.dir.z });
-    this.game.sfx.play('hit');
-    // Seed Carrier: bursts into seedlings unless the killing blow was a blast.
+    this.game.sfx.playAt((d.size || 0.6) >= 1 && !e.boss ? 'death_big' : 'enemy_die', e.pos.x, e.pos.z);
+    // Seed Carrier: bursts into seedlings unless the killing blow was a blast, or a blast hit it within its
+    // last `blastTag` seconds (critic K #9: another tower almost always landed the last hit).
     const od = d.onDeath;
     if (od) {
-      if (e.killedBy !== od.unlessDamageType) {
+      const tagged = od.blastTag != null && e.blastT != null && this.waveTime - e.blastT <= od.blastTag;
+      if (e.killedBy !== od.unlessDamageType && !tagged) {
         for (let i = 0; i < od.count; i++) {
           this.spawnEnemy(od.spawn, e.laneIndex, { dist: Math.max(0, e.dist + (i - (od.count - 1) / 2) * 0.35) });
           this.totalEnemies += 1;
@@ -1405,9 +2138,11 @@ export class DefenseScene {
       }
     }
     if (e.boss) {
+      this.nightStats.bossKilled = true;
+      run.stats.bossKilled = true;
       run.awardBossDamage(this.game, 1);
       this.game.shake(10, 0.6);
-      this.game.sfx.play('boom');
+      this.game.sfx.play('boss_die');
       this.fx.ring(e.pos, { color: '#ff0044', radius: 4, life: 0.8 });
       // Boss down: white screen flash, hit-stop into half a second of slow motion, a multi-burst of
       // bark and heart-core embers, falling leaves and a big splat.
@@ -1439,10 +2174,86 @@ export class DefenseScene {
   }
 
   enemyReachedCore(e) {
-    this.coreHit(this.leakDamage(e));
+    const dmg = this.leakDamage(e);
+    this._noteLeak(e.type, dmg, 1, e.laneIndex);
+    this.coreHit(dmg);
     e.leaked = true;
     if (e.boss) this.bossBox.style.display = 'none';
     e.remove();
+    this.resolved += 1;
+  }
+
+  /**
+   * Relay damage bookkeeping for tonight (nightStats.leaks = count per enemy type, leakHp = damage per
+   * source: an enemy type, 'sap' for Spitter globs, 'colossus' for siege slams). The leak feed / banner
+   * breakdown read it.
+   */
+  _noteLeak(src, dmg, count = 1, lane = null) {
+    const S = this.nightStats;
+    S.leaks[src] = (S.leaks[src] || 0) + count;
+    S.leakHp[src] = (S.leakHp[src] || 0) + dmg;
+    // The board's live leak feed + the run's per-night tally (Results says why a run was lost).
+    this._pushLeakFeed(src, dmg, lane);
+    // run.lastNight.leaks = { enemy type: { count, damage } } (Run.finish → results "What got through");
+    // Spitter sap counts as Spitter damage.
+    const leaks = {};
+    for (const k of Object.keys(S.leakHp)) {
+      const type = k === 'sap' ? 'spitter' : k;
+      const L = leaks[type] || (leaks[type] = { count: 0, damage: 0 });
+      if (k !== 'sap') L.count += S.leaks[k] || 0;
+      L.damage += S.leakHp[k] || 0;
+    }
+    this.run.lastNight = { night: this.night, leaks };
+  }
+
+  /**
+   * Live leak feed (critic K §4.5 / item 8) in the side panel during pushes and lulls: "−15 Ruin Guard ·
+   * South", newest first; sap globs and siege slams from one source merge while they keep landing.
+   */
+  _pushLeakFeed(src, dmg, lane) {
+    this._leaks ||= [];
+    const last = this._leaks[0];
+    if (last && last.src === src && last.lane === lane && (src === 'sap' || src === 'colossus') && this.game.time - last.t < 3) {
+      last.dmg += dmg; last.n += 1; last.t = this.game.time;
+    } else this._leaks.unshift({ src, dmg, lane, n: 1, t: this.game.time });
+    if (this._leaks.length > 8) this._leaks.length = 8;
+    this._renderLeakFeed();
+  }
+
+  _renderLeakFeed() {
+    const box = this.leakFeed;
+    if (!box) return;
+    const show = (this.phase === 'wave' || this.phase === 'lull') && !!this._leaks?.length;
+    if (box.style.display !== (show ? '' : 'none')) box.style.display = show ? '' : 'none';
+    if (show) {
+      const total = Object.values(this.nightStats?.leakHp || {}).reduce((a, b) => a + b, 0);
+      box.replaceChildren(
+        el('div.df-leakhead', {}, el('span.df-tag.bad', 'Got through'), el('span.grow'), el('span.bad', `−${Math.round(total)} tonight`)),
+        ...this._leaks.slice(0, DEFENSE_VIEW.leakRows).map((r) => el('div.df-leakrow', {},
+          el('span.df-leakhp', `−${Math.round(r.dmg)}`),
+          el('span.df-leakname', `${leakName(r.src)}${r.n > 1 ? ` ×${r.n}` : ''}`),
+          el('span.muted', this.lanes[r.lane]?.short ? ` · ${this.lanes[r.lane].short}` : ''))));
+    }
+    this._keepActInView();
+  }
+
+  /** Colossus siege slam (DefenseEnemy 'siege'): a shockwave from the plaza into the Relay. */
+  bossSlam(boss, dmg) {
+    this._noteLeak('colossus', dmg, 1, boss.laneIndex);
+    this.fx.ring(boss.pos, { color: '#e43b44', radius: 2.4, life: 0.4, from: 0.5 });
+    this.fx.burst(boss.pos, { color: '#8f563b', color2: '#5a6988', count: 18, speed: 3, up: 2, life: 0.5, size: 0.1, y: 0.05 });
+    this.game.sfx.playAt('roots_burst', boss.pos.x, boss.pos.z);
+    this.coreHit(dmg);
+  }
+
+  /** The Colossus used up its slams (siege.maxSlams): it collapses, spent. Resolved, not a kill. */
+  bossSpent(boss) {
+    this.nightStats.bossSpent = true;
+    this.fx.burst(boss.pos, { color: '#8f563b', color2: '#3e8948', count: 40, speed: 2, up: 3, life: 1, size: 0.1, y: boss.height * 0.5 });
+    this.fx.ring(boss.pos, { color: '#feae34', radius: 3, life: 0.7 });
+    toast(this.game.ui, 'The Colossus collapses, spent. The Relay held it off.', 'amber', 3.5);
+    this.bossBox.style.display = 'none';
+    boss.remove();
     this.resolved += 1;
   }
 
@@ -1462,10 +2273,11 @@ export class DefenseScene {
       time: sp.flight || 0.8, height: 2, look: 'sap',
       onLand: (p) => {
         this.fx.burst(p, { color: '#ff4d8d', color2: '#b55088', count: 10, speed: 2, up: 2, life: 0.4, size: 0.07, y: 0 });
+        if (this.phase === 'wave') this._noteLeak('sap', sp.damage, 1, e.laneIndex);
         this.coreHit(sp.damage);
       },
     });
-    this.game.sfx.play('dodge');
+    this.game.sfx.playAt('lob', from.x, from.z);
   }
 
   coreHit(amount) {
@@ -1476,7 +2288,7 @@ export class DefenseScene {
     flashVisual(this.coreVis, '#ff3040', 0.25);
     game.flash('#e43b44', Math.min(0.35, 0.1 + amount * 0.012));
     game.shake(Math.min(10, 2.5 + amount * 0.35), 0.25);
-    game.sfx.play('core');
+    game.sfx.play('relay_hit');
     this.coreHitT = 0.35;
     this.fx.burst(this.corePos, { color: '#e43b44', color2: '#2ce8f5', count: 10 + Math.min(30, amount * 2), speed: 2.5, up: 3, life: 0.5, size: 0.08, y: 1.2 });
     // Debris off the plinth, a shockwave ring on the plaza and a crystal flicker.
@@ -1492,13 +2304,13 @@ export class DefenseScene {
   }
 
   bossCue(kind) {
-    this.game.sfx.play('alarm');
+    this.game.sfx.play(kind === 'enrage' ? 'boss_roar' : 'boss_cue');
     if (kind === 'charge') this.game.shake(3, 0.3);
     this._bossCues = this._bossCues || {};
     if (kind === 'enrage') {
       // The second act: a roar, a heavy shake and a red pulse; it turns red and loops faster.
       this.game.shake(7, 0.6);
-      this.game.sfx.play('boom');
+      this.game.sfx.play('roots_burst');
       const b = this.boss;
       if (b && !b.removed) {
         this.fx.ring(b.pos, { color: '#e43b44', radius: 3.2, life: 0.7 });
@@ -1508,10 +2320,12 @@ export class DefenseScene {
     }
     if (!this._bossCues[kind]) {
       this._bossCues[kind] = true;
+      const snare = this.protocols?.keys.includes('vine_snare') ? ` A Vine Snare (${PROTOCOLS.vine_snare.hotkey}) on it cancels the charge.` : '';
       const msg = {
         root: 'The Colossus roots itself — Crawlers will sprout!',
-        charge: 'The Colossus is about to CHARGE along the red path!',
-        enrage: 'The Colossus is enraged! Its bark hardens, it charges faster, and Skitters sprout with its roots.',
+        charge: `The Colossus is about to CHARGE along the red path!${snare}`,
+        enrage: 'The Colossus is enraged! It charges faster, and Skitters sprout with its roots.',
+        siege: 'The Colossus is slamming the Relay! Every slam hurts: kill it.',
       }[kind];
       toast(this.game.ui, msg, 'bad', kind === 'enrage' ? 3.2 : 2.6);
     }
@@ -1521,7 +2335,7 @@ export class DefenseScene {
     this.fx.ring(boss.pos, { color: '#63c74d', radius, life: 0.5 });
     this.fx.burst(boss.pos, { color: '#63c74d', color2: '#733e39', count: 30, speed: 3, up: 3, life: 0.6, size: 0.09, y: 0.1 });
     this.game.shake(3, 0.25);
-    this.game.sfx.play('boom');
+    this.game.sfx.playAt('roots_burst', boss.pos.x, boss.pos.z);
     for (let i = 0; i < count; i++) {
       this.spawnEnemy(type, boss.laneIndex, { dist: boss.dist + 0.6 + i * 0.55 });
       this.totalEnemies += 1;
@@ -1550,14 +2364,31 @@ export class DefenseScene {
     this.projectiles.clear();
     const night = this.night;
     this.phase = 'won';
+    this.protocols.cancelAim();
+    // Relay HP lost tonight (from the night's start, or from the lull a Continue resumed at) → salvage picks.
+    this.nightLost = Math.max(0, Math.round((this.startHp ?? run.relayHp) - run.relayHp));
+    const best = this.towers.reduce((b, t) => ((t.dmgDealt || 0) > (b?.dmgDealt || 0) ? t : b), null);
+    this._bestPad = best?.rec.pad ?? -1;
+    run.wavePush = 0;
     this.result = run.nightSurvived(game);
     // Save right away (not after the banner) so quitting during it can't replay the night.
-    if (this.result === 'victory') this.finalResult = run.finish(game, true);
-    else run.save('briefing');
-    game.sfx.play('done');
+    if (this.result === 'victory') {
+      this.finalResult = run.finish(game, true);
+      this.finalResult.bossKilled = this.nightStats.bossKilled;
+    } else {
+      this.salvage = run.salvageOptions(this.nightLost, night);
+      run.save('briefing');
+    }
+    game.sfx.play('night_won');
     const last = this.result === 'victory';
-    this._banner(last ? 'THE RELAY HOLDS' : `NIGHT ${night} SURVIVED`,
-      last ? 'The Canopy Colossus is beaten. Dawn breaks over Verdant Relay.' : `Relay ${Math.ceil(run.relayHp)} / ${run.relayMax} · everything you stored and built stays for tomorrow`, 'good');
+    // Long Night: holding night 6 is the run's win (Run.recordVictory), and the nights go on.
+    const longWin = !last && run.isLongNight?.() && night === CONFIG.nights;
+    this._banner(last || longWin ? 'THE RELAY HOLDS' : `NIGHT ${night} SURVIVED`,
+      last
+        ? (this.nightStats.bossKilled ? 'The Canopy Colossus is beaten. Dawn breaks over Verdant Relay.' : 'The Relay held the Colossus off. Dawn breaks over Verdant Relay.')
+        : longWin ? `Night ${night} held: the run counts as a win. The Long Night goes on — how far can you get?`
+        : `Relay ${Math.ceil(run.relayHp)} / ${run.relayMax} (−${this.nightLost} tonight) · everything you stored and built stays for tomorrow`,
+      'good', last ? null : this._salvagePanel());
     // The banner waits for a click / Enter / Space (DEFENSE.bannerWait): an auto-advance could switch to the
     // briefing just as the player clicks the banner, and that click then lands on a district card (critic G #12).
     this.endTimer = DEFENSE.bannerWait ? Infinity : DEFENSE.endBanner + (last ? 1 : 0);
@@ -1570,7 +2401,8 @@ export class DefenseScene {
     const game = this.game;
     if (this.paused) this.togglePause(false);
     this.phase = 'lost';
-    game.sfx.play('boom');
+    this.protocols?.cancelAim();
+    game.sfx.play('relay_fall');
     game.shake(12, 0.8);
     game.flash('#e43b44', 0.5);
     for (let i = 0; i < 4; i++) this.fx.burst(this.corePos, { color: '#2ce8f5', color2: '#e43b44', count: 40, speed: 4 + i, up: 5, life: 1, size: 0.12, y: 1.5 });
@@ -1583,29 +2415,76 @@ export class DefenseScene {
     this._refreshTop(true);
   }
 
-  _banner(title, sub, cls) {
+  _banner(title, sub, cls, extra = null) {
     this.bannerEl?.remove();
     // Any pointerdown while the banner is up is swallowed (window capture, so nothing under it reacts); after
     // DEFENSE.bannerMinTime it dismisses. The scene switches on the next frame, and the next screen (the
-    // briefing) ignores the rest of this click — see BriefingScene._guardInput.
+    // briefing) ignores the rest of this click — see BriefingScene._guardInput. A salvage pick card is the
+    // exception: its click picks (and the banner waits for a pick when there is one to make).
     this.bannerT = 0;
     if (!this._bannerHooked) {
       this._bannerHooked = true;
       this._listen(window, 'pointerdown', (e) => {
         if (!this.bannerEl || (this.phase !== 'won' && this.phase !== 'lost')) return;
+        if (e.target.closest?.('.df-salvage-card')) return;
         e.stopPropagation(); e.preventDefault();
         this._dismissBanner();
       }, true);
     }
+    this.bannerHint = el('div.small.muted', this._salvagePending() ? 'pick one to continue (1–3)' : 'click or press Enter to continue');
+    // What got through tonight (critic K §4.5): "Got through: 4 Ruin Guards −40 · Spitter sap −20".
+    const leaks = leakSummaryText(this.nightStats);
     this.bannerEl = el(`div.df-banner.${cls}.ui-block`, {},
-      el('div.df-bannertitle', title), el('div.df-bannersub', sub), el('div.small.muted', 'click or press Enter to continue'));
+      el('div.df-bannertitle', title), el('div.df-bannersub', sub),
+      leaks ? el('div.df-leakline', {}, el('span.bad', 'Got through: '), leaks) : el('div.df-leakline.good', 'Nothing got through to the Relay.'),
+      extra, this.bannerHint);
     this.uiRoot.append(this.bannerEl);
   }
 
-  /** Continue past the end banner (once it has shown for DEFENSE.bannerMinTime). */
+  /** Continue past the end banner (once it has shown for DEFENSE.bannerMinTime, and a salvage pick is made). */
   _dismissBanner() {
     if ((this.bannerT || 0) < (DEFENSE.bannerMinTime || 0)) return;
+    if (this._salvagePending()) {
+      this.bannerEl?.querySelector('.df-salvage')?.classList.remove('df-nudge');
+      void this.bannerEl?.offsetWidth;
+      this.bannerEl?.querySelector('.df-salvage')?.classList.add('df-nudge');
+      return;
+    }
     this.endTimer = Math.min(this.endTimer, 0.01);
+  }
+
+  // ---- post-night salvage pick (critic K §9; SALVAGE in src/data/waves.js)
+
+  _salvagePending() { return this.phase === 'won' && !!this.salvage?.length && this.salvagePicked == null; }
+
+  /** The pick cards on the "Night survived" banner: more choices the less the Relay lost tonight. */
+  _salvagePanel() {
+    if (!this.salvage?.length) return null;
+    const n = this.salvage.length;
+    const why = n >= 3 ? 'A clean night: pick a reward.' : n === 2 ? 'Pick a reward (a cleaner night offers more).' : 'Salvage what you can (a cleaner night offers more choices).';
+    return el('div.df-salvage', {}, el('div.small.amber', why), el('div.df-salvage-row', {}, this.salvage.map((k, i) => {
+      const o = SALVAGE.options[k];
+      return el('button.btn.df-salvage-card', { onclick: (ev) => { ev.stopPropagation(); this.pickSalvage(i); }, title: o.line },
+        el('span.hotkey', String(i + 1)), el('b', o.name), el('span.small', o.line));
+    })));
+  }
+
+  /** Take salvage option `i` (banner click, keys 1–3, or the balance sim). */
+  pickSalvage(i) {
+    if (!this._salvagePending()) return null;
+    const key = this.salvage[i];
+    if (!key) return null;
+    const run = this.run;
+    const note = run.applySalvage(key, this._bestPad);
+    this.salvagePicked = key;
+    run.save('briefing');
+    this.game.sfx.play('build');
+    if (note) toast(this.game.ui, `Salvage: ${note}`, 'good', 2.6);
+    this.bannerEl?.querySelectorAll('.df-salvage-card').forEach((b, j) => { b.classList.toggle('picked', j === i); b.classList.toggle('disabled', j !== i); });
+    if (this.bannerHint) this.bannerHint.textContent = 'click or press Enter to continue';
+    this.bannerT = Math.min(this.bannerT, 0);   // the pick click must not also dismiss the banner
+    this._refreshTop(true);
+    return key;
   }
 
   _finishTransition() {
@@ -1630,12 +2509,14 @@ export class DefenseScene {
       this.bannerT = (this.bannerT || 0) + dt;
       const inp = game.input;
       if (inp.wasPressed('Enter') || inp.wasPressed('NumpadEnter') || inp.wasPressed('Space')) this._dismissBanner();
+      for (let i = 0; i < 3; i++) if (inp.wasPressed(`Digit${i + 1}`) || inp.wasPressed(`Numpad${i + 1}`)) this.pickSalvage(i);
       this._step(dt, false);
       this._frameVisuals(dt);
       if (this.endTimer <= 0) { this._finishTransition(); return; }
       return;
     }
 
+    this.cam?.update(dt);   // zoom / pan; must read the right button before _handleInput (drag vs click)
     this._handleInput();
     if (!this._alive) return;   // a key may have quit the scene
 
@@ -1658,6 +2539,9 @@ export class DefenseScene {
           remaining -= step;
         }
         if (!this._alive) return;
+      } else if (this.phase === 'lull') {
+        // The lull runs in real time (2×/3× don't shorten your building time).
+        this._step(dt, true);
       } else {
         this.prepTime += dt;
         this._step(dt, false);
@@ -1668,39 +2552,62 @@ export class DefenseScene {
     this._updateHints();
   }
 
-  /** One simulation step. `active` = wave running (spawns, combat). */
+  /**
+   * One simulation step. `active` = the night is running (a push or a lull): spawns, combat, protocols.
+   * In a push, events of the current push spawn on its own clock (pushT); when the push has spawned out
+   * and the field is clear, a lull starts (or the night ends after the last push). In a lull the timer
+   * runs down and the next push starts at 0. The balance sim calls this directly (any phase).
+   */
   _step(dt, active) {
     const run = this.run;
+    const wasWave = this.phase === 'wave';
     if (active) {
       this.waveTime += dt;
-      while (this.spawnIdx < this.events.length && this.events[this.spawnIdx].t <= this.waveTime) {
-        const ev = this.events[this.spawnIdx++];
-        this.spawnEnemy(ev.type, ev.lane);
-        this.totalEnemies += 1;
-        this.sideDirty = this.sideDirty || this.sideMode === 'preview';
+      if (wasWave) {
+        this.pushT += dt;
+        while (this.spawnIdx < this.events.length && this.events[this.spawnIdx].push === this.pushIdx && this.events[this.spawnIdx].t <= this.pushT) {
+          const ev = this.events[this.spawnIdx++];
+          // A group's own hpMult (the boss) replaces the night curve; run modifiers still apply on top.
+          this.spawnEnemy(ev.type, ev.lane, ev.hpMult ? { hpMult: ev.hpMult * (this.hpMult / healthMult(this.night)) } : {});
+          this.totalEnemies += 1;
+          this.sideDirty = this.sideDirty || this.sideMode === 'preview';
+        }
+        // Rapid Response skill: everything is slowed for the first seconds of each push.
+        if (run.hasSkill('rapid_response') && this.pushT < DEFENSE.rapidResponse.time) {
+          const left = DEFENSE.rapidResponse.time - this.pushT;
+          for (const e of this.enemies) e.applySlow(DEFENSE.rapidResponse.mult, Math.min(left, 0.25) + dt, 'rapid');
+        }
+        // Root Heart (relic): the Relay heals during pushes.
+        const regen = run.relicMod ? run.relicMod('relayRegen') : 0;
+        if (regen > 0 && run.relayHp < run.relayMax) run.relayHp = Math.min(run.relayMax, run.relayHp + regen * dt);
+      } else if (this.phase === 'lull') {
+        const before = Math.ceil(this.lullT);
+        this.lullT -= dt;
+        if (Math.ceil(this.lullT) !== before) this.sideDirty = true;   // the countdown and the call-early bonus
+        if (this.lullT <= 0) this._startPush(this.pushIdx + 1);
       }
-      // Rapid Response skill: everything is slowed for the first seconds of the wave.
-      if (run.hasSkill('rapid_response') && this.waveTime < DEFENSE.rapidResponse.time) {
-        const left = DEFENSE.rapidResponse.time - this.waveTime;
-        for (const e of this.enemies) e.applySlow(DEFENSE.rapidResponse.mult, Math.min(left, 0.25) + dt, 'rapid');
-      }
+      this.protocols.update(dt);
     }
     this._computeTowerStats();
     if (active) {
       for (const e of this.enemies) e.update(dt);
-      if (this.phase !== 'wave') return;          // defeat mid-step
+      if (this.phase === 'lost' || this.phase === 'won') return;          // defeat mid-step
     } else {
       for (const e of this.enemies) updateVisual(e.visual, dt);
     }
-    for (const t of this.towers) t.update(dt, this.enemies, active);
+    for (const t of this.towers) t.update(dt, this.enemies, active && this.phase === 'wave');
     this.projectiles.update(dt);
     this.fx.update(dt);
     if (this.enemies.some((e) => e.removed)) this.enemies = this.enemies.filter((e) => !e.removed);
     if (this.boss && this.boss.removed) this.boss = null;
 
-    if (active && this.phase === 'wave' && this.spawnIdx >= this.events.length && this.enemies.length === 0 && this.projectiles.list.length === 0) {
-      this._endNight();
+    if (active && this.phase === 'wave' && this._pushSpawned() && this.enemies.length === 0 && this.projectiles.list.length === 0) {
+      if (this.spawnIdx >= this.events.length) this._endNight();
+      else this._enterLull();
     }
+    // A push that has spawned out can be called early: the panel shows the button from then on.
+    if (wasWave && this._pushSpawned() && !this._calledShown) { this._calledShown = true; this.sideDirty = true; }
+    if (!this._pushSpawned()) this._calledShown = false;
   }
 
   _computeTowerStats() {
@@ -1710,6 +2617,8 @@ export class DefenseScene {
       t.stats = run.towerStats(t.rec, frac);
       t.buffRate = 0;
       t.bonusChance = 0;
+      t.buffDamage = 0;
+      t.buffRange = 0;
     }
     for (const b of this.towers) {
       if (b.stats.kind !== 'support') continue;
@@ -1719,8 +2628,15 @@ export class DefenseScene {
         if (t.pos.distanceTo(b.pos) <= r) {
           t.buffRate = Math.max(t.buffRate, b.stats.buffRate);
           t.bonusChance = Math.max(t.bonusChance, b.stats.bonusAttackChance || 0);
+          t.buffDamage = Math.max(t.buffDamage, b.stats.buffDamage || 0);
+          t.buffRange = Math.max(t.buffRange, b.stats.buffRange || 0);
         }
       }
+    }
+    // Spotter beacons: damage / range bonuses go straight into the boosted towers' stats.
+    for (const t of this.towers) {
+      if (t.buffDamage) t.stats.damage *= 1 + t.buffDamage;
+      if (t.buffRange) t.stats.range *= 1 + t.buffRange;
     }
   }
 
@@ -1737,24 +2653,15 @@ export class DefenseScene {
     }
     // Core light: gentle pulse, red flash when hit.
     this.coreHitT = Math.max(0, this.coreHitT - dt);
-    const L = DEFENSE_VIEW.light;
+    const L = this.lightCfg;
     const k = this.coreHitT / 0.35;
     this.coreLight.color.copy(this.coreLightColor).lerp(new THREE.Color('#ff3040'), k);
     this.coreLight.intensity = L.coreI * (0.85 + 0.15 * Math.sin(t * 2.2)) * (this.phase === 'lost' ? 0.2 : 1) + k * 4;
-    this.coreGlow.material.opacity = 0.14 + 0.06 * Math.sin(t * 2.2);
+    this._setGlow(this.coreGlow, (0.85 + 0.15 * Math.sin(t * 2.2)) * (this.phase === 'lost' ? 0.3 : 1));
 
-    // Pads
-    const prep = this.phase === 'prep';
-    for (const p of this.pads) {
-      const occupied = !!this._towerOn(p.i);
-      p.marker.visible = prep && !occupied;
-      if (!p.marker.visible) continue;
-      const hovered = p.i === this.hoverPad;
-      const selected = p.i === this.selPad;
-      if (selected) { p.mat.color.set('#2ce8f5'); p.mat.opacity = 1; }
-      else if (hovered) { p.mat.color.set(this.placing ? '#63c74d' : '#ffffff'); p.mat.opacity = 1; }
-      else { p.mat.color.set(this.placing ? '#63c74d' : '#feae34'); p.mat.opacity = 0.4 + 0.25 * Math.sin(t * 3 + p.i * 0.7); }
-    }
+    // Board furniture: pad markers + selection, hostile rings, painter's-order units, reward glints.
+    const prep = this.canBuild;
+    this._updateBoard(dt);
     // Pulse Beacon buff: amber ring under every boosted tower.
     this.buffRingMat.opacity = 0.4 + 0.3 * Math.sin(t * 4);
     for (const tw of this.towers) {
@@ -1763,11 +2670,6 @@ export class DefenseScene {
       if (tw.buffRing.visible) tw.buffRing.scale.setScalar(1 + 0.06 * Math.sin(t * 4 + tw.rec.pad));
     }
     const selT = this._towerOn(this.selPad);
-    if (selT) {
-      this.selMarker.visible = true;
-      this.selMarker.position.set(selT.pos.x, this.padBaseY + 0.04, selT.pos.z);
-      this.selMarker.material.opacity = 0.7 + 0.3 * Math.sin(t * 5);
-    } else this.selMarker.visible = false;
 
     // Range indicator priority: card hover at selected pad > placing at hovered pad > selected tower > hovered tower.
     this.range.visible = false;
@@ -1785,13 +2687,15 @@ export class DefenseScene {
       if (ht && ht.stats) this._showRange(ht.pos.x, ht.pos.z, ht.stats, '#ead4aa', false);
     }
 
-    // Hovered tower: name + level tag above it.
+    // Hovered tower: name + level tag above it; else a hovered enemy: name + health.
     const tagT = this._towerOn(this.hoverPad);
-    if (tagT && tagT !== selT) {
-      const txt = `${TOWERS[tagT.rec.type].name} · L${tagT.rec.level}`;
+    const tagE = !tagT ? this.hoverEnemy : null;
+    if ((tagT && tagT !== selT) || tagE) {
+      const txt = tagT ? `${TOWERS[tagT.rec.type].name} · L${tagT.rec.level}` : `${tagE.def.name} · ${Math.ceil(tagE.hp)} / ${Math.ceil(tagE.maxHp)}`;
       if (this.towerTag.textContent !== txt) this.towerTag.textContent = txt;
-      this.towerTag.style.setProperty('--c', TOWERS[tagT.rec.type].icon?.color || '#ead4aa');
-      const tp = game.project(new THREE.Vector3(tagT.pos.x, this.padBaseY + tagT.height + 0.55, tagT.pos.z), this.camera);
+      this.towerTag.style.setProperty('--c', tagT ? TOWERS[tagT.rec.type].icon?.color || '#ead4aa' : '#e43b44');
+      const at = tagT ? new THREE.Vector3(tagT.pos.x, this.padBaseY + tagT.height + 0.55, tagT.pos.z) : new THREE.Vector3(tagE.pos.x, tagE.height + 0.6, tagE.pos.z);
+      const tp = game.project(at, this.camera);
       this.towerTag.style.transform = `translate(${Math.round(tp.x)}px, ${Math.round(tp.y)}px) translate(-50%, -100%)`;
       this.towerTag.style.display = '';
     } else if (this.towerTag.style.display !== 'none') this.towerTag.style.display = 'none';
@@ -1807,22 +2711,26 @@ export class DefenseScene {
       if (this.phase === 'prep') { count = 0; for (const c of this.wave.perLane[i].values()) count += c; }
       else if (this.events) { count = 0; for (let j = this.spawnIdx; j < this.events.length; j++) if (this.events[j].lane === i) count++; }
       const bossHere = bossEntry && bossEntry.lane === i;
-      const txt = bossHere ? `☠ ${lane.short} ▸ Colossus` : this.phase === 'prep' ? `${lane.short} ▸ ${count}` : count > 0 ? `${lane.short} ▸ ${count} coming` : '';
+      // The lane facing tonight's area carries its danger group: ⚠ on its tag in prep.
+      const danger = this.phase === 'prep' && this.tonight?.threat && this.dangerLane === i ? ' ⚠' : '';
+      const txt = bossHere ? `☠ ${lane.short} ▸ Colossus` : this.phase === 'prep' ? `${lane.short} ▸ ${count}${danger}` : count > 0 ? `${lane.short} ▸ ${count} coming` : '';
       if (n.textContent !== txt) n.textContent = txt;
       n.classList.toggle('boss', !!bossHere);
+      n.classList.toggle('danger', !!danger);
       n.style.display = txt ? '' : 'none';
       if (!txt) return;
       // Below the lane's entry row at the field edge, clear of the path: enemies (and the boss) walk in
       // along the lane and draw upward from their feet, and their jitter + ground ring stay above
-      // DEFENSE.laneTagDrop, so the tag never covers a spawning enemy.
+      // DEFENSE.laneTagDrop, so the tag never covers a spawning enemy. Kept inside the map viewport when
+      // the camera is zoomed or panned.
       lane.pointAt(0, tagPos);
       const laneZ = tagPos.z;
       tagPos.set(0.2, 0, laneZ + DEFENSE.laneTagDrop);
-      const p = game.project(tagPos, this.camera);
+      const p = this._clampToView(game.project(tagPos, this.camera), n);
       n.style.transform = `translate(${p.x.toFixed(0)}px, ${p.y.toFixed(0)}px)`;
       if (bossHere) {
         tagPos.set(0.15, 0, laneZ);
-        const a = game.project(tagPos, this.camera);
+        const a = this._clampToView(game.project(tagPos, this.camera), this.bossArrow);
         this.bossArrow.style.transform = `translate(${a.x.toFixed(0)}px, ${a.y.toFixed(0)}px) translateY(-50%)`;
       }
     });
@@ -1833,12 +2741,19 @@ export class DefenseScene {
       this.bossBar.set(this.boss.hp / this.boss.maxHp, `${Math.ceil(this.boss.hp)} / ${Math.ceil(this.boss.maxHp)}`);
       if (this.bossPhase.textContent !== this.boss.phaseLabel) {
         this.bossPhase.textContent = this.boss.phaseLabel;
-        this.bossPhase.className = `df-bossphase ${/CHARG|charge|ENRAG/.test(this.boss.phaseLabel) ? 'bad' : /Root/.test(this.boss.phaseLabel) ? 'good' : ''}`;
+        this.bossPhase.className = `df-bossphase ${/CHARG|charge|ENRAG|SIEGE/.test(this.boss.phaseLabel) ? 'bad' : /Root|stopped/.test(this.boss.phaseLabel) ? 'good' : ''}`;
       }
     }
 
     if (this.sellArmed && game.time > this.sellArmed.until) { this.sellArmed = null; this.sideDirty = true; }
     if (this.sideDirty) this._renderSide();
+    // Relay Protocols: their bar shows during pushes and lulls; aim cursor + cooldown sweeps every frame.
+    if (this.protoBar) {
+      const show = (this.phase === 'wave' || this.phase === 'lull') && this.protocols.keys.length > 0;
+      if (show && !this.protoBar.firstChild) this.protoBar.append(this.protocols.panel());
+      if (this.protoBar.style.display !== (show ? '' : 'none')) this.protoBar.style.display = show ? '' : 'none';
+    }
+    this.protocols?.frame();
     this._refreshTop();
   }
 
@@ -1860,6 +2775,7 @@ export class DefenseScene {
     const a0 = this.game.project(v.set(0, 0, 8), cam), a1 = this.game.project(v.set(1, 0, 8), cam);
     const tilePx = Math.abs(a1.x - a0.x);
     for (const p of this.pads) {
+      if (p.closed) continue;   // a forward slot no beacon has opened
       const t = this._towerOn(p.i);
       const b = this.game.project(v.set(p.x, 0, p.z), cam);
       const top = this.game.project(v.set(p.x, t ? this.padBaseY + t.height * 0.8 : 0.2, p.z), cam);
@@ -1878,17 +2794,20 @@ export class DefenseScene {
     const game = this.game;
     const inp = game.input;
     const run = this.run;
-    const prep = this.phase === 'prep';
+    const prep = this.canBuild;   // prep, or a lull between pushes
 
     if (this._skipInput) { this._skipInput = false; return; }   // the key that closed Settings
     if (this.paused) {
       if (this.settingsOpen) return;   // the settings overlay handles its own keys
-      if (inp.wasPressed('Escape') || inp.wasPressed('KeyP') || (inp.wasPressed('Space') && this.phase === 'wave')) this.togglePause(false);
+      if (inp.wasPressed('Escape') || inp.wasPressed('KeyP') || (inp.wasPressed('Space') && this.phase !== 'prep')) this.togglePause(false);
       return;
     }
 
     this.hoverPad = this._pickPad();
-    game.stage.style.cursor = this.hoverPad >= 0 && (prep || this._towerOn(this.hoverPad)) ? 'pointer' : '';
+    game.stage.style.cursor = this.protocols.aiming ? 'crosshair' : this.hoverPad >= 0 && (prep || this._towerOn(this.hoverPad)) ? 'pointer' : '';
+
+    // Relay Protocols (Q / W / E, aiming, click to cast) take the input first while a push or lull runs.
+    if (this.protocols.handleInput()) return;
 
     // Keyboard
     if (inp.wasPressed('Escape')) {
@@ -1898,11 +2817,13 @@ export class DefenseScene {
       return;
     }
     if (inp.wasPressed('KeyP')) { this.togglePause(true); return; }
+    if (this.startArmed && game.time >= this.startArmed) { this.startArmed = 0; this.sideDirty = true; }   // "Start anyway" expired
     if (inp.wasPressed('Space')) {
-      if (prep) this._tryStartWave();
-      else this.togglePause(true);
+      if (this.phase === 'prep') this._tryStartWave(inp.isDown('ShiftLeft') || inp.isDown('ShiftRight') ? 'shift' : 'space');
+      else if (!(game.time < (this.spaceGuardT || 0))) this.togglePause(true);
       return;
     }
+    if (inp.wasPressed('KeyN') && this.callNextPush()) return;
     if (inp.wasPressed('KeyF')) {
       const s = DEFENSE.speeds;
       this.speed = s[(s.indexOf(this.speed) + 1) % s.length] ?? 1;
@@ -1922,10 +2843,10 @@ export class DefenseScene {
     const selT = this._towerOn(this.selPad);
     if (selT) {
       if (inp.wasPressed('KeyU')) {
-        if (prep) this._upgrade(selT); else toast(game.ui, 'Upgrades are locked during the wave', 'amber');
+        if (prep) this._upgrade(selT); else toast(game.ui, 'Upgrades wait for the lull after this push', 'amber');
       }
       if (inp.wasPressed('KeyS')) {
-        if (prep) this._sell(selT); else toast(game.ui, 'Selling is locked during the wave', 'amber');
+        if (prep) this._sell(selT); else toast(game.ui, 'Selling waits for the lull after this push', 'amber');
       }
       if (inp.wasPressed('KeyT') && ['bullet', 'chain', 'mortar'].includes(selT.def.kind)) {
         this._setTarget(selT, TARGET_RULES[(TARGET_RULES.indexOf(selT.rec.target) + 1) % TARGET_RULES.length]);
@@ -1952,7 +2873,7 @@ export class DefenseScene {
 
   /** Next to an empty build pad near the Relay, so the "click a glowing square" hint points at one. */
   _padHintSpot() {
-    const pad = this.pads.filter((p) => !this._towerOn(p.i)).sort((a, b) => Math.hypot(a.x - this.corePos.x, a.z - this.corePos.z) - Math.hypot(b.x - this.corePos.x, b.z - this.corePos.z))[0];
+    const pad = this.pads.filter((p) => !p.closed && !this._towerOn(p.i)).sort((a, b) => Math.hypot(a.x - this.corePos.x, a.z - this.corePos.z) - Math.hypot(b.x - this.corePos.x, b.z - this.corePos.z))[0];
     if (!pad) return null;
     const pr = this.game.project(new THREE.Vector3(pad.x, 0, pad.z), this.camera);
     const sw = this.game.stage.clientWidth, u = this.game.u;
@@ -1967,8 +2888,20 @@ export class DefenseScene {
       if (!h.when()) continue;
       this._hintQueue.splice(i, 1);
       const n = showHint(this.game, h.id, h.html, { pos: h.pos, style: h.spot?.() || null, time: 11 });
-      if (n) { this._curHint = n; break; }
+      if (n) { this._clickThroughHint(n); this._curHint = n; break; }
       i--;
     }
+  }
+
+  /**
+   * Night hints never eat pad clicks (critic K §5.2): the hint lets the pointer through to the map, and only
+   * its × button takes clicks.
+   */
+  _clickThroughHint(n) {
+    n.classList.remove('ui-block');
+    n.classList.add('df-hint');
+    const dismiss = [...n.children].find((c) => /click to dismiss/i.test(c.textContent));
+    dismiss?.remove();
+    n.append(el('button.df-hint-x.ui-block', { 'aria-label': 'Close hint', onclick: (e) => { e.stopPropagation(); n.remove(); } }, '×'));
   }
 }

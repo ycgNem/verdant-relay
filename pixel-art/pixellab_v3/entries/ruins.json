@@ -1,0 +1,34 @@
+{
+ "ruin_market_kiosks": {
+  "file": "ruin_market_kiosks.png",
+  "ppu": 32,
+  "anchor": [
+   76,
+   53
+  ]
+ },
+ "ruin_station_platform": {
+  "file": "ruin_station_platform.png",
+  "ppu": 32,
+  "anchor": [
+   70,
+   62
+  ]
+ },
+ "ruin_apartment_facade": {
+  "file": "ruin_apartment_facade.png",
+  "ppu": 32,
+  "anchor": [
+   55,
+   140
+  ]
+ },
+ "ruin_server_hall": {
+  "file": "ruin_server_hall.png",
+  "ppu": 32,
+  "anchor": [
+   62,
+   62
+  ]
+ }
+}

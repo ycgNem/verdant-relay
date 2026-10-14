@@ -29,10 +29,56 @@ Two generations of art live side by side:
   ferns (walk through) are the low plants graded pale yellow-green, thickets (one slash) the tall ones graded dark
   blue-green, brambles (heavy chop) red-brown (`BRUSH_LOOK`, applied in the flora atlas — the PNGs stay untouched).
 - **The player always reads** (critic G): cards never cover the player's own texels (stencil card mask), and the player
-  has a 1-texel outline — near-black on open ground, cyan `#5fc8d8` in brush or behind tall objects (`ATMOS.playerOutline`).
+  has a 1-texel outline — near-black on open ground, cyan `#5fc8d8` only while a card actually covers its body (the body
+  box is sampled against the opaque texels of the cards in front, with hysteresis: `ATMOS.playerOutline.body/hits`).
   Night towers get the same outline in their type colour.
 - UI font: Tiny5, with "~" and "8" overridden by `src/ui/fonts/vr-glyphs.ttf`, and the HUD clock's Silkscreen Bold "4"
   by `src/ui/fonts/vr-clock.ttf` (both built by `tools/make_glyph_font.py` on the 8-unit grid; edit the bitmaps there and re-run).
+- **Jungle HUD on the texel grid** (critic H §5): HUD text is one font pixel per world texel (12 design px: 16 px at
+  720p, 24 px at 1080p; the clock 2 font pixels per texel), never mixed densities in one panel; HUD pixel icons (the
+  daylight sun / moon `ui_daylight.png`, 2 × 12×12, `pixel-art/ui_daylight/build.py`; the in-world ◆ crate marker)
+  scale by whole world texels (`--tx`). Health is green → yellow → red, never the stamina bar's orange. Creature icons
+  in the menus are the side view cropped to the creature, at whole scales only (never ½).
+
+### Light, value and colour (critic H)
+
+- **Value structure**: paths are the brightest band, brush the middle, canopy the darkest. The canopy shade map spares
+  walkable trail/clearing tiles (`ATMOS.trailShade`), dirt and paving are baked lighter (`TERRAIN_VALUE`), and upright
+  brush darkens toward its base (`ATMOS.brushBase`, luminance-weighted so lit leaf tips keep their sparkle).
+- **District identity**: each region has a colour grade (`REGION_LOOK[key].grade`, ±12–18 %: Market amber, Flooded teal,
+  Greenhouse lime, Residential rust, Data Center cyan-violet) baked into a blurred world texture, so grades cross-fade at
+  borders, plus a favoured decal subset (`REGION_LOOK[key].decals`).
+- **Time of day**: late afternoon warms toward golden hour (`ATMOS.cycle.gold` `#ffb070`, long warm shade); night is moonlit
+  blue (moon floor + navy lift), with a warm lamp pool around the player. **Emissives ignore darkness and the vignette**:
+  creature eyes, terminals, caches, pylon tips, the Relay crystal, glow fungus and fireflies (`EMISSIVE` hue bands per
+  sprite key; ground decals marked by the baker). Nothing ever goes pure black.
+- **Dithers are world-anchored** (they slide with the ground, never swim on the screen). The vignette is hard-stepped,
+  undithered. The screen frame is whole foreground leaf sprites (`fg_leaf_1..5`, `ATMOS.leafFrame`) with a few pixels of
+  lagging parallax and whole-texel sway — never a per-pixel band or a mirrored copy.
+- **Effects**: a hit is 1 frame white + 2 frames red-orange tint on the hit sprite only (`JUICE.hitFlash`). Death splats are
+  3-tone, desaturated ~55 % toward the ground (`JUICE.death.splatGround`) and fade out in whole steps over ~30 s. The
+  Razorback charge lane is a dust-dither capsule with rounded ends and moving chevrons — no hard rectangle.
+- **Palette swaps at load** (`PALETTE_SWAP`): the feral's olive cloak is remapped by brightness rank to bone/rust
+  (`#7a4a3a` / `#a08060`) so it never reads as the player.
+- **Props and water**: no foliage card stands within a tile in front of a container, pylon or spore pod (`GROUND.propFront`);
+  the same decal never repeats within `DECALS.spacing` tiles. An activated pylon throws a stepped light pool and a beam
+  above the canopy (`PYLON_GLOW`). Characters in shallow water are clipped at a waterline `WATER.line` texels above the
+  feet with a looping `fx_ripple` under them and an `fx_splash` on entry. Spore pods use `spore_pod` (idle / swell) and
+  burst into 6–8 instanced `spore_puff_*` sprites (`SPORE_LOOK`).
+- **The night board** (`DEFENSE_VIEW`, critic H §4, K §4.3): the same world after dark, at the day's pixel rules — whole
+  zoom steps, 32 px per tile, every texel k × k screen pixels (checked: 99.9 % uniform 2 × 2 blocks at 1080p). The jungle's
+  PostFx grades it at full dark (`DEFENSE_VIEW.post`: moon tint, navy lift, light vignette) over a near-neutral lit scene,
+  so creature eyes and the Relay crystal glow and the light pools (amber lamps on the plaza, the Relay's cyan pool, a small
+  cyan lamp at each forward pad) are stepped `lightPool`s that keep the ground under them out of the moonlight. Trails are
+  worn, not painted: a lighter trodden centre band (dithered rim) that evens the dirt's mottling, two broken wobbly
+  wheel ruts with a lit lip, a few puddles and pebbles (no square or blob decals on the trail). No foliage card covers a
+  lane, a pad or the Relay (tested per texel). Board furniture stays quiet: no marker on built pads, empty pads light up only
+  when they matter, a single hostile ring (hovered / targeted enemy), rank chevrons instead of plinth pips. Rewards read
+  in-world: a slowed path is a cool multiply-tinted wet band with darker ripple dashes; boosted towers glint.
+  Draw layers (sprites write no depth at night, so order is everything): ground lights and the wet band −3, plinths −2,
+  ground marks −1 (blob shadows, hostile rings, pad markers, range circle, lane chevrons), sprites 0, badges 40, bars 50.
+  Tower art (48 × 64) keeps its lamps, orbs, blooms and fire lit at night (`EMISSIVE.keys` via `towerGlow`; the turret's
+  band stops at 40.6° so its ochre drum stays dark).
 
 ## V2 file formats (what the engine reads)
 
@@ -101,6 +147,21 @@ The five Wang sets above, 32 px tiles, chained through base tile IDs so shared t
 - `ruin_*` ruins (≈128 px): broken concrete wall, vine pillar, rusted train carriage, greenhouse iron frame, statue head, car wreck, toppled mast, stairs.
 - `prop_*` interactables (≈48 px): crate, tool chest, rare cache, intel terminal, opened crate, fuse, power box, data terminal,
   pump, power-cell cache, nest, data log, locked cache, workbench, relay pylon, campfire, supply drop, med kit; pickups `pick_*`.
+
+### V3 batch (critic H §7; PixelLab `create_map_object` ×10, hand-finished) — `pixel-art/pixellab_v3/`
+Build scripts there regenerate every PNG from `raw/` (log + costs: `LOG.md`); fragment `pixel-art/manifest.v3env.json`.
+- `relay_core` (109×118, idle 4: crystal pulse + motes + mast lamp) replaces the V1 Relay everywhere (day clearing,
+  night map, title, results). Concrete bunker, hazard band, moss, cables rooting into the ground; the crystal is the
+  brightest value. Collider: `SOLID.kind.prop_relay` (unchanged).
+- `prop_relay_pylon` (32×113): frame 0 / anim `off` = dead mast (dark glass, dull dish, red standby LED);
+  anim `on` (frames 1–4) = cyan lamp pulse, lit dish rim, hard-edged halo and a beam straight up (the landmark tell).
+  `JungleScene._pylonGlow` switches the anim.
+- District hero ruins (`REGION_LOOK.hero`, 1–2 per MAJOR site, north side of the clearing): `ruin_market_kiosks`
+  (kiosk row, torn faded awnings), `ruin_station_platform` (half-sunk platform, blue station sign, waterline + puddles),
+  `ruin_apartment_facade` (collapsed facade, balconies, exposed brick + rebar), `ruin_server_hall` (rack banks with
+  LED pixels, cooling fan, cable bundles). Atlas families `ruin_kiosk / ruin_platform / ruin_facade / ruin_server`.
+- Area bosses (static, they don't walk): `boss_thorn_mother`, `boss_brood_hive`, `boss_warden`, `boss_drowned_engine`.
+  One strip each: `idle` 0–3, `attack` 4–5, `hurt` 6 (warm tint), `dead` 7 (dimmed, slumped). Not wired into gameplay yet.
 
 ## V1 look (night-mode sprites)
 
@@ -184,3 +245,17 @@ collapsed_residential data_center`, plus `water` (2 frames, wavy), `floor_defens
 | workbench | 40×32 | — | Abandoned workbench with tools |
 | surge_box | 28×44 | off 2, on 2 | High-voltage junction box |
 | pick_scrap pick_circuits pick_biofiber pick_intel pick_med | 12×12 | idle 2 (glint) | Loot pickups: scrap gear, circuit chip, fiber bundle, intel disk, med kit |
+
+### Relics (Stage 7; `src/ui/relics.js`, `src/data/relics.js`)
+- **UI icons** `relic_<id>` (24 of them, 24×24, one frame; `pixel-art/manifest.v3relics.json`, contact sheet
+  `pixel-art/contact_v3relics.png`): the object on a plaque whose frame shows the rarity — common slate, rare cyan with
+  gold studs, cursed red-violet. Drawn at whole-number scales (`iconEl`, ≈35 UI units = ×2 at 720p / ×3 at 1080p in
+  cards; the HUD strip uses smaller whole steps). Rarity text colours match the plaques: common `#c0cbdc`, rare
+  `#62e0f2`, cursed `#e05a9a` (a cursed relic's price line is `#ff6fb0`). Unseen relics in the Codex are the icon as a
+  flat dark silhouette.
+- **In the world** a relic is a small 12×12 generated pendant (`relic__pendant_C|R|X`, a gem on a cord: common bone,
+  rare gold — the loot colour, cursed red-violet; dark warm outline), not the plaque — the plaque reads as UI. It bobs, glints and sits in a
+  gold light pool (`lightPool`). A shrine shows the same pendant hovering over its glow; a strongbox is the
+  `locked_cache` prop (its `gutted` spent variant once opened) with a gold glow until then; data-log spots reuse
+  `data_log`. Map: strongbox / shrine gold dot, relic on the ground gold star, data log cyan dot; place names in Tiny5
+  `#ead4aa` with an ink outline at whole-pixel scale.

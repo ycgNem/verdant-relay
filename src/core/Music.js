@@ -1,23 +1,25 @@
 // Procedural ambient music (WebAudio). Moods live in src/data/music.js.
 //
-//   game.music.play('title' | 'day' | 'night' | 'boss' | 'results' | 'defeat')
+//   game.music.play('title' | 'day' | 'dusk' | 'night' | 'boss' | 'results' | 'defeat')
 //   game.music.stop()
+//   game.music.setCombat(on)    jungle combat tension layer (toms, pulse, shaker) over the current mood;
+//                               fades in / out (MUSIC.combat), driven by the AudioDirector
 //
 // play() is safe to call every frame: asking for the mood that is already playing does nothing.
-// A new mood crossfades over the old one. Volume follows meta.settings.music (read live, so the
-// Settings screen needs no extra call). Audio may only start after a user gesture, so play() before
-// that just remembers the mood and it starts on the first click/key. If WebAudio is unavailable,
-// everything is a silent no-op.
+// A new mood crossfades over the old one. Output goes into the audio engine's music bus (game.sfx.bus.music),
+// so the Music / Master sliders and mute apply there; stings duck that bus. Audio may only start after a
+// user gesture, so play() before that just remembers the mood and it starts on the first click/key. If
+// WebAudio is unavailable, everything is a silent no-op.
 //
 // CPU: a 120 ms timer schedules notes ~0.5 s ahead; each note is a short-lived oscillator, a few
-// per second at most. Nothing runs while the tab is hidden or the music volume is 0.
+// per second at most. Nothing is scheduled while the tab is hidden or the music is muted.
 
 import { MUSIC } from '../data/music.js';
+import { midiHz } from './synth.js';
 
 const LOOKAHEAD = 0.5;
 const TICK_MS = 120;
 const STEPS_PER_BAR = 8;
-const midiHz = (m) => 440 * 2 ** ((m - 69) / 12);
 
 export class Music {
   constructor(game) {
@@ -28,20 +30,13 @@ export class Music {
     this.player = null;        // the active mood player
     this.fading = [];          // players fading out
     this.noise = null;
+    this.combat = false;
     this._timer = null;
     this._failed = false;
 
     this._unlock = () => this._start();
     window.addEventListener('pointerdown', this._unlock);
     window.addEventListener('keydown', this._unlock);
-    this._onVis = () => {
-      if (!this.ctx) return;
-      try {
-        if (document.hidden) this.ctx.suspend();
-        else this.ctx.resume();
-      } catch { /* ignore */ }
-    };
-    document.addEventListener('visibilitychange', this._onVis);
   }
 
   /** Switch to a mood (crossfade). Unknown moods are ignored; the same mood again is a no-op. */
@@ -64,13 +59,25 @@ export class Music {
     try { this._fadeOutCurrent(); } catch { /* ignore */ }
   }
 
+  /** Combat tension layer on/off (crossfaded; cheap to call every frame). */
+  setCombat(on) {
+    on = !!on;
+    if (on === this.combat) return;
+    this.combat = on;
+    const p = this.player;
+    if (p && this.ctx) this._combatGain(p, on);
+  }
+
+  /** The user's music level (the bus applies it; here it only gates scheduling). */
   get volume() {
-    const v = this.game.meta?.settings?.music;
+    const s = this.game.meta?.settings;
+    if (s?.muted) return 0;
+    const v = s?.music;
     return typeof v === 'number' ? Math.max(0, Math.min(1, v)) : 0.5;
   }
 
-  /** Re-read the volume setting immediately (it is also polled on every tick). */
-  refreshVolume() { this._applyVolume(0.05); }
+  /** Re-read the volume settings (the engine owns the buses). */
+  refreshVolume() { this.game.sfx?.applySettings?.(); }
 
   // ------------------------------------------------------------------ internals
 
@@ -81,15 +88,14 @@ export class Music {
       return;
     }
     try {
-      // Share the sound-effects context when it exists (one AudioContext for the whole game).
-      const shared = this.game.sfx?.ctx;
-      this.ctx = shared || new (window.AudioContext || window.webkitAudioContext)();
+      // One AudioContext for the whole game: the engine's (src/core/Sfx.js).
+      const engine = this.game.sfx;
+      this.ctx = engine?.ensure?.() || new (window.AudioContext || window.webkitAudioContext)();
       if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
       this.master = this.ctx.createGain();
-      this.master.gain.value = 0;
-      this.master.connect(this.ctx.destination);
-      this._applyVolume(0.3);
-      // One second of white noise, reused for every hat.
+      this.master.gain.value = MUSIC.master;
+      this.master.connect(engine?.bus?.music || this.ctx.destination);
+      // One second of white noise, reused for hats and shakers.
       const len = this.ctx.sampleRate;
       this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
       const d = this.noise.getChannelData(0);
@@ -109,14 +115,6 @@ export class Music {
     clearInterval(this._timer);
     this._timer = null;
     this.player = null;
-  }
-
-  _applyVolume(smooth = 0.2) {
-    if (!this.master) return;
-    const target = this.volume * MUSIC.master;
-    if (Math.abs(this.master.gain.value - target) < 1e-4 && this._lastVol === target) return;
-    this._lastVol = target;
-    this.master.gain.setTargetAtTime(target, this.ctx.currentTime, smooth);
   }
 
   _makePlayer(mood) {
@@ -167,7 +165,30 @@ export class Music {
     p.bassFilter.type = 'lowpass';
     p.bassFilter.frequency.value = spec.bass.cutoff || 3000;
     p.bassFilter.connect(p.out);
+
+    // Combat layer: its own gain (0 → 1 while fighting) and a dark filter for the ostinato.
+    const C = MUSIC.combat;
+    p.combat = ctx.createGain();
+    p.combat.gain.value = 0.0001;
+    p.combat.connect(p.out);
+    p.combatFilter = ctx.createBiquadFilter();
+    p.combatFilter.type = 'lowpass';
+    p.combatFilter.frequency.value = C.pulse.cutoff;
+    p.combatFilter.Q.value = 4;
+    p.combatFilter.connect(p.combat);
+    p.nodes.push(p.combat, p.combatFilter);
+    if (this.combat) this._combatGain(p, true);
     return p;
+  }
+
+  _combatGain(p, on) {
+    const C = MUSIC.combat;
+    const now = this.ctx.currentTime;
+    const g = p.combat.gain;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(Math.max(0.0001, g.value), now);
+    g.setTargetAtTime(on ? C.level : 0.0001, now, (on ? C.fadeIn : C.fadeOut) / 3);
+    p.combatUntil = on ? Infinity : now + C.fadeOut + 0.3;
   }
 
   _fadeOutCurrent() {
@@ -192,7 +213,6 @@ export class Music {
   _tick() {
     if (!this.ctx || this.ctx.state !== 'running') return;
     try {
-      this._applyVolume();
       const now = this.ctx.currentTime;
       for (let i = this.fading.length - 1; i >= 0; i--) {
         if (now > this.fading[i].dead) { this._dispose(this.fading[i]); this.fading.splice(i, 1); }
@@ -229,6 +249,8 @@ export class Music {
         this._tone(p.padFilter, { freq: f, wave: s.pad.wave, t: t + i * 0.03, attack: s.pad.attack, hold, release: s.pad.release, vol, detune: -s.pad.detune });
         this._tone(p.padFilter, { freq: f, wave: s.pad.wave, t: t + i * 0.03, attack: s.pad.attack, hold, release: s.pad.release, vol: vol * 0.8, detune: s.pad.detune });
       });
+      // Drone: the mood's root (not the chord's) held under everything.
+      if (s.drone) this._tone(p.padFilter, { freq: midiHz(root - 12), wave: s.drone.wave || 'sine', t, attack: 1.2, hold: Math.max(0.1, span - 1.2), release: 2.2, vol: s.drone.vol });
     }
 
     // Bass: chord root an octave down.
@@ -247,9 +269,30 @@ export class Music {
     }
 
     // Percussion.
-    if (s.perc) {
-      if (s.perc.kick?.includes(inBar)) this._kick(p.out, t, s.perc.kickVol);
-      if (s.perc.hat?.includes(inBar)) this._hat(p.out, t, s.perc.hatVol * (inBar % 2 ? 1 : 0.7));
+    const pc = s.perc;
+    if (pc) {
+      if (pc.kick?.includes(inBar)) this._kick(p.out, t, pc.kickVol);
+      if (pc.hat?.includes(inBar)) this._hat(p.out, t, pc.hatVol * (inBar % 2 ? 1 : 0.7));
+      if (pc.shaker?.includes(inBar)) this._shaker(p.out, t, pc.shakerVol * (0.7 + Math.random() * 0.3));
+      if (pc.tom?.includes(inBar)) this._tom(p.out, t, pc.tomVol * (0.75 + Math.random() * 0.25), midiHz(root + chord[0] - 12) * (pc.tomPitch || 2));
+      if (pc.tick?.includes(inBar) && Math.random() < (pc.tickChance ?? 1)) this._tick2(p.out, t, pc.tickVol);
+    }
+
+    // Combat layer (while on, and through its fade-out).
+    if (this.ctx.currentTime < (p.combatUntil ?? -1)) this._combatStep(p, inBar, bar, chord, t);
+  }
+
+  _combatStep(p, inBar, bar, chord, t) {
+    const C = MUSIC.combat;
+    const root = p.spec.root;
+    const low = midiHz(root + chord[0] - 12);
+    if (C.tom.steps.includes(inBar)) this._tom(p.combat, t, C.tom.vol * (inBar === 0 ? 1 : 0.75), low * C.tom.pitch);
+    if (C.kick.steps.includes(inBar)) this._kick(p.combat, t, C.kick.vol);
+    if (C.shaker.steps.includes(inBar)) this._shaker(p.combat, t, C.shaker.vol * (inBar % 2 ? 1 : 0.6));
+    // The pulse: an eighth-note ostinato on the root, with a semitone push on the last step of every other bar.
+    if (C.pulse.steps.includes(inBar)) {
+      const push = inBar === 7 && bar % 2 === 1 ? 1 : 0;
+      this._pluck(p.combatFilter, { freq: midiHz(root + chord[0] - 12 + push), wave: C.pulse.wave, t, vol: C.pulse.vol * (inBar === 0 ? 1 : 0.7), decay: C.pulse.decay });
     }
   }
 
@@ -302,18 +345,60 @@ export class Music {
     o.onended = () => { o.disconnect(); g.disconnect(); };
   }
 
-  _hat(dest, t, vol) {
+  /** A hand drum: a sine dropping a fifth, plus a little skin noise. */
+  _tom(dest, t, vol, freq) {
+    const ctx = this.ctx;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(freq * 1.5, t);
+    o.frequency.exponentialRampToValueAtTime(freq, t + 0.09);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
+    o.connect(g).connect(dest);
+    o.start(t);
+    o.stop(t + 0.4);
+    o.onended = () => { o.disconnect(); g.disconnect(); };
+    this._noiseHit(dest, t, vol * 0.25, 'bandpass', 900, 1.2, 0.05);
+  }
+
+  _hat(dest, t, vol) { this._noiseHit(dest, t, vol, 'highpass', 7000, 0.7, 0.05); }
+
+  /** Seed shaker: soft attack, band-passed. */
+  _shaker(dest, t, vol) { this._noiseHit(dest, t, vol, 'bandpass', 5200, 1.4, 0.09, 0.02); }
+
+  /** Woodblock tick. */
+  _tick2(dest, t, vol) {
+    const ctx = this.ctx;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'triangle';
+    o.frequency.value = 1750 + Math.random() * 120;
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    o.connect(g).connect(dest);
+    o.start(t);
+    o.stop(t + 0.06);
+    o.onended = () => { o.disconnect(); g.disconnect(); };
+  }
+
+  _noiseHit(dest, t, vol, type, freq, q, len, attack = 0) {
     const ctx = this.ctx;
     const src = ctx.createBufferSource();
     src.buffer = this.noise;
     const f = ctx.createBiquadFilter();
-    f.type = 'highpass';
-    f.frequency.value = 7000;
+    f.type = type;
+    f.frequency.value = freq;
+    f.Q.value = q;
     const g = ctx.createGain();
-    g.gain.setValueAtTime(vol, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    if (attack > 0) {
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + attack);
+    } else g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + len);
     src.connect(f).connect(g).connect(dest);
-    src.start(t, Math.random() * 0.9, 0.07);
+    src.start(t, Math.random() * 0.85, len + 0.05);
     src.onended = () => { src.disconnect(); f.disconnect(); g.disconnect(); };
   }
 }

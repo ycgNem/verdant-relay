@@ -13,10 +13,53 @@ export const GUIDE = {
   coach: {
     moveDist: 3,        // tiles walked before "move" counts as learned
     cutWait: 22,        // s: the "cut through plants" step passes on its own after this long
-    crateRange: 34,     // tiles: the "open a crate" step points at a crate this close, roughly on the way to the
+    crateRange: 24,     // tiles: the "open a crate" step points at a crate this close, roughly on the way to the
     crateCone: 55,      //   objective (± this many degrees); else it is skipped (a tip comes when you pass one)
-    crateWait: 40,      // s: … and passes on its own after this long
+    crateWait: 45,      // s: … and passes on its own after this long
+    // A coached crate must be easy to reach (critic L §2.1: one sat behind solid thicket): its walking path over
+    // open ground (flow field, brush blocks) at most this × the straight line, and within this many tiles of a trail.
+    cratePath: 1.3,
+    crateTrail: 2,
+    mapWait: 12,        // s: the "Tab: the map" step passes on its own after this long
+    markRange: 14,      // tiles: the guided route's crates get an amber ◆ over them this close
     tipTime: 5,         // s: a one-off tip (enemy, stamina) replaces the step line this long
+  },
+  // Trail-side crates along the guided route (JungleGen guidedRoute, only in a guided run's world): on the walk
+  // from the Relay to the guided goal site, the first `first` tiles in, then every `every` tiles, at most `max`,
+  // none in the last `endGap` tiles; each on the first free tile off the trail's edge (`side`: tiles from the
+  // route's centre line searched). Container types in order. Together with the goal site's own containers a
+  // player who follows the coach banks ≥ 45 Scrap (critic L §2.1: the guided day used to bank 9).
+  routeCrates: {
+    first: 12, every: 15, max: 4, endGap: 10,
+    types: ['crate', 'chest', 'crate', 'chest'],
+    side: [1.5, 5],
+    yield: 1,           // Scrap multiplier (instead of the distance rule, which gives ×0.45 this close to the Relay)
+  },
+};
+
+// One-off tips that teach each verb when it first matters (critic L §2.2; JungleScene._tip / _checkTips). Each
+// shows once per profile (meta.hints['tip_' + id]; "Show hints again" in Settings brings them back), one at a
+// time in the coach line (top-left, clear of the fight), never two at once. {action} = the bound key.
+export const TIPS = {
+  time: 5,              // s a tip stays up
+  gap: 1,               // s between two tips
+  wait: 14,             // s a queued tip may wait for its turn before it is dropped (urgent ones: 1.5)
+  roll: { range: 4, time: 3.5 },                  // the first wind-up within this many tiles (urgent)
+  deflect: { fromNight: 2, afterRoll: 8, time: 4.5 },   // the first lunge at you from this night on; on the guided
+                                                  //   day, the first one this many s after the roll tip
+  bramble: { ahead: 0.8 },                        // the first bramble you walk into (tiles ahead of you)
+  throw: { range: 8 },                            // the first Spitter / shooter this close you can't walk to
+  med: { below: 0.5 },                            // the first time health is under this share with a kit
+  beacon: { range: 10 },                          // the first dead beacon this close
+  sunset: { lead: 60 },                           // s of daylight left
+  text: {
+    roll: '{roll}: roll <b>through</b> the attack',
+    deflect: 'Tap <b>right-click</b> just before it hits to <b>deflect</b>, then slash back',
+    bramble: 'Thorny bramble: hold <b>right-click</b> for a heavy chop',
+    throw: '{throw}: throw your machete. It flies through plants and comes back',
+    med: 'Hurt? {med} uses a med kit (+{heal} health)',
+    beacon: '<b>Beacons</b> are a way home: hold {interact} to switch this one on',
+    sunset: 'Sunset in 1:00. After dark the jungle hunts you: <b>head home</b>',
   },
 };
 
@@ -49,20 +92,44 @@ export const WORDS = {
   stored: 'Stored at base',
 };
 
-// Night prep readiness check (DefenseScene): rough tower damage over the wave vs the wave's total health.
-// ratio = Σ tower DPS (upgrades/boons applied, support/slow towers count `supportValue`) × waveSeconds(N)
-//         ÷ Σ enemy HP (night health multiplier applied).
-// Below `weak` the Start Wave button asks first; `ok` and above reads as ready.
-// Calibrated against DESIGN.md §5's balance notes: N1 one turret ≈ 0.87 (risky: loses ~⅓ of the Relay), two ≈ 1.9
-// (strong); N2 two towers ≈ 0.66 (weak: ends at ~15 HP), three ≈ 0.97 (risky), five ≈ 1.6 (strong); N3+ waves run
-// longer (more time in range), so six level-1 towers read risky on N3 and weak on N4 (where turret spam falls).
+// Night prep readiness check (DefenseScene._readiness → src/scenes/DefenseForecast.js, critic K §4.6 / L §6.2):
+// a fast 1-D replay of tonight's pushes against the real tower stats and the stretch of path each tower
+// covers, giving a predicted Relay loss per path. Shown as "North ●●● · South ○○○ · expect −a to −b".
+//   sample / step / maxTime   lane sample spacing (tiles), replay step and cap (s) per push
+//   efficiency                tower damage × this (the replay has no projectile travel, overkill or retargeting)
+//   thornSlowShare            a thorn slow-on-hit counts as this share of a full slow where the Nest covers the path
+//   bossPace                  the Colossus walks at this share of its speed on average (roots, wind-ups, roars)
+//   burnShare / bombletShare  Napalm / Cluster extra damage counted per shell (share of its full value)
+//   protocols                 each Relay Protocol this run has as a damage-equivalent (dps + perNight × night),
+//                             × protocolUse (nobody casts perfectly), over the last protocolReach tiles of each lane
+//   lossScale                 calibration of the predicted loss against the balance sim (the raw replay
+//                             over-predicts ~1.55×: 72 sim runs, 380 nights, sum of losses matched at 0.65)
+//   band                      the shown range: [loss × band[0] − 2, loss × band[1] + 3]
+//   dots                      a path's leak share (Relay damage it lets through ÷ its threat) at or below these
+//                             gives ●●● / ●●○ / ●○○ (above: ○○○; a path no tower reaches is always ○○○)
+//   weakShare                 predicted loss ≥ this share of the Relay's current health → "Too weak: expect heavy
+//                             damage" (Start asks). Sim: 5 L1 towers on night 3 lose ~46 of 100 (reads weak 7/9);
+//                             no night fell below a scaled forecast of ~0.65 × health
+//   strongLoss / strongShare  predicted loss ≤ max(strongLoss, Relay max × strongShare), with every path ●●○ or
+//                             better → "Looks strong"; anything else is "Risky"
+// Calibration (Stage 7 sim, .playwright-mcp/nightmech): see DESIGN.md §5.
 export const READINESS = {
-  weak: 0.85,
-  ok: 1.5,
-  // Seconds of useful fire a tower gets per wave, by night (waves get longer; a tower only covers part of a lane).
-  waveSeconds: [32, 30, 50, 50, 52, 52],
-  slowValue: 6,         // a slow tower counts as this much DPS (it keeps enemies in range longer)
-  supportValue: 0.2,    // a support tower adds this share of the DPS of the others
+  sample: 0.25, step: 0.1, maxTime: 240,
+  efficiency: 0.8,
+  thornSlowShare: 0.5,
+  bossPace: 0.62,
+  burnShare: 0.4, bombletShare: 0.4,
+  protocols: {
+    vine_snare: { dps: 6 },
+    arc_discharge: { dps: 2, perNight: 2.5 },
+    flare: { dps: 4 },
+  },
+  protocolUse: 0.6, protocolReach: 9,
+  lossScale: 0.65,
+  band: [0.6, 1.4],
+  dots: [0.05, 0.2, 0.5],
+  weakShare: 0.35,
+  strongLoss: 6, strongShare: 0.06,
 };
 
 // Tower strength pips in the build list (1–3 each). Hover a card for the exact numbers.

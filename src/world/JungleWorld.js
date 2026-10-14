@@ -16,7 +16,7 @@
 // tile hash. Ferns, shallow water and mud only slow movement (speedAt, GROUND).
 
 import * as THREE from 'three';
-import { JUNGLE, LEVEL, BRUSH, ATMOS, SOLID, GROUND } from '../data/jungle.js';
+import { JUNGLE, LEVEL, BRUSH, ATMOS, SOLID, GROUND, REGION_LOOK } from '../data/jungle.js';
 import { CARD_SCALE } from '../core/PixelView.js';
 import { CARD_MASK_REF, setOutline } from '../core/Assets.js';
 import { TerrainBaker } from './TerrainBaker.js';
@@ -47,14 +47,20 @@ export function makeCardMaterial(tex) {
       uXrayMax: { value: ATMOS.xrayMax },
       uXrayInner: { value: ATMOS.xrayInner },
       uTint: { value: new THREE.Color(1, 1, 1) },
+      uAtlas: { value: tex.image?.width || 2048 },
+      uBase: { value: new THREE.Vector3(ATMOS.brushBase.baseH, ATMOS.brushBase.baseDark, 0) },
+      uCot: { value: 1 / CARD_SCALE },
     },
     vertexShader: `
       attribute vec4 aCard;   // baseZ, sway weight, phase, upright (1) / flat (0)
+      attribute vec3 aShade;  // kind (1 brush, 2 tree, 3 ruin/rock; 0 flat part), anchor row in the atlas, rows above it
       uniform float uTime;
       uniform float uSway;
       varying vec2 vUv;
       varying float vBaseZ;
       varying float vUpright;
+      varying vec3 vShade;
+      varying vec3 vWorld;
       void main() {
         vec3 p = position;
         float s = floor(sin(uTime * 1.6 + aCard.z) * uSway * aCard.y + 0.5) / 32.0;
@@ -62,17 +68,21 @@ export function makeCardMaterial(tex) {
         vUv = uv;
         vBaseZ = aCard.x;
         vUpright = aCard.w;
+        vShade = aShade;
+        vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
       }`,
     fragmentShader: `
       uniform sampler2D map;
       uniform vec2 uPlayerPx;
       uniform float uPlayerZ;
-      uniform float uXray, uXrayMax, uXrayInner;
-      uniform vec3 uTint;
+      uniform float uXray, uXrayMax, uXrayInner, uAtlas, uCot;
+      uniform vec3 uTint, uBase;
       varying vec2 vUv;
       varying float vBaseZ;
       varying float vUpright;
+      varying vec3 vShade;
+      varying vec3 vWorld;
       ${BAYER_GLSL}
       void main() {
         vec4 c = texture2D(map, vUv);
@@ -80,11 +90,25 @@ export function makeCardMaterial(tex) {
         if (vUpright > 0.5 && vBaseZ > uPlayerZ + 0.06) {
           // See-through window: a round dithered hole that fades smoothly to nothing at its rim
           // (no hard edge, so no visible box or ring). The player's silhouette shows through the rest.
+          // The dither is anchored to world pixels (screen x = X·32, y = (Z − cot·Y)·32), so it stays on the
+          // leaves instead of crawling across them while the camera glides.
           vec2 d = (gl_FragCoord.xy - uPlayerPx) * vec2(1.0, 0.85);
           float k = uXrayMax * (1.0 - smoothstep(uXray * uXrayInner, uXray, length(d)));
-          if (bayer8(gl_FragCoord.xy) < k) discard;
+          vec2 wp = floor(vec2(vWorld.x, vWorld.z - vWorld.y * uCot) * 32.0 + 0.5);
+          if (bayer8(wp) < k) discard;
         }
-        gl_FragColor = vec4(c.rgb * uTint, 1.0);
+        vec3 rgb = c.rgb;
+        if (vShade.x > 0.5 && vShade.x < 1.5) {
+          // Brush sinks toward its base: per texel row, darker over the bottom uBase.x of the card, deepest in the
+          // card's own shadows (its lit leaves keep most of their value, so no flat band shows across the card).
+          float row = floor(vUv.y * uAtlas);                     // atlas texel row
+          float h = clamp((vShade.y - row) / max(1.0, vShade.z), 0.0, 1.0);   // 0 at the anchor → 1 at the top
+          float t = 1.0 - smoothstep(0.0, uBase.x, h);
+          float l = dot(rgb, vec3(0.299, 0.587, 0.114));
+          rgb *= mix(1.0, uBase.y, t * mix(1.0, 0.45, smoothstep(0.02, 0.2, l)));
+        }
+        // Alpha = light code for PostFx: 2 = upright card (full canopy shade), 1 = the flat parts (ground).
+        gl_FragColor = vec4(rgb * uTint, vUpright > 0.5 ? 2.0 : 1.0);
         #include <colorspace_fragment>
       }`,
   });
@@ -116,6 +140,7 @@ export class JungleWorld {
     this.groundGeom.userData.shared = true;
     this._buildColliders();
     this.shadeTex = this._buildShade();
+    this.gradeTex = this._buildGrade();
     this.time = 0;
   }
 
@@ -158,11 +183,14 @@ export class JungleWorld {
     return this.w.level[vz * V + vx];
   }
 
-  /** Movement multiplier: shallow water and mud drag, ferns snag (not `brushFree` bodies: skitters, razorbacks). */
-  speedAt(x, z, brushFree = false) {
+  /**
+   * Movement multiplier: shallow water and mud drag, ferns snag (not `brushFree` bodies: skitters, razorbacks).
+   * `fernDrag` scales the fern slow (the player's Tapir-hide Boots relic: 0.5 → ferns ×0.75 instead of ×0.5).
+   */
+  speedAt(x, z, brushFree = false, fernDrag = 1) {
     const lv = this.levelAt(x, z);
     let m = lv === LEVEL.water ? GROUND.shallow : lv === LEVEL.mud ? GROUND.mud : 1;
-    if (!brushFree && this.inFern(x, z)) m *= GROUND.fern;
+    if (!brushFree && this.inFern(x, z)) m *= 1 - (1 - GROUND.fern) * fernDrag;
     return m;
   }
 
@@ -227,14 +255,19 @@ export class JungleWorld {
 
   /**
    * Move a circle by (dx, dz) with sliding, in small steps (no tunnelling). opts.throughBrush lets a
-   * body ignore brush tiles (Skitters slip through). Returns true if anything was hit.
+   * body ignore brush tiles (Skitters slip through); opts.solid(tx, tz) replaces the tile test (the Thorn Stalker
+   * keeps under the brush). opts.hit, if given, is filled with what stopped it last: { obj: collider } or
+   * { obj: null, tx, tz } (a tile). opts.nudge (the player, CONFIG.player.nudge): walking head-on into a footprint
+   * or a brush tile whose edge is close to one side steers round it (critic I #10). Returns true if anything was hit.
    */
   moveBody(p, dx, dz, r, opts = {}) {
     const dist = Math.max(Math.abs(dx), Math.abs(dz));
     const steps = Math.max(1, Math.ceil(dist / 0.2));
     const sx = dx / steps, sz = dz / steps;
     let hit = false;
-    const solid = opts.throughBrush ? (tx, tz) => this.wetAt(tx, tz) : (tx, tz) => this.solidAt(tx, tz);
+    const solid = opts.solid || (opts.throughBrush ? (tx, tz) => this.wetAt(tx, tz) : (tx, tz) => this.solidAt(tx, tz));
+    const info = opts.hit || null;
+    const px0 = p.x, pz0 = p.z;
     for (let s = 0; s < steps; s++) {
       p.x += sx; p.z += sz;
       for (let it = 0; it < 2; it++) {
@@ -243,14 +276,62 @@ export class JungleWorld {
         const x0 = Math.floor(p.x - r), x1 = Math.floor(p.x + r), z0 = Math.floor(p.z - r), z1 = Math.floor(p.z + r);
         for (let tz = z0; tz <= z1; tz++) for (let tx = x0; tx <= x1; tx++) {
           if (!solid(tx, tz)) continue;
-          if (pushOutBox(p, r, tx, tz, tx + 1, tz + 1)) { hit = moved = true; if (opts.onBrush && this.brushAt(tx, tz) >= BRUSH.thicket) opts.onBrush(tx, tz); }
+          if (pushOutBox(p, r, tx, tz, tx + 1, tz + 1)) {
+            hit = moved = true;
+            if (info) { info.obj = null; info.tx = tx; info.tz = tz; }
+            if (opts.onBrush && this.brushAt(tx, tz) >= BRUSH.thicket) opts.onBrush(tx, tz);
+          }
         }
         // Objects.
-        for (const c of this.collidersNear(p.x, p.z, r + 0.1)) if (pushOut(p, r, c)) hit = moved = true;
+        for (const c of this.collidersNear(p.x, p.z, r + 0.1)) if (pushOut(p, r, c)) { hit = moved = true; if (info) info.obj = c; }
         if (!moved) break;
       }
     }
+    if (hit && opts.nudge) this._nudge(p, dx, dz, r, px0, pz0, solid, opts);
     return hit;
+  }
+
+  /**
+   * Corner nudge (moveBody opts.nudge): if the move was mostly blocked by a footprint (or a solid tile) hit nearly
+   * head-on (input within N.cone° of its surface normal) and its edge is within N.edge (tiles: N.tileEdge) of your
+   * centre to one side, and the way round is open, slide toward that edge at up to N.speed × the attempted move.
+   */
+  _nudge(p, dx, dz, r, px0, pz0, solid, opts) {
+    const N = opts.nudge;
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-5) return;
+    const ux = dx / len, uz = dz / len;
+    if (((p.x - px0) * ux + (p.z - pz0) * uz) / len > 0.6) return;   // most of the move went through: sliding works
+    const cone = Math.cos((N.cone * Math.PI) / 180);
+    const tx = -uz, tz = ux;   // across the input
+    const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+    let best = null;
+    const consider = (cx, cz, nd, half, s, edge) => {
+      if (nd < 1e-6) return;
+      if (-((p.x - cx) * ux + (p.z - cz) * uz) / nd < cone) return;   // not head-on: sliding already handles it
+      const gap = half - Math.abs(s);   // sideways step to clear it (`half` includes the body radius)
+      if (gap <= 0 || gap - r > edge) return;
+      if (!best || gap < best.gap) best = { gap, side: s >= 0 ? 1 : -1 };
+    };
+    for (const c of this.collidersNear(p.x + ux * 0.2, p.z + uz * 0.2, r + 0.3)) {
+      const cx = clamp(p.x, c.x0, c.x1), cz = clamp(p.z, c.z0, c.z1);
+      const nd = Math.hypot(p.x - cx, p.z - cz);
+      if (nd > r + c.rr + 0.04) continue;
+      const half = ((c.x1 - c.x0) / 2) * Math.abs(tx) + ((c.z1 - c.z0) / 2) * Math.abs(tz) + c.rr + r;
+      consider(cx, cz, nd, half, (p.x - (c.x0 + c.x1) / 2) * tx + (p.z - (c.z0 + c.z1) / 2) * tz, N.edge);
+    }
+    const ax = Math.floor(p.x + ux * (r + 0.06)), az = Math.floor(p.z + uz * (r + 0.06));
+    if (solid(ax, az)) {
+      const cx = clamp(p.x, ax, ax + 1), cz = clamp(p.z, az, az + 1);
+      const half = 0.5 * Math.abs(tx) + 0.5 * Math.abs(tz) + r;
+      consider(cx, cz, Math.hypot(p.x - cx, p.z - cz), half, (p.x - ax - 0.5) * tx + (p.z - az - 0.5) * tz, N.tileEdge);
+    }
+    if (!best) return;
+    // Only when the way round is open (not a wall of trunks or brush).
+    const qx = p.x + tx * best.side * (best.gap + 0.05) + ux * 0.15, qz = p.z + tz * best.side * (best.gap + 0.05) + uz * 0.15;
+    if (this.blockedCircle(qx, qz, r * 0.95, !!opts.throughBrush)) return;
+    const step = Math.min(best.gap + 0.02, len * N.speed);
+    this.moveBody(p, tx * best.side * step, tz * best.side * step, r, { throughBrush: opts.throughBrush, solid: opts.solid });
   }
 
   /** True if a circle at (x, z) overlaps anything solid. */
@@ -350,6 +431,20 @@ export class JungleWorld {
       [a, b] = [b, a];
     }
     this.shade = new Uint8Array(W * W);
+    // Walkable open ground (trails, site clearings) is spared most of the canopy shade (critic H #2): a soft
+    // mask (one 3 x 3 blur) so the lit path has a rounded edge, not the tile grid.
+    const walk = new Float32Array(W * W), walk2 = new Float32Array(W * W);
+    for (let i = 0; i < W * W; i++) walk[i] = (this.w.trail[i] || this.w.site[i] >= 0) && this.w.brush[i] < BRUSH.thicket ? 1 : 0;
+    for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
+      let s = 0, n = 0;
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+        const xx = x + dx, zz = z + dz;
+        if (xx < 0 || zz < 0 || xx >= W || zz >= W) continue;
+        s += walk[zz * W + xx]; n++;
+      }
+      walk2[z * W + x] = Math.max(walk[z * W + x] * 0.85, s / n);
+    }
+    const rg = new Uint8Array(W * W * 2);
     const cx = this.w.center.x, cz = this.w.center.z;
     for (let i = 0; i < W * W; i++) {
       const x = i % W, z = Math.floor(i / W);
@@ -359,8 +454,55 @@ export class JungleWorld {
       const dc = Math.hypot(x - cx, z - cz);
       if (dc < JUNGLE.relayClearing + 2) v *= Math.max(0, (dc - JUNGLE.relayClearing + 4) / 6);
       this.shade[i] = Math.round(v * 255);
+      rg[i * 2] = this.shade[i];
+      rg[i * 2 + 1] = Math.round(v * (1 + (ATMOS.trailShade - 1) * walk2[i]) * 255);
     }
-    const tex = new THREE.DataTexture(this.shade, W, W, THREE.RedFormat, THREE.UnsignedByteType);
+    // R = full canopy density (cards, CPU queries), G = with the trail spared (ground): PostFx picks per pixel.
+    const tex = new THREE.DataTexture(rg, W, W, THREE.RGFormat, THREE.UnsignedByteType);
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
+    return tex;
+  }
+
+  /**
+   * District colour grade (critic H #3): each region's REGION_LOOK.grade multiplier (the Relay clearing stays
+   * neutral), box-blurred over ATMOS.gradeBlur tiles so it blends across borders. RGBA8, value / 2 (PostFx x 2).
+   */
+  _buildGrade() {
+    const W = this.size, keys = this.w.districts || [];
+    let r = new Float32Array(W * W), g = new Float32Array(W * W), b = new Float32Array(W * W);
+    for (let i = 0; i < W * W; i++) {
+      const k = this.w.region[i];
+      const gr = (k >= 0 && REGION_LOOK[keys[k]]?.grade) || [1, 1, 1];
+      r[i] = gr[0]; g[i] = gr[1]; b[i] = gr[2];
+    }
+    const R = Math.max(1, Math.round(ATMOS.gradeBlur / 2));
+    const blur = (src) => {
+      // Two separable box passes (about a tent of radius 2R).
+      let a = src;
+      const t = new Float32Array(W * W);
+      for (let pass = 0; pass < 2; pass++) {
+        for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
+          let s = 0, n = 0;
+          for (let d = -R; d <= R; d++) { const xx = x + d; if (xx >= 0 && xx < W) { s += a[z * W + xx]; n++; } }
+          t[z * W + x] = s / n;
+        }
+        const o = new Float32Array(W * W);
+        for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
+          let s = 0, n = 0;
+          for (let d = -R; d <= R; d++) { const zz = z + d; if (zz >= 0 && zz < W) { s += t[zz * W + x]; n++; } }
+          o[z * W + x] = s / n;
+        }
+        a = o;
+      }
+      return a;
+    };
+    r = blur(r); g = blur(g); b = blur(b);
+    const data = new Uint8Array(W * W * 4);
+    const enc = (v) => Math.max(0, Math.min(255, Math.round((v / 2) * 255)));
+    for (let i = 0; i < W * W; i++) { data[i * 4] = enc(r[i]); data[i * 4 + 1] = enc(g[i]); data[i * 4 + 2] = enc(b[i]); data[i * 4 + 3] = 255; }
+    const tex = new THREE.DataTexture(data, W, W, THREE.RGBAFormat, THREE.UnsignedByteType);
     tex.magFilter = THREE.LinearFilter;
     tex.minFilter = THREE.LinearFilter;
     tex.needsUpdate = true;
@@ -425,7 +567,7 @@ export class JungleWorld {
     tex.minFilter = THREE.NearestFilter;
     tex.generateMipmaps = false;
     tex.colorSpace = THREE.SRGBColorSpace;
-    const ground = new THREE.Mesh(this.groundGeom, new THREE.MeshBasicMaterial({ map: tex }));
+    const ground = new THREE.Mesh(this.groundGeom, this._groundMaterial(tex));
     ground.rotation.x = -Math.PI / 2;
     ground.position.set(cx * C + C / 2, 0, cz * C + C / 2);
     ground.renderOrder = -10;
@@ -434,6 +576,20 @@ export class JungleWorld {
     const ch = { cx, cz, ground, cards: null, dirtyCards: true };
     this.chunks.set(this._key(cx, cz), ch);
     this._buildCards(ch);
+  }
+
+  /**
+   * Ground material: the baked canvas, plus the PostFx light code: texels the baker marked emissive (glow
+   * fungus, alpha < 0.9 in the canvas, TerrainBaker._markEmissive) write alpha 0 so they glow at night.
+   */
+  _groundMaterial(tex) {
+    const m = new THREE.MeshBasicMaterial({ map: tex });
+    m.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <opaque_fragment>', 'float vrEmit = diffuseColor.a;\n#include <opaque_fragment>\ngl_FragColor.a = vrEmit < 0.9 ? 0.0 : 1.0;');
+    };
+    m.customProgramCacheKey = () => 'vr-ground';
+    return m;
   }
 
   _dropChunk(k, ch) {
@@ -451,6 +607,7 @@ export class JungleWorld {
     ch.cards?.removeFromParent();
     ch.cards?.geometry.dispose();
     ch.cards = cards.length ? cardMesh(cards, this.atlas, this.cardMat) : null;
+    ch.cardList = cards;   // for coveredAt
     if (ch.cards) this.three.add(ch.cards);
   }
 
@@ -459,22 +616,59 @@ export class JungleWorld {
     this.cardMat.uniforms.uPlayerPx.value.set(px, py);
     this.cardMat.uniforms.uPlayerZ.value = z;
     // Player outline (critic G #1): pale while brush or a tall object is around / in front of the player.
-    if (vis && x !== undefined) setOutline(vis, this.coveredAt(x, z) ? ATMOS.playerOutline.cover : ATMOS.playerOutline.open);
+    // vis.userData.outlineOverride: a brief rim colour the Player sets (the cyan perfect-dodge flash, critic I #7).
+    if (vis && x !== undefined) setOutline(vis, vis.userData.outlineOverride || (this.coveredAt(x, z) ? ATMOS.playerOutline.cover : ATMOS.playerOutline.open));
   }
 
-  /** Is anything that draws as an upright card (uncut brush, a collider object) around or just in front of (x, z)? */
+  /**
+   * Is the player at (x, z) actually covered by a card (critic H #10)? Samples a grid of points over the
+   * player's body box (ATMOS.playerOutline.body, texels around the feet) against the opaque texels of every
+   * upright card standing in front of it (atlas alpha). The card mask keeps those texels off the player, so
+   * this is "would be hidden": the outline turns cyan only then, with a little hysteresis (hits.on / off).
+   */
   coveredAt(x, z) {
-    const O = ATMOS.playerOutline;
-    const tx = Math.floor(x), tz = Math.floor(z);
-    for (let dz = -1; dz <= O.coverAhead; dz++) {
-      for (let dx = -O.coverRadius; dx <= O.coverRadius; dx++) {
-        const ax = tx + dx, az = tz + dz;
-        if (!this.inBounds(ax, az)) continue;
-        if (this.brushAt(ax, az) > 0 && (dz >= 0 || dx === 0)) return true;
-        if (dz > 0 && this.objGrid[az * this.size + ax]) return true;
+    const O = ATMOS.playerOutline, B = O.body;
+    if (!this._atlasData) {
+      const cv = this.atlas.canvas;
+      this._atlasData = { d: this.atlas.g.getImageData(0, 0, cv.width, cv.height).data, w: cv.width };
+    }
+    const AD = this._atlasData.d, AW = this._atlasData.w;
+    const near = this._covNear || (this._covNear = []);
+    near.length = 0;
+    const ccx = Math.floor(x / C), ccz = Math.floor(z / C);
+    for (let dz = 0; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const ch = this.chunks.get(this._key(ccx + dx, ccz + dz));
+      if (!ch?.cardList) continue;
+      for (const c of ch.cardList) {
+        const e = c.e;
+        if (c.z <= z + 0.06 || e.ay <= 0) continue;
+        // Its upright part must reach the body's rows and columns.
+        const left = c.x - e.ax / 32;
+        if (left > x + B.half / 32 || left + e.w / 32 < x - B.half / 32) continue;
+        if ((c.z - z) * 32 > e.ay - B.low) continue;
+        near.push(c);
       }
     }
-    return false;
+    let hits = 0;
+    if (near.length) {
+      for (let hy = B.low; hy <= B.high; hy += B.step) {
+        for (let sx = -B.half; sx <= B.half; sx += B.step) {
+          const X = x + sx / 32;
+          for (const c of near) {
+            const e = c.e;
+            const r = Math.floor(e.ay - ((c.z - z) * 32 + hy));
+            if (r < 0 || r >= e.ay) continue;
+            let u = Math.floor((X - (c.x - e.ax / 32)) * 32);
+            if (u < 0 || u >= e.w) continue;
+            if (c.flip) u = e.w - 1 - u;
+            if (AD[((e.y + r) * AW + e.x + u) * 4 + 3] > 127) { hits++; break; }
+          }
+        }
+      }
+    }
+    this._covered = this._covered ? hits >= O.hits.off : hits >= O.hits.on;
+    this._coverHits = hits;
+    return this._covered;
   }
 
   /** Debug: outline every footprint (yellow), deep water (blue) and fords (cyan) on the ground. */
@@ -524,6 +718,7 @@ export class JungleWorld {
     this.cardMat.dispose();
     this.atlas.texture.dispose();
     this.shadeTex.dispose();
+    this.gradeTex.dispose();
     this.w.brushNow = null;
   }
 }
@@ -557,7 +752,7 @@ export function chunkCards(world, A, cut, x0, z0, w, h) {
         if (!e) continue;
         // Distinct depth slots per card in a tile so overlapping leaves never z-fight.
         const zz = tz + 0.3 + ((k * 0.37 + hash2(tx, tz, 20 + k) * 0.3) % 0.68);
-        cards.push({ e, x: snap(tx + 0.15 + hash2(tx, tz, 30 + k) * 0.7), z: snap(zz), sway: 1, flip: hash2(tx, tz, 40 + k) < 0.5, phase: tx * 0.7 + tz * 0.3 });
+        cards.push({ e, x: snap(tx + 0.15 + hash2(tx, tz, 30 + k) * 0.7), z: snap(zz), sway: 1, flip: hash2(tx, tz, 40 + k) < 0.5, phase: tx * 0.7 + tz * 0.3, kind: 1 });
       }
     }
   }
@@ -565,7 +760,7 @@ export function chunkCards(world, A, cut, x0, z0, w, h) {
     if (o.x < x0 || o.x >= x0 + w || o.z < z0 || o.z >= z0 + h) continue;
     const e = objectEntry(o, A);
     if (!e) continue;
-    cards.push({ e, x: o.x, z: o.z, sway: o.kind === 'tree' ? 0.6 : 0, flip: o.flip && o.kind !== 'ruin', phase: o.x * 0.5 });
+    cards.push({ e, x: o.x, z: o.z, sway: o.kind === 'tree' ? 0.6 : 0, flip: o.flip && o.kind !== 'ruin', phase: o.x * 0.5, kind: o.kind === 'tree' ? 2 : 3 });
   }
   return cards.filter((c) => c.e);
 }
@@ -584,14 +779,16 @@ export function objectEntry(o, A) {
 export function cardMesh(cards, atlas, material) {
   const n = cards.length * 2;   // up to two quads per card (upright + flat part)
   const pos = new Float32Array(n * 4 * 3), uv = new Float32Array(n * 4 * 2), card = new Float32Array(n * 4 * 4);
+  const shade = new Float32Array(n * 4 * 3);   // aShade: kind, anchor row in the atlas, rows above it (card shader)
   const idx = [];
   let q = 0;
   const AS = atlas.canvas.width;
-  const quad = (verts, uvs, attrs) => {
+  const quad = (verts, uvs, attrs, sh = [0, 0, 0]) => {
     for (let v = 0; v < 4; v++) {
       pos.set(verts[v], (q * 4 + v) * 3);
       uv.set(uvs[v], (q * 4 + v) * 2);
       card.set(attrs[v], (q * 4 + v) * 4);
+      shade.set(sh, (q * 4 + v) * 3);
     }
     const b = q * 4;
     idx.push(b, b + 2, b + 1, b + 1, b + 2, b + 3);
@@ -610,6 +807,7 @@ export function cardMesh(cards, atlas, material) {
         [[left, hUp, c.z], [right, hUp, c.z], [left, 0.002, c.z], [right, 0.002, c.z]],
         [[u0, vTop], [u1, vTop], [u0, vAnchor], [u1, vAnchor]],
         [[c.z, c.sway, ph, 1], [c.z, c.sway, ph, 1], [c.z, 0, ph, 1], [c.z, 0, ph, 1]],
+        [c.kind || 3, e.y + e.ay, e.ay],
       );
     }
     if (e.h > e.ay) {
@@ -625,6 +823,7 @@ export function cardMesh(cards, atlas, material) {
   g.setAttribute('position', new THREE.BufferAttribute(pos.subarray(0, q * 12), 3));
   g.setAttribute('uv', new THREE.BufferAttribute(uv.subarray(0, q * 8), 2));
   g.setAttribute('aCard', new THREE.BufferAttribute(card.subarray(0, q * 16), 4));
+  g.setAttribute('aShade', new THREE.BufferAttribute(shade.subarray(0, q * 12), 3));
   g.setIndex(idx);
   g.computeBoundingSphere();
   const m = new THREE.Mesh(g, material);

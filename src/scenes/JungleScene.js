@@ -19,9 +19,11 @@ import '../ui/explore.css';
 import '../ui/jungle.css';
 import { CONFIG, RESOURCES, RESOURCE_KEYS, JUICE, nightTune, STAMINA } from '../data/config.js';
 import { DISTRICTS, DISTRICT_KEYS } from '../data/districts.js';
-import { PRIMARY, OPTIONAL } from '../data/objectives.js';
+import { PRIMARY, OPTIONAL, EVENTS, EVENT_KEYS, EVENT_RULES } from '../data/objectives.js';
+import { DAY_CREATURES } from '../data/bosses.js';
 import { EXPLORE_ENEMIES } from '../data/enemies.js';
-import { JUNGLE, DAY, POP, BRUSH, LEVEL, ATMOS } from '../data/jungle.js';
+import { JUNGLE, DAY, POP, BRUSH, LEVEL, ATMOS, PYLON_GLOW } from '../data/jungle.js';
+import { lightPool, beaconBeam } from '../core/PixelGlow.js';
 import { Run } from '../core/Run.js';
 import { makeRng, subSeed } from '../core/rng.js';
 import { Fx, glowTexture } from '../core/Fx.js';
@@ -31,16 +33,23 @@ import { setAnim, updateVisual, setOpacity, flashVisual } from '../core/Assets.j
 import { worldForRun, clearDisc } from '../world/JungleGen.js';
 import { JungleWorld } from '../world/JungleWorld.js';
 import { Ambience } from '../world/Ambience.js';
+import { Wading } from '../world/Wading.js';
 import { Player } from '../entities/Player.js';
 import { ExploreEnemy } from '../entities/ExploreEnemy.js';
 import { Shots } from '../entities/ExploreShots.js';
 import { SporePods } from '../entities/SporePods.js';
-import { JungleMap, MAP_MARKERS } from '../ui/JungleMap.js';
+import { JungleMap, MAP_MARKERS, drawMarker } from '../ui/JungleMap.js';
 import { MAP_VIEW, HUD } from '../data/hud.js';
 import { el, button, bar, toast, modal, fmtTime, resChip, resIcon, resIconHtml, setToastsPaused } from '../ui/ui.js';
 import { showHint } from '../ui/hints.js';
-import { GUIDE, FIRST_DAY, RETURN_PROMPT, HOME_HINT, WORDS } from '../data/guide.js';
+import { GUIDE, FIRST_DAY, RETURN_PROMPT, HOME_HINT, WORDS, TIPS } from '../data/guide.js';
 import { openSettingsOverlay } from './SettingsScene.js';
+import { keyLabel } from '../core/Input.js';
+import { JungleRelics } from './JungleRelics.js';
+import { Goals } from './JungleGoals.js';
+import { AreaBosses } from '../entities/AreaBoss.js';
+import { makeEnemy, tickSpeedBuffs } from '../entities/DayCreatures.js';
+import { Weather } from '../world/Weather.js';
 
 const X = () => CONFIG.expedition;
 const CONTAINER_NAMES = { crate: 'Crate', chest: 'Tool Chest', cache: 'Rare Cache', intel_terminal: 'Intel Terminal' };
@@ -74,6 +83,7 @@ export class JungleScene {
     this.regionIdx = DISTRICT_KEYS.indexOf(this.district);
     this.objKey = params.objective || run.objectiveFor(this.district);
     this.objDef = PRIMARY[this.objKey];
+    this._forceEvent = params.event;   // (debug: ?event=<key>)
 
     // ---- world data + persistent state
     this.data = worldFor(game, run);
@@ -95,10 +105,10 @@ export class JungleScene {
     game.assets.setTint('#ffffff');
     this.post = new PostFx(game);
     this.world = new JungleWorld(game, this.three, this.data, this.state.cut);
-    this.post.uniforms.tShade.value = this.world.shadeTex;
-    this.post.uniforms.uWorld.value = this.data.size;
+    this.post.setWorld(this.world);   // canopy shade + district grade
     this.post.uniforms.uLeaves.value = 1;
     this.ambience = new Ambience(this.three, this.world);
+    this.wading = new Wading(this);   // waterline clip + ripple / splash in shallow water
     this.fx = new Fx(game, this.three, this.camera);
     this.shots = new Shots(this);
     const c = this.data.center;
@@ -142,20 +152,34 @@ export class JungleScene {
     this._buildRelay();
     this._buildPylons();
     this._buildContainers();
-    this.spores = new SporePods(this, this.data.spores || []);   // hazard (regrows daily)
+    // Today's weather (src/world/Weather.js, src/data/weather.js): rain / fog / heat, or none. Heat grows extra pods.
+    this.weather = new Weather(this);
+    this.spores = new SporePods(this, this.weather.pods(this.data.spores || []));   // hazard (regrows daily)
+    this.bosses = new AreaBosses(this);   // area bosses in their lairs, from day 3 (src/entities/AreaBoss.js)
+    this.goals = new Goals(this);         // escort / uplink / Alpha / core / bloom goals (src/scenes/JungleGoals.js)
     this._setupObjective();
     this._setupOptionals();
+    this._setupEvents();
+    this.bosses.build();
     this.map = new JungleMap(this.data, this.state.explored);
     this.map.reveal(c.x, c.z, JUNGLE.relayClearing + 6);
     for (const p of this.data.pylons) if (this.state.pylons.has(p.id)) this.map.reveal(p.x, p.z, 6);
     this._chooseStart();
+    // Key bindings (Settings → Controls) apply while the jungle runs: a rebound key reads as the default code.
+    game.input.useBindings(() => game.meta.settings.keys);
+    this._tips = { cur: null, q: [], gapT: 0, scanT: 0 };   // one-off verb tips (TIPS, _tip / _checkTips)
     this._buildHud();
+    this.weather.apply();         // the grade, fog / rain, light radius, rain sound
+    this.weather.hud(this.hud);   // its tag under the clock
+    // Relics, landmark shrines, data logs, named places (Stage 7; src/scenes/JungleRelics.js).
+    this.relicsCtl = new JungleRelics(this);
 
     this.world.warm(this.player.pos.x, this.player.pos.z);
     this._placeCamera(0, true);
 
     this._onVis = () => { if (document.hidden && !this.ending) this.setPaused(true); };
     document.addEventListener('visibilitychange', this._onVis);
+    window.addEventListener('blur', this._onBlur = () => { if (!this.ending) this.setPaused(true); });   // alt-tab pauses too
     game.stage.style.cursor = 'none';
     game.music?.play('day');
 
@@ -164,7 +188,7 @@ export class JungleScene {
     // hints, one control each, in the order you need them.
     this._setupCoach();
     if (!this.coach) {
-      this._hint('jungle_move', 'Move with <b>W A S D</b>. <b>Click</b> to swing your machete. <b>Tab</b> opens the map.', 'bottom-left', 10);
+      this._hint('jungle_move', `Move with ${this._moveKeys()}. <b>Click</b> to swing your machete. ${this._key('map')} opens the map.`, 'bottom-left', 10);
       this.later(5, () => this._hint('jungle_cut', 'Your machete <b>cuts through plants</b>: click to clear a path. Thorny red brambles need a <b>heavy chop</b> (hold right-click). Cutting is <b>loud</b>.', 'bottom-left', 11));
       this.later(18, () => this._hint('jungle_return', `Follow the <span style="color:#feae34">amber ◆ arrow</span> to today's goal. What you pick up is yours once you get <span style="color:#2ce8f5">home</span> (the Relay or a ${WORDS.pylon} you switched on). After sunset the jungle hunts you.`, 'bottom-left', 11));
     }
@@ -198,6 +222,13 @@ export class JungleScene {
 
   later(t, fn) { this.timers.push({ t, fn }); }
   toast(text, cls = '', time = 2.4) { toast(this.game.ui, text, cls, time); }
+
+  /** Keycap HTML for an action's bound key ('roll' → Space), so every tip names the key the player picked. */
+  _key(action) {
+    const t = keyLabel(this.game.input.keyFor(action)).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    return `<span class="key">${t}</span>`;
+  }
+  _moveKeys() { return ['up', 'left', 'down', 'right'].map((a) => this._key(a)).join(''); }
 
   _hint(id, html, pos = 'bottom-left', time = 10) { this._hintQueue.push({ id, html, pos, time }); }
   _pumpHints() {
@@ -262,14 +293,14 @@ export class JungleScene {
   }
 
   _pylonGlow(it, on) {
+    if (it.vis) setAnim(it.vis, on ? 'on' : 'off');   // sprite: dead mast vs cyan beacon pulse + lit dish
     if (it.glow) it.glow.visible = on;
     if (!on || it.glow) return;
-    // Soft dithered light pool (texel-exact, PixelGlow) instead of a stretched 20 × 10 blob.
-    const G = this.game.assets.pylonGlow;
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(G.w, G.h), new THREE.MeshBasicMaterial({ map: G.tex, color: G.color, transparent: true, opacity: G.strength, depthWrite: false, blending: THREE.AdditiveBlending }));
-    m.rotation.x = -Math.PI / 2;
+    // A dithered light pool that stays lit under the canopy and at night, plus a light column above the
+    // canopy so a live pylon reads from afar (PixelGlow lightPool / beaconBeam, PYLON_GLOW).
+    const m = lightPool(PYLON_GLOW);
     m.position.set(it.x, 0.02, it.z);
-    m.userData.pxSnap = true;
+    if (PYLON_GLOW.beam) { const b = beaconBeam(PYLON_GLOW); b.position.set(0, 0, b.position.y); m.add(b); m.userData.beam = b; }
     this.three.add(m);
     it.glow = m;
   }
@@ -287,7 +318,7 @@ export class JungleScene {
     this.state.pylons.add(it.pylon.id);
     this.map.reveal(it.x, it.z, DAY.pylonReveal);
     this._pylonGlow(it, true);
-    this.game.sfx.play('done');
+    this.game.sfx.play('beacon_on');
     this.fx.ring({ x: it.x, z: it.z }, { color: '#2ce8f5', radius: 3, life: 0.6 });
     this.fx.burst({ x: it.x, z: it.z }, { color: '#2ce8f5', color2: '#ffffff', count: 30, speed: 2, up: 5, life: 0.9, y: 1.5 });
     this._banner(`${WORDS.Pylon.toUpperCase()} ON`, 'You can head home from here: today and every day after');
@@ -295,12 +326,13 @@ export class JungleScene {
 
   _buildContainers() {
     const run = this.game.run;
+    // The chosen area's FINDS apply to everything opened today, wherever it is (Run.lootMults; the briefing card says so).
+    const district = { loot: run.lootMults ? run.lootMults() : this.D.loot };
     for (const c of this.data.containers) {
       const opened = this.state.opened.has(c.id);
       // Hidden caches only show once you are close (they sit in the brush).
       const v = this._visual(opened ? this._openedName(c.type) : c.type, c.x, c.z);
       this.world.addCollider({ kind: 'prop', type: 'container', x: c.x, z: c.z });   // opened ones still stand there
-      const district = DISTRICTS[DISTRICT_KEYS[c.region]] || this.D;
       this._addInteractable({
         kind: 'container', type: c.type, cont: c, x: c.x, z: c.z, vis: v, done: opened, radius: 1.35,
         hold: X().containers[c.type].hold, keepProgress: true,
@@ -315,6 +347,7 @@ export class JungleScene {
   /** Pick today's objective sites in the target district (never a site used on an earlier day). */
   _sitesIn(types, n = 1, exclude = [], deep = false) {
     const ri = this.regionIdx;
+    exclude = [...exclude, ...(this.bosses?.lairSites() || [])];   // an area boss's lair is nobody's goal site
     const all = this.data.sites.filter((s) => s.region === ri && !this.state.used.has(s.id) && !exclude.includes(s));
     const out = [];
     // deep (primary objectives): far from the Relay first (a real trek), then lost sites (off-trail: cut
@@ -328,7 +361,9 @@ export class JungleScene {
       if (guided) return d >= g0 && d <= g1 ? 0 : 1;
       return d >= DAY.objectiveMinDist ? 0 : 1;
     };
-    const rank = (s) => (deep ? far(s) * 100 + (guided ? (s.lost ? 50 : 0) : (s.lost ? 0 : 10)) : 0) + types.indexOf(s.type);
+    // (The guided run's world marks its goal site: the trail there is lined with crates, JungleGen guidedRoute.)
+    const gSite = guided ? this.data.guided?.site : null;
+    const rank = (s) => (s.id === gSite ? -1000 : 0) + (deep ? far(s) * 100 + (guided ? (s.lost ? 50 : 0) : (s.lost ? 0 : 10)) : 0) + types.indexOf(s.type);
     const cand = this.rng.shuffle(all.filter((x) => types.includes(x.type)));
     cand.sort((a, b) => rank(a) - rank(b));
     for (const s of cand) if (out.length < n) out.push(s);
@@ -353,6 +388,8 @@ export class JungleScene {
     this.objTargets = [];
     const used = [];
     def.steps.forEach((step, si) => {
+      // escort / defend / track / carry / purge steps (and the Alpha's kill) are placed by src/scenes/JungleGoals.js.
+      if (this.goals?.claims(step)) { this.goals.setupStep(step, si, used); return; }
       const count = step.count || 1;
       const types = step.room === 'side' ? ['minor', 'landmark', 'camp'] : ['major', 'minor'];
       const sites = this._sitesIn(types, count, used, step.room !== 'side');
@@ -401,13 +438,13 @@ export class JungleScene {
     this.stepCount += 1;
     if (this.stepCount < needed) {
       this.toast(`${this.objDef.name}: ${this.stepCount}/${needed}`, 'amber');
-      this.game.sfx.play('done');
+      this.game.sfx.play('step_done');
       return;
     }
     this.objStep += 1;
     this.stepCount = 0;
     if (this.objStep >= this.objDef.steps.length) this.completeObjective();
-    else { this.game.sfx.play('done'); this.toast(`Next: ${this.objDef.steps[this.objStep].label}`, 'amber', 3); }
+    else { this.game.sfx.play('step_done'); this.toast(`Next: ${this.objDef.steps[this.objStep].label}`, 'amber', 3); }
   }
 
   completeObjective() {
@@ -415,13 +452,18 @@ export class JungleScene {
     this.objectiveDone = true;
     this.objStep = this.objDef.steps.length;
     this._grantSkillPoint();
-    this.game.sfx.play('done');
+    this.game.sfx.play('goal_done');
     this._banner('GOAL DONE', `Head home to claim the reward (follow the cyan arrow), or keep exploring`);
     for (const it of this.interactables) if (it.kind === 'primary') it.done = true;
   }
 
-  _grantSkillPoint() {
-    if (this.spEarned >= X().maxSkillPoints) return false;
+  /**
+   * +1 skill point for this trip. The goal (or a bonus task, if the goal isn't done) gives at most
+   * CONFIG.expedition.maxSkillPoints a trip; `{ boss: true }` (an area boss killed) always gives one on top.
+   */
+  _grantSkillPoint(opts = {}) {
+    if (!opts.boss && this.spEarned - (this.spBoss || 0) >= X().maxSkillPoints) return false;
+    if (opts.boss) this.spBoss = (this.spBoss || 0) + 1;
     this.spEarned += 1;
     this.later(0.6, () => this.toast('+1 skill point', 'good'));
     return true;
@@ -430,7 +472,9 @@ export class JungleScene {
   _setupOptionals() {
     const night = this.game.run.night;
     const n = night <= 1 ? 1 : 2;
-    const keys = this.rng.shuffle(['nest', 'survivor', 'data_log', 'locked_cache']).slice(0, n);
+    // (No second stranded engineer on a day whose goal is to bring one home.)
+    const pool = ['nest', 'survivor', 'data_log', 'locked_cache'].filter((k) => k !== 'survivor' || !this.objDef.steps.some((s) => s.type === 'escort'));
+    const keys = this.rng.shuffle(pool).slice(0, n);
     const taken = this.objTargets.map((t) => t.site);
     for (const key of keys) {
       const def = OPTIONAL[key];
@@ -471,16 +515,62 @@ export class JungleScene {
     this.optionalsDone.push(rec);
     if (def.reward) this._spill(def.reward, it.x, it.z, true);
     this.fx.burst({ x: it.x, z: it.z }, { color: '#c47bff', color2: '#ffffff', count: 18, speed: 2.4, up: 3, life: 0.6, y: 0.5 });
-    this.game.sfx.play('done');
+    this.game.sfx.play('bonus_done');
     this.toast(`Bonus done: ${def.name}`, 'good', 3);
     if (def.flag) this.later(0.4, () => this.toast(def.flag.text, 'amber', 3.2));
-    if (def.skillPoint && !this._grantSkillPoint()) this.later(0.6, () => this.toast('No more skill points from this trip', 'amber'));
+    if (def.skillPoint) this._grantSkillPoint();   // only if the trip's point isn't earned yet (skills.js header)
     if (it.key === 'survivor' && it.vis) {
       const v = it.vis;
       it.vis = null;
       this.fades = this.fades || [];
       this.fades.push({ v, t: 0 });
     }
+  }
+
+  /**
+   * Today's event (EVENTS in src/data/objectives.js; from EVENT_RULES.fromNight, never on the guided day): one
+   * risk/reward set piece at a camp or minor site in today's area. Announced with its reward and its risk once you
+   * come within EVENT_RULES.announce tiles, then marked on the map; the prompt repeats both before you commit.
+   * `params.event` (debug) forces one.
+   */
+  _setupEvents() {
+    const run = this.game.run;
+    this.events = [];
+    if (!EVENT_KEYS.length || run.night < EVENT_RULES.fromNight || run.isGuidedDay()) return;
+    const key = EVENTS[this._forceEvent] ? this._forceEvent : makeRng(subSeed(run.seed, run.night, 'event')).pick(EVENT_KEYS);
+    const def = EVENTS[key];
+    const taken = [...this.objTargets.map((t) => t.site), ...this.interactables.map((i) => i.site), ...this.nests.map((n) => n.site)].filter(Boolean);
+    const s = this._sitesIn(EVENT_RULES.sites, 1, taken)[0];
+    if (!s) return;
+    this.state.used.add(s.id);
+    clearDisc(this.data, s.x, s.z, 2);
+    for (const ch of this.world.chunks.values()) ch.dirtyCards = true;
+    const p = this._spotNear(s, 0, 1.2);
+    const night = run.night;
+    const it = this._addInteractable({
+      kind: 'event', key, x: p.x, z: p.z, site: s, radius: 1.5, hold: def.hold || 1.5, keepProgress: true,
+      spawnDuring: def.spawnDuring ? Math.min(def.spawnDuring, nightTune('holdSpawns', night)) : 0, spawned: 0,
+      guards: def.guards ? Math.min(def.guards, nightTune('guards', night)) : 0,
+      verb: () => def.prompt,
+      onComplete: (t) => this._completeEvent(t, def),
+    });
+    it.vis = this._visual(def.prop, p.x, p.z, { anim: 'off' });
+    this.world.addCollider({ kind: 'prop', type: 'objective', x: p.x, z: p.z });
+    this.events.push(it);
+  }
+
+  _completeEvent(it, def) {
+    it.done = true;
+    if (it.vis && def.prop === 'cache') { this._removeVis(it); it.vis = this._visual(this._openedName('cache'), it.x, it.z); }
+    else if (it.vis) setAnim(it.vis, 'on');
+    const rec = { key: it.key, name: def.name };
+    if (def.flag) rec.flag = def.flag;
+    this.eventsDone.push(rec);
+    if (def.reward) this._spill(def.reward, it.x, it.z, true);
+    this.fx.burst({ x: it.x, z: it.z }, { color: '#feae34', color2: '#ffffff', count: 22, speed: 2.6, up: 3.2, life: 0.7, y: 0.5 });
+    this.game.sfx.play('bonus_done');
+    this.toast(`${def.name}: done`, 'good', 3);
+    if (def.flag) this.later(0.4, () => this.toast(def.flag.text, 'amber', 3.4));
   }
 
   _makeNestBar(n) {
@@ -504,14 +594,14 @@ export class JungleScene {
     this.fx.text({ x: n.x, z: n.z }, String(dmg), { color: '#ead4aa', y: (n.vis?.userData.vis.height || 1) + 0.6, life: 0.6, key: n, value: dmg });
     this.fx.burst({ x: n.x, z: n.z }, { color: '#b55088', count: 6, speed: 2, up: 2, life: 0.35, y: 0.5 });
     this.fx.hitStop(src === 'chop' ? JUICE.hitStop.cutterHit * 1.6 : JUICE.hitStop.cutterHit);
-    this.game.sfx.play('hit');
+    this.game.sfx.playAt('hit', n.x, n.z);
     if (n.hp <= 0) {
       n.dead = true;
       this.fx.burst({ x: n.x, z: n.z }, { color: '#b55088', color2: '#ff0044', count: 40, speed: 4, up: 4, life: 0.8, size: 0.1, y: 0.5 });
       this.fx.ring({ x: n.x, z: n.z }, { color: '#ff0044', radius: 2.5, life: 0.5 });
       this.fx.decal({ x: n.x, z: n.z }, { color: '#4a1f3a', radius: 0.9, life: 8 });
       this.fx.hitStop(JUICE.hitStop.eliteKill);
-      this.game.sfx.play('boom');
+      this.game.sfx.playAt('nest_burst', n.x, n.z);
       this.game.shake(6, 0.3);
       this._removeVis(n);
       n.barBg.visible = n.barFill.visible = false;
@@ -565,11 +655,12 @@ export class JungleScene {
     it.done = true;
     this._openedCount = (this._openedCount || 0) + 1;
     this.state.opened.add(it.cont.id);
-    this.game.sfx.play('open');
+    this.game.sfx.play('crate_open');
     this._removeVis(it);
     it.vis = this._visual(this._openedName(it.type), it.x, it.z);
     this.fx.burst({ x: it.x, z: it.z }, { color: '#e4a672', color2: '#feae34', count: 10, speed: 2, up: 3, life: 0.4, y: 0.4 });
     this._spill(loot, it.x, it.z, true);
+    this.relicsCtl?.onContainerOpened(it);   // a hidden cache may hold a relic
     if (!this.warned.loot) {
       this.warned.loot = true;
       if (!this.coach) this._hint('jungle_loot', `What you pick up is <b>carried</b> (top-left) until you get home. Go down out here and most of it is lost.`, 'bottom-left', 10);
@@ -633,7 +724,7 @@ export class JungleScene {
       if (!p.magnet && Math.abs(p.vx) + Math.abs(p.vz) > 0.01) this.world.moveBody(p, p.vx * dt, p.vz * dt, 0.15, { throughBrush: true });
       const dx = pl.pos.x - p.x, dz = pl.pos.z - p.z;
       const d = Math.hypot(dx, dz);
-      const full = p.res === 'med' && pl.meds >= CONFIG.player.maxMeds;
+      const full = p.res === 'med' && pl.meds >= (pl.maxMeds ?? CONFIG.player.maxMeds);   // (Medic's Satchel: 3)
       if (!pl.dead && !full && p.age > p.delay && d < magnet) {
         p.magnet = true;
         const sp = CONFIG.player.pickupSpeed * (1.2 - d / magnet) + 2;
@@ -647,7 +738,7 @@ export class JungleScene {
       }
       const bob = p.y === 0 && Math.sin(p.age * 3.2 + p.bob) > 0 ? (JUICE.pickup.bobPx * 2) / 32 : 0;
       p.vis.position.set(p.x, p.y + 0.05 + bob, p.z);
-      p.glow.position.set(p.x, 0.016, p.z);
+      p.glow.position.set(p.x, 0.016, p.z + (JUICE.pickup.glowZ ?? 0));   // centred under the item's base
       p.glow.visible = !p.magnet;
       updateVisual(p.vis, dt);
       p.sparkT -= dt;
@@ -676,7 +767,7 @@ export class JungleScene {
       this.fx.text(this.player.pos, '', { html: `+${p.amount} ${resIconHtml(p.res)} ${r.label}`, color: r.color, y: this._headY(), key: `loot-${p.res}`, value: p.amount });
       this._flyLoot(p, p.res, this.hud.loot[p.res].chip, () => this._bumpLoot(p.res));
     }
-    this.game.sfx.play('pickup');
+    this.game.sfx.play(`pick_${p.res}`);
   }
 
   _flyLoot(p, key, target, done) {
@@ -699,9 +790,11 @@ export class JungleScene {
   // ================================================================== combat
 
   hittables() {
-    const out = this.enemies.filter((e) => !e.dead);
+    const out = this.enemies.filter((e) => !e.dead && !e.hidden);   // (a Thorn Stalker under the brush can't be hit)
     for (const n of this.nests) if (!n.dead) out.push({ x: n.x, z: n.z, radius: n.radius, dead: false, hit: (dmg, _dx, _dz, _kb, src) => this._hitNest(n, dmg, src) });
     this.spores?.hittables(out);   // a hit pops a spore pod
+    this.bosses?.hittables(out);   // the stationary area bosses
+    this.goals?.hittables(out);    // the bloom's spore nests (Purge the bloom)
     return out;
   }
 
@@ -710,10 +803,10 @@ export class JungleScene {
     const half = spec.arc / 2, R = spec.range;
     const src = power >= 2 ? 'chop' : 'slash';
     let hits = 0;
-    const inArc = (tx, tz, rad) => {
+    const inArc = (tx, tz, rad, r = R) => {
       const dx = tx - x, dz = tz - z;
       const d = Math.hypot(dx, dz);
-      if (d > R + rad) return null;
+      if (d > r + rad) return null;
       if (d < 0.35 + rad) return { d, dx: d > 1e-4 ? dx / d : Math.cos(angle), dz: d > 1e-4 ? dz / d : Math.sin(angle) };
       let da = Math.atan2(dz, dx) - angle;
       da = Math.atan2(Math.sin(da), Math.cos(da));
@@ -723,22 +816,26 @@ export class JungleScene {
     const chop = power >= 2;
     const step = chop ? 3 : Math.min(2, spec.step ?? 0);
     let kills = 0, hitAt = null;
+    const dm = this.relicsCtl?.meleeMult() ?? 1;   // relics: Whetstone / Glass Machete, an armed Hunter's Fang
     for (const t of this.hittables()) {
       const h = inArc(t.x, t.z, t.radius || 0.3);
       if (!h) continue;
-      t.hit(spec.damage, h.dx, h.dz, spec.knockback, src, spec.stagger || 0);
+      t.hit(spec.damage * dm, h.dx, h.dz, spec.knockback, src, spec.stagger || 0);
+      spec.onHit?.(t);   // the machete kit (src/entities/BladeKit.js): Serrated Edge bleeding
       hits++;
       if (t.dead) kills++;
       if (!hitAt || h.d < hitAt.d) hitAt = { d: h.d, x: t.x, z: t.z };
     }
-    // Undergrowth: tiles whose centre is in the arc (and the tile right in front of you).
+    // Undergrowth: tiles whose centre is in the arc (and the tile right in front of you). spec.cutRange: the Cleaver
+    // skill's chop clears plants further out than it hits.
     let cut = 0, nicked = 0;
     const fx = this.fx;
-    const tx0 = Math.floor(x - R - 1), tx1 = Math.floor(x + R + 1), tz0 = Math.floor(z - R - 1), tz1 = Math.floor(z + R + 1);
+    const CR = spec.cutRange || R;
+    const tx0 = Math.floor(x - CR - 1), tx1 = Math.floor(x + CR + 1), tz0 = Math.floor(z - CR - 1), tz1 = Math.floor(z + CR + 1);
     for (let tz = tz0; tz <= tz1; tz++) for (let tx = tx0; tx <= tx1; tx++) {
-      if (!this.world.brushAt(tx, tz)) continue;
-      if (!inArc(tx + 0.5, tz + 0.5, 0.45)) continue;
-      const b = this.world.hitBrush(tx, tz, spec.cut || power);
+      if (spec.noCut || !this.world.brushAt(tx, tz)) continue;   // (a bare-handed shove cuts nothing)
+      if (!inArc(tx + 0.5, tz + 0.5, 0.45, CR)) continue;
+      const b = this.world.hitBrush(tx, tz, Math.max(spec.cut || power, this.relicsCtl?.cutPower || 0));   // (Bramble Gloves)
       if (b === -1) {
         nicked++;
         fx.burst({ x: tx + 0.5, y: 0.4, z: tz + 0.5 }, { color: '#c23a3a', color2: '#5c2f2e', count: 4, speed: 2, up: 1.5, life: 0.3, size: 1.5 / 32 });
@@ -749,14 +846,15 @@ export class JungleScene {
       }
     }
     // The swing itself: a hand-pixelled smear (3 combo arcs, heavy chop), one hit-stop per swing,
-    // a camera kick along the blow and a little shake.
-    fx.smear(x, z, angle, {
+    // a camera kick along the blow and a little shake. (A shove — the machete is out — has no blade arc.)
+    if (!spec.shove) fx.smear(x, z, angle, {
       range: R, arc: spec.arc, sign: step === 1 ? -1 : 1, kind: chop ? 'chop' : step === 2 ? 'heavy' : 'slash',
       frame: chop ? M.chopSmearFrames : M.smearFrames[step], y: M.smearY, scale: M.smearScale,
       // unless the swing points away from the camera (behind the player), draw it over the undergrowth
       onTop: Math.sin(angle) > -0.4,
     });
     if (hits) {
+      this.relicsCtl?.landed();
       fx.hitStop(kills ? (chop ? M.chopKillStop : M.killStop) : chop ? M.chopStop : M.stop[step]);
       const hx = hitAt.x - Math.cos(angle) * 0.25, hz = hitAt.z - Math.sin(angle) * 0.25;
       fx.flash({ x: hx, y: 0.6, z: hz }, { color: chop ? '#fee761' : '#ffffff', size: chop ? 0.55 : 0.45, life: 0.06 });
@@ -779,7 +877,7 @@ export class JungleScene {
     if (cut) {
       this.game.sfx.play('cut');
       // Cutting is loud: anything nearby comes to look.
-      this.alertNear(x, z, 4.5 + Math.min(3, cut), null, true);
+      this.alertNear(x, z, (4.5 + Math.min(3, cut)) * (this.noiseMult ?? 1), null, true);   // (rain muffles it: Weather.js)
       if (!this.warned.cut) { this.warned.cut = true; }
       this._cutCount = (this._cutCount || 0) + cut;
     }
@@ -787,6 +885,7 @@ export class JungleScene {
       this.warned.bramble = true;
       this.toast('Thorny bramble: hold right-click for a heavy chop to clear it', 'amber', 3);
     }
+    return hits;   // creatures / nests / pods struck (Player pays full stamina only for those)
   }
 
   /** Debris from a cut undergrowth tile: leaf chips that see-saw down, plus stem / bark / thorn bits. */
@@ -825,7 +924,7 @@ export class JungleScene {
   }
 
   spawnEnemy(key, x, z, opts = {}) {
-    const e = new ExploreEnemy(this, key, x, z, opts);
+    const e = makeEnemy(this, key, x, z, opts);   // (Bloater / Feral Chief get their own classes, DayCreatures.js)
     this.enemies.push(e);
     return e;
   }
@@ -833,6 +932,10 @@ export class JungleScene {
   onEnemyKilled(e) {
     this.kills += 1;
     if (e.id) { this.killed.add(e.id); this.spawned.delete(e.id); }
+    this.player?.onKill?.(e);   // the machete kit: Second Wind heals
+    this.relicsCtl?.onKill(e);   // relic: Blood Moss heals
+    this.goals?.onEnemyKilled(e);    // the Alpha's relic
+    this.bosses?.onEnemyKilled(e);   // the Pack Lord
     if (e.objective) this._advanceStep(e.objStep ?? this.objStep);
     const D = X().enemyDrop;
     if (Math.random() < (e.def.drop || 0)) {
@@ -846,6 +949,20 @@ export class JungleScene {
   onPlayerHurt() {
     this.post.uniforms.uHurt.value = 0.6;
   }
+
+  // ---- relics (src/scenes/JungleRelics.js; effects read through Run.relicMod)
+
+  /** A relic's effect field for entities (Player, SporePods): `scene.relicMod?.('rollCost')`. */
+  relicMod(field) { return this.game.run.relicMod(field); }
+
+  /** A relic falls at (x, z) for the player to pick up (area bosses: { rarity: 'R' }). Returns its id or null. */
+  dropRelic(x, z, opts = {}) { return this.relicsCtl?.dropRelic(x, z, opts) ?? null; }
+
+  /** Player._die asks first: the Lifeline Idol may save a lethal hit (true = saved). */
+  relicSave(player) { return this.relicsCtl?.relicSave(player) ?? false; }
+
+  /** Player._perfectDodge tells relics (Hunter's Fang). */
+  relicPerfectDodge() { this.relicsCtl?.relicPerfectDodge(); }
 
   // ================================================================== wildlife
 
@@ -877,12 +994,16 @@ export class JungleScene {
     const nightMul = POP.byNight[Math.min(POP.byNight.length - 1, run.night - 1)];
     let n = Math.round((POP.base + POP.far * danger) * nightMul * (first ? FIRST_DAY.pop : 1) * (ri === this.regionIdx ? POP.targetRegion : 1) + rng.next() - 0.5);
     let id = 0;
-    const spot = (x0, z0, r) => {
+    // Walkers (no brush 'through' / 'crash' / 'under') need an open tile with ≥ 3 open neighbours: no Feral starts
+    // boxed into a thicket (critic I #5).
+    const walker = (key) => { const b = EXPLORE_ENEMIES[key]?.brush; return b !== 'through' && b !== 'crash' && b !== 'under'; };
+    const spot = (x0, z0, r, walk = false) => {
       for (let t = 0; t < 24; t++) {
         const x = x0 + (rng.next() - 0.5) * 2 * r, z = z0 + (rng.next() - 0.5) * 2 * r;
         const tx = Math.floor(x), tz = Math.floor(z);
         if (tx < 1 || tz < 1 || tx >= W - 1 || tz >= W - 1) continue;
         if (this.world.levelAt(x, z) === LEVEL.water || this.world.blockedAt(tx, tz, true)) continue;   // not in a trunk / rock / ruin
+        if (walk && !this._openForWalker(tx, tz)) continue;
         return { x: tx + 0.5, z: tz + 0.5 };
       }
       return null;
@@ -890,12 +1011,13 @@ export class JungleScene {
     while (n > 0) {
       const g = Math.min(n, rng.int(POP.group[0], POP.group[1]), first ? FIRST_DAY.groupMax : 99);
       n -= g;
-      const c = spot(mx, mz, C / 2 - 1);
-      if (!c) continue;
       const type = rng.weighted(weights);
+      const c = spot(mx, mz, C / 2 - 1, walker(type));
+      if (!c) continue;
       for (let i = 0; i < g; i++) {
-        const p = spot(c.x, c.z, 1.6) || c;
-        list.push({ id: `w${cx}_${cz}_${id++}`, key: i > 0 && type === 'razorback' ? 'crawler' : type, x: p.x, z: p.z });
+        const key = i > 0 && type === 'razorback' ? 'crawler' : type;
+        const p = spot(c.x, c.z, 1.6, walker(key)) || c;
+        list.push({ id: `w${cx}_${cz}_${id++}`, key, x: p.x, z: p.z });
       }
     }
     // Feral camps.
@@ -903,12 +1025,51 @@ export class JungleScene {
       if (s.type !== 'camp' || Math.floor(s.x / C) !== cx || Math.floor(s.z / C) !== cz) continue;
       const cs = first ? FIRST_DAY.campSize : POP.campSize;
       const m = rng.int(cs[0], cs[1]) + (run.night >= 3 ? 1 : 0);
+      // From DAY_CREATURES.chief.fromNight a Feral Chief leads the camp (its aura speeds the Ferals up).
+      const chief = EXPLORE_ENEMIES.feral_chief && run.night >= DAY_CREATURES.chief.fromNight;
       for (let i = 0; i < m; i++) {
         const a = (i / m) * Math.PI * 2;
-        list.push({ id: `c${s.id}_${i}`, key: 'feral', x: s.x + Math.cos(a) * 1.8, z: s.z + Math.sin(a) * 1.8, guard: true, site: s.idx });
+        let x = s.x + Math.cos(a) * 1.8, z = s.z + Math.sin(a) * 1.8;
+        if (!this._openForWalker(Math.floor(x), Math.floor(z))) { const q = spot(s.x, s.z, 2.6, true); if (q) { x = q.x; z = q.z; } }
+        list.push({ id: `c${s.id}_${i}`, key: chief && i === 0 ? 'feral_chief' : 'feral', x, z, guard: true, site: s.idx });
       }
     }
+    // Thorn Stalkers (critic I §9D): from POP.stalker.fromNight, in chunks thick with ferns, under a fern tile.
+    const ST = POP.stalker;
+    if (ST && EXPLORE_ENEMIES.stalker && run.night >= ST.fromNight && !first) {
+      let fern = 0, total = 0;
+      for (let z = cz * C; z < cz * C + C; z += 2) for (let x = cx * C; x < cx * C + C; x += 2) { total++; if (this.world.brushAt(x, z) === BRUSH.fern) fern++; }
+      const chance = ST.chance * (ST.districts?.[dKey] ?? 1);
+      if (fern / Math.max(1, total) >= ST.fernShare) {
+        for (let i = 0; i < ST.max; i++) {
+          if (rng.next() >= chance) continue;
+          for (let t = 0; t < 30; t++) {
+            const tx = cx * C + 1 + Math.floor(rng.next() * (C - 2)), tz = cz * C + 1 + Math.floor(rng.next() * (C - 2));
+            if (this.world.brushAt(tx, tz) !== BRUSH.fern || this.world.blockedAt(tx, tz, true)) continue;
+            list.push({ id: `s${cx}_${cz}_${i}`, key: 'stalker', x: tx + 0.5, z: tz + 0.5 });
+            break;
+          }
+        }
+      }
+    }
+    // Bloaters (DAY_CREATURES, src/data/bosses.js): from day 4, a chance per chunk (by area).
+    const BL = DAY_CREATURES.bloater;
+    if (BL && EXPLORE_ENEMIES.bloater && run.night >= BL.fromNight && !first && rng.next() < BL.chance * (BL.districts?.[dKey] ?? 1)) {
+      const p = spot(mx, mz, C / 2 - 1);
+      if (p) list.push({ id: `b${cx}_${cz}`, key: 'bloater', x: p.x, z: p.z });
+    }
+    // Nothing roams inside a living area boss's arena (that fight is its own).
+    if (this.bosses?.lairs.length) for (let i = list.length - 1; i >= 0; i--) if (this.bosses.inLair(list[i].x, list[i].z, 2)) list.splice(i, 1);
     return list;
+  }
+
+  /** Can a creature that needs open ground stand on tile (tx, tz) and walk off it (≥ 3 open neighbours)? */
+  _openForWalker(tx, tz) {
+    const w = this.world;
+    if (w.blockedAt(tx, tz, false)) return false;
+    let free = 0;
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) if ((dx || dz) && !w.blockedAt(tx + dx, tz + dz, false)) free++;
+    return free >= 3;
   }
 
   _updateWildlife(dt) {
@@ -943,9 +1104,15 @@ export class JungleScene {
   }
 
   _updateEnemies(dt) {
-    for (const e of this.enemies) e.update(dt);
+    const pl = this.player;
+    for (const e of this.enemies) {
+      // A creature with a ward (the engineer / the uplink, JungleGoals.js) runs its AI against that instead of you.
+      if (!e.ward || e.dead) { e.update(dt); continue; }
+      this.player = e.ward;
+      try { e.update(dt); } finally { this.player = pl; }
+    }
     // Keep bodies apart.
-    const list = this.enemies.filter((e) => !e.dead && e.state !== 'spawn');
+    const list = this.enemies.filter((e) => !e.dead && !e.hidden && e.state !== 'spawn');
     const pad = JUICE.separation.pad;
     for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
       const a = list[i], b = list[j];
@@ -975,6 +1142,7 @@ export class JungleScene {
       const e = this.spawnEnemy(t.kill, t.x, t.z, { elite: true, objective: true });
       e.objStep = t.step;
       t.enemy = e;
+      t.onSpawn?.(e);   // (the Alpha, JungleGoals.js)
       const sup = X().elite.supportTypes;
       const n = nightTune('eliteSupport', this.game.run.night);
       for (let i = 0; i < n; i++) {
@@ -988,7 +1156,7 @@ export class JungleScene {
       if (Math.hypot(it.x - pl.x, it.z - pl.z) > 7) continue;
       it.guardsOut = true;
       this.toast('Guards burst out of the undergrowth!', 'bad');
-      this.game.sfx.play('alarm');
+      this.game.sfx.play('ambush');
       for (let i = 0; i < it.guards; i++) {
         const p = this._openSpot(it.x, it.z, 3, 5.5);
         // Day 1: the guard is a lone Crawler (the first fight is meant to be easy).
@@ -1094,36 +1262,65 @@ export class JungleScene {
   onPlayerDeath() {
     if (this.ending) return;
     this.ending = true;
-    this.timeScale = 0.35;
+    // The death beat (critic I #12): a beat of slow-mo over the collapse (Player._collapse) while the creatures
+    // around back off the body.
+    const PD = CONFIG.player.death;
+    this.fx.slowMo(PD.slowMo, PD.scale);
+    for (const e of this.enemies) if (Math.hypot(e.x - this.player.pos.x, e.z - this.player.pos.z) < PD.radius) e.stepBack?.(this.player.pos.x, this.player.pos.z, PD.stepBack);
     this.holdTarget = null;
-    this.game.sfx.play('core');
+    this.game.sfx.play('player_down');
     this.fx.burst(this.player.pos, { color: '#e43b44', color2: '#3e8948', count: 30, speed: 3, up: 3, life: 0.8, y: 0.6 });
     this.later(1.2, () => {
       this.timeScale = 1;
+      // Death rules (Run.salvageFor / dawnHp): the drone saves a share of what you carried (never more), the goal
+      // keeps its skill point but its night reward needed you home, and you wake tomorrow with at least 60 health.
       const salv = this._salvage();
-      // Lost = carried minus the drone's share of it (the Scrap floor can top the salvage up past that share).
-      const share = nightTune('deathSalvage', this.game.run.night);
-      const lostOf = (k) => this.carried[k] - Math.min(this.carried[k], Math.round(this.carried[k] * share));
+      const lostOf = (k) => Math.max(0, Math.floor(this.carried[k]) - (salv[k] || 0));
       const lost = RESOURCE_KEYS.filter((k) => lostOf(k) > 0).map((k) => resChip(k, lostOf(k)));
       const kept = RESOURCE_KEYS.filter((k) => salv[k] > 0).map((k) => resChip(k, salv[k]));
-      const meds = Math.min(CONFIG.player.maxMeds, this.player.meds | 0);
+      const meds = Math.min(this.player.maxMeds ?? CONFIG.player.maxMeds, this.player.meds | 0);
       if (meds > 0) lost.push(el('span.res', { style: { '--c': '#e43b44' }, html: `${resIconHtml('pick_med')} <b>${meds}</b> <span class="lbl">${meds === 1 ? 'Med kit' : 'Med kits'}</span>` }));
+      const run = this.game.run;
+      const dawn = run.dawnHp ? run.dawnHp(CONFIG.expedition.deathReturnHp) : CONFIG.expedition.deathReturnHp;
       const body = el('div.col', {},
         el('p', 'You collapse in the undergrowth, and a Relay drone drags you home.'),
         lost.length ? el('div', {}, el('p.bad', 'Carried loot lost:'), el('div.resrow', {}, lost)) : el('p.muted', 'You weren\'t carrying anything.'),
         kept.length ? el('div', {}, el('p.good', 'The drone salvaged:'), el('div.resrow', {}, kept)) : null,
-        this.objectiveDone ? el('p.good', 'Your goal still counts.') : null,
-        el('p.muted.small', `You come back with ${CONFIG.expedition.deathReturnHp} health. Everything stored at base, and your towers, are safe.`));
-      const ov = modal(this.game.ui, 'You went down', body, [button('Back to base', () => this._finish('died'), { cls: 'primary' })]);
+        this.relicsCtl?.lostLines(),   // relics you carried are lost (never salvaged)
+        this.objectiveDone ? el('p', {}, el('span.good', 'Your goal still earns its skill point'), el('span.bad', this.objDef.boon ? ', but its reward tonight needed you home.' : '.')) : null,
+        el('p.muted.small', `You start tomorrow with ${dawn} health. Everything stored at base, and your towers, are safe.`));
+      // Keys too (critic L §2.3): Enter / Space / E / Esc, after a short guard so a key mashed in the fight can't skip it.
+      const ov = modal(this.game.ui, 'You went down', body, [button('Back to base', () => this._finish('died'), { cls: 'primary', hotkey: 'Enter' })], { guard: 0.6, extraKeys: [this.game.input.keyFor('interact')] });
       ov.querySelector('h2')?.classList.add('bad');
     });
   }
 
-  _extract() {
+  /** Nothing to show for the trip: no loot carried, goal not done, no bonus task. Going home then asks first. */
+  _emptyHanded() {
+    return !this.objectiveDone && !this.optionalsDone.length && !RESOURCE_KEYS.some((k) => this.carried[k] > 0) && !this.relicsCtl?.carried.length;
+  }
+
+  /** "Head home with nothing?" (critic J: a second E-hold at a fresh beacon used to end the day at t≈25 s). */
+  _confirmEmptyHome() {
+    this.setPaused(true);
+    if (!this.paused) return;
+    if (this.pauseModal) this.pauseModal.style.display = 'none';   // the pause menu waits behind the question
+    this.confirmModal?.remove();
+    const body = el('div.col', {},
+      el('p', 'You carry no loot and the goal isn\'t done.'),
+      el('p.muted.small', 'Going home now ends today\'s trip with nothing to show for it. Tonight\'s attack still comes.'));
+    this.confirmModal = modal(this.game.ui, 'Head home with nothing?', body, [
+      button('Keep exploring', () => this.setPaused(false), { cls: 'primary', hotkey: 'Esc' }),
+      button('Head home', () => { this.setPaused(false); this._extract(true); }),
+    ]);
+  }
+
+  _extract(confirmed = false) {
     if (this.ending) return;
+    if (!confirmed && this._emptyHanded()) { this._confirmEmptyHome(); return; }
     this.ending = true;
     this.holdTarget = null;
-    this.game.sfx.play('done');
+    this.game.sfx.play('extract');
     this.shots.clearEnemyShots();
     const p = this.player.pos;
     this.fx.burst(p, { color: '#2ce8f5', color2: '#ffffff', count: 40, speed: 2, up: 6, life: 1, gravity: -2 });
@@ -1133,18 +1330,16 @@ export class JungleScene {
     this.later(1.4, () => this._finish('extracted'));
   }
 
-  /** What the drone recovers when you go down: a share of the carried loot, and on early nights at least a floor of Scrap. */
+  /**
+   * What the drone recovers when you go down or abandon the trip (Run.salvageFor): a share of the carried loot,
+   * on early nights at least a floor of Scrap — never more than you carried.
+   */
   _salvage() {
-    const night = this.game.run.night;
-    const share = nightTune('deathSalvage', night);
-    const out = {};
-    if (share > 0) for (const k of RESOURCE_KEYS) { const n = Math.round(this.carried[k] * share); if (n > 0) out[k] = n; }
-    const floor = this.dayT >= (X().deathFloorAfter || 0) ? (nightTune('deathScrapFloor', night) || 0) : 0;
-    if (floor > (out.scrap || 0)) out.scrap = floor;
-    return out;
+    return this.game.run.salvageFor(this.carried, this.dayT);
   }
 
-  _finish(kind) {
+  /** End the trip: 'extracted' | 'died' | 'abandoned'. toTitle: a mid-day quit (abandoned, then the title screen). */
+  _finish(kind, toTitle = false) {
     if (this.finished) return;
     this.finished = true;
     const run = this.game.run;
@@ -1164,14 +1359,20 @@ export class JungleScene {
       boon: this.objectiveDone ? this.objDef.boon : null,
       optionals: this.optionalsDone.map((o) => ({ ...o })),
       events: this.eventsDone.map((e) => ({ ...e })),
+      objectiveFailed: !!this.objectiveFailed,                 // (the engineer went down)
+      bossesKilled: [...(this.bosses?.killed || [])],          // area bosses killed today (Research; Run.clearBoss already ran)
+      weather: this.weather?.key || null,
       skillPointsEarned: this.spEarned,
-      medsLeft: Math.min(CONFIG.player.maxMeds, this.player.meds),
+      medsLeft: Math.min(this.player.maxMeds ?? CONFIG.player.maxMeds, this.player.meds),
       playerHp: Math.max(1, Math.round(this.player.hp)),
       kills: this.kills,
+      relics: [...(this.relicsCtl?.carried || [])],   // carried relics: kept only if extracted (Run.bankRelics)
       timeUsed: Math.round(this.dayT),
       overtime: this.dayT > DAY.length,
     };
     const summary = run.applyExpedition(result, this.game);
+    // Quit to title: the abandoned trip is settled and saved, and Continue opens its summary.
+    if (toTitle) { run.save('summary'); this.game.go('title'); return; }
     this.game.go('summary', { result: summary });
   }
 
@@ -1185,14 +1386,16 @@ export class JungleScene {
     setToastsPaused(this.game.ui, p);
     if (p) {
       const body = el('div.col', {},
-        el('p.muted.small', 'WASD move · LMB slash (combo) · hold RMB heavy chop · Space roll · E interact (hold) · Q med kit · Tab map'),
-        el('p', {}, 'Objective: ', el('b.amber', this.objDef.name), this.objectiveDone ? el('span.good', ' (done)') : null));
+        el('p.muted.small', { html: `${this._moveKeys()} move · <b>Click</b> slash (hold while walking: hack through) · hold <b>right-click</b> heavy chop (tap just before a hit: deflect) · ${this._key('roll')} roll · ${this._key('throw')} throw machete · ${this._key('interact')} interact (hold) · ${this._key('med')} med kit · ${this._key('map')} map · keys in Settings` }),
+        el('p', {}, 'Objective: ', el('b.amber', this.objDef.name), this.objectiveDone ? el('span.good', ' (done)') : null),
+        this.relicsCtl?.pauseLine());   // your relics (working / carried), when you have any
       this.pauseModal = modal(this.game.ui, 'Paused', body, [
         button('Resume', () => this.setPaused(false), { cls: 'primary', hotkey: 'Esc' }),
         button('Settings', () => {
           this.settingsOpen = true;
           this.pauseModal.style.display = 'none';
-          openSettingsOverlay(this.game, { onClose: () => { this.settingsOpen = false; if (this.pauseModal) this.pauseModal.style.display = ''; } });
+          // (The Esc that closed Settings goes back to this menu, not on to the game: drop its press.)
+          openSettingsOverlay(this.game, { onClose: () => { this.settingsOpen = false; this.game.input.pressed.delete('Escape'); if (this.pauseModal) this.pauseModal.style.display = ''; } });
         }),
         button('Quit to title', () => this._confirmQuit()),
         button('Abandon expedition', () => this._confirmAbandon(), { cls: 'danger' }),
@@ -1210,30 +1413,40 @@ export class JungleScene {
     }
   }
 
+  /** The death-rule lines shared by the abandon and quit confirms: what's lost, what the drone saves, tomorrow's health. */
+  _abandonLines() {
+    const run = this.game.run;
+    const salv = this._salvage();
+    const carried = RESOURCE_KEYS.some((k) => this.carried[k] > 0);
+    const saved = RESOURCE_KEYS.filter((k) => salv[k] > 0).map((k) => `${salv[k]} ${RESOURCES[k].label}`).join(', ');
+    return [
+      el(carried ? 'p.bad' : 'p.muted', !carried ? 'You carry nothing, so nothing is lost.'
+        : saved ? `What you carry is lost, except what the drone saves (${saved}).` : 'Everything you carry is lost.'),
+      this.objectiveDone && this.objDef.boon ? el('p.small', {}, el('span.good', 'The goal keeps its skill point'), el('span.bad', ', but its reward tonight needs you home.')) : null,
+      this.relicsCtl?.lostLines(),
+      el('p.muted.small', `You start tomorrow with ${run.dawnHp(CONFIG.expedition.deathReturnHp)} health. Stored resources and towers are safe.`),
+    ];
+  }
+
   _confirmAbandon() {
     this.confirmModal?.remove();
-    const share = nightTune('deathSalvage', this.game.run.night);
-    const salv = this._salvage().scrap || 0;
-    const body = el('div.col', {},
-      el('p', 'Abandoning counts as not making it back:'),
-      el('p.bad', share > 0 || salv > 0
-        ? `Most carried loot is lost (the drone salvages ${Math.round(share * 100)}%${salv > 0 ? `, at least ${salv} Scrap` : ''}) and you return at low HP.`
-        : 'All carried loot is lost and you return at low HP.'),
-      this.objectiveDone ? el('p.muted.small', 'Your objective still counts.') : null);
+    const body = el('div.col', {}, el('p', 'Abandoning counts as going down:'), ...this._abandonLines());
     this.confirmModal = modal(this.game.ui, 'Abandon expedition?', body, [
       button('Keep going', () => { this.confirmModal.remove(); this.confirmModal = null; }, { cls: 'primary' }),
       button('Abandon', () => this._finish('abandoned'), { cls: 'danger' }),
     ]);
   }
 
+  /** Quitting mid-day abandons the trip (critic L §5: it used to be a free reset of a bad day). */
   _confirmQuit() {
     this.confirmModal?.remove();
     const body = el('div.col', {},
-      el('p', 'Quit this expedition and return to the title screen?'),
-      el('p.muted.small', "The run continues from tonight's briefing when you press Continue. Today's progress in the jungle is not kept."));
+      el('p', 'Quitting now abandons this trip, the same as going down:'),
+      ...this._abandonLines(),
+      el('p.muted.small', 'Continue picks the run up after the trip, before tonight\'s attack.'));
     this.confirmModal = modal(this.game.ui, 'Quit to title?', body, [
       button('Keep going', () => { this.confirmModal.remove(); this.confirmModal = null; }, { cls: 'primary' }),
-      button('Quit to title', () => { this.finished = true; this.game.go('title'); }, { cls: 'danger' }),
+      button('Abandon & quit', () => this._finish('abandoned', true), { cls: 'danger' }),
     ]);
   }
 
@@ -1247,6 +1460,7 @@ export class JungleScene {
     this.player.reticle.visible = !open;
     this.game.stage.style.cursor = open ? '' : 'none';
     if (open) {
+      this._mapOpened = true;   // (the guided day's "map" coach step)
       for (const b of this.game.ui.querySelectorAll('.x-banner')) b.remove();
       h.bigSteps.innerHTML = this._stepsHtml(true);
       this._sizeBig();
@@ -1315,14 +1529,15 @@ export class JungleScene {
     const input = this.game.input;
     this._sizeBig();
     const k = (MAP_VIEW.panSpeed * dt) / v.ppt;
-    const key = (...codes) => codes.some((c) => input.isDown(c));
+    // The movement keys (as bound: they read as KeyW…) and the arrow keys (physical) pan.
+    const key = (code, arrow) => input.isDown(code) || input.rawIsDown(arrow);
     v.cx += ((key('KeyD', 'ArrowRight') ? 1 : 0) - (key('KeyA', 'ArrowLeft') ? 1 : 0)) * k;
     v.cz += ((key('KeyS', 'ArrowDown') ? 1 : 0) - (key('KeyW', 'ArrowUp') ? 1 : 0)) * k;
-    if (input.wasPressed('Equal') || input.wasPressed('NumpadAdd')) this._zoomBig(1);
-    if (input.wasPressed('Minus') || input.wasPressed('NumpadSubtract')) this._zoomBig(-1);
-    if (input.wasPressed('Space')) { v.cx = this.player.pos.x; v.cz = this.player.pos.z; }
+    if (input.rawWasPressed('Equal') || input.rawWasPressed('NumpadAdd')) this._zoomBig(1);
+    if (input.rawWasPressed('Minus') || input.rawWasPressed('NumpadSubtract')) this._zoomBig(-1);
+    if (input.rawWasPressed('Space') || input.wasPressed('Space')) { v.cx = this.player.pos.x; v.cz = this.player.pos.z; }
     this.map.clampView(v);
-    this.map.drawBig(this.hud.big, v, this._markers(), this.game.time);
+    this.map.drawBig(this.hud.big, v, this._markers(), this.game.time, this.relicsCtl?.labels());   // + place names
   }
 
   _banner(title, sub) {
@@ -1338,7 +1553,11 @@ export class JungleScene {
     const input = this.game.input;
     if (input.wasPressed('Escape') && !this.settingsOpen) {
       if (this.mapOpen) this.toggleMap(false);
-      else if (this.confirmModal) { this.confirmModal.remove(); this.confirmModal = null; }
+      else if (this.confirmModal) {
+        this.confirmModal.remove(); this.confirmModal = null;
+        // "Head home with nothing?" hides the pause menu behind it: Esc there means "keep exploring".
+        if (this.pauseModal?.style.display === 'none') this.setPaused(false);
+      }
       else if (!this.ending) this.setPaused(!this.paused);
     }
     if ((input.wasPressed('Tab') || input.wasPressed('KeyM')) && !this.paused) this.toggleMap();
@@ -1355,16 +1574,21 @@ export class JungleScene {
     }
     this._pumpHints();
 
-    this.blockFire = this.mapOpen;
+    this.blockFire = this.mapOpen || !!this.goals?.carrying;   // (no swinging with the generator core in your arms)
     this.player.update(dt);
     this._updateFlow(dt);
     this._updateWildlife(dt);
     this._updateObjectiveSpawns();
+    tickSpeedBuffs(this.enemies, this.dayT);   // Feral Chief aura / Pack Lord war cry (DayCreatures.js)
     this._updateEnemies(dt);
     this._updateNests(dt);
+    this.goals?.update(dt);     // escort, uplink, tracks, core, bloom (before interaction: E drops the core)
+    this.bosses?.update(dt);    // area bosses and their HP bar
+    this.weather?.update(dt);   // rain ripples
     this.spores.update(dt);
     this.shots.update(dt);
     this._updatePickups(dt);
+    this.relicsCtl?.update(dt);   // relics on the ground, shrines, place names
     this._updateSlashes(dt);
     if (!this.ending) {
       this._updateInteract(dt);
@@ -1375,6 +1599,7 @@ export class JungleScene {
     this._placeCamera(dt);
     this.world.update(dt, this.camFocus.x, this.camFocus.z + 2);
     this.fx.update(dt);
+    this.wading.update(dt);
     this.ambience.update(dt, this.camFocus.x, this.camFocus.z, this.duskK);
     this._updateLight(dt);
     this._updateHud(dt);
@@ -1408,13 +1633,9 @@ export class JungleScene {
     const pp = cam.toPixel(new THREE.Vector3(this.player.pos.x, 0.9, this.player.pos.z));
     U.uPlayer.value.set(pp.x, pp.y);
     U.uTime.value = this.time;
-    const k = this.duskK;
-    U.uLightR.value = (ATMOS.lightRadius[0] + (ATMOS.lightRadius[1] - ATMOS.lightRadius[0]) * k) * 32;
-    U.uDark.value = k;
-    U.uAmbient.value = ATMOS.dayAmbient * (1 - 0.45 * k);
-    // Warm late-afternoon → blue night.
-    const sunset = Math.max(0, Math.min(1, (this.dayT - DAY.length * 0.7) / (DAY.length * 0.3)));
-    U.uTint.value.setRGB(1 + 0.08 * sunset - 0.25 * k, 1 - 0.04 * sunset - 0.15 * k, 1 - 0.12 * sunset + 0.12 * k);
+    // Golden hour → moonlit night, lamp pool, light radius (PostFx.timeOfDay, ATMOS.cycle).
+    this.post.timeOfDay(this.dayT / DAY.length, this.duskK);
+    this.relicsCtl?.light(U);   // Lantern Moth: a wider light after sunset
     U.uHurt.value = Math.max(0, U.uHurt.value - dt * 2);
     // X-ray window for foliage in front of the player (GL pixel coordinates: y up).
     const body = cam.toPixel(new THREE.Vector3(this.player.pos.x, 0.75, this.player.pos.z));
@@ -1433,11 +1654,16 @@ export class JungleScene {
   _updateDay(dt) {
     this.dayT += dt;
     const t = this.dayT;
-    if (t > DAY.length - 60 && !this.warned.sun60) { this.warned.sun60 = true; this.toast('The sun is going down — 1 minute of daylight', 'amber', 3); this.game.sfx.play('alarm'); }
+    if (t > DAY.length - TIPS.sunset.lead && !this.warned.sun60) {
+      this.warned.sun60 = true;
+      // The first time it is a tip that says what sunset means; after that a toast.
+      if (!this._tip('sunset', { cls: 'warn' })) this.toast('The sun is going down: 1 minute of daylight', 'amber', 3);
+      this.game.sfx.play('sun_warn');
+    }
     if (t >= DAY.length && !this.warned.sunset) {
       this.warned.sunset = true;
-      this.game.music?.play('boss');
-      this.game.sfx.play('alarm');
+      this.game.music?.play('dusk');
+      this.game.sfx.play('sunset');
       this._banner('SUNSET', `The jungle wakes up. Head home (the Relay or a ${WORDS.pylon})`);
       this.huntT = 4;
     }
@@ -1445,7 +1671,7 @@ export class JungleScene {
     if (t >= DAY.length) {
       this.huntT -= dt;
       if (this.huntT <= 0) {
-        this.huntT = DAY.huntEvery[0] + (DAY.huntEvery[1] - DAY.huntEvery[0]) * this.duskK;
+        this.huntT = DAY.huntEvery[0] + (DAY.huntEvery[1] - DAY.huntEvery[0]) * this.duskK + (this.relicsCtl?.huntDelay || 0);   // (Lantern Moth)
         const n = DAY.huntCount[0] + Math.floor(Math.random() * (DAY.huntCount[1] - DAY.huntCount[0] + 1)) + (this.game.run.night >= 4 ? 1 : 0);
         if (this._hunt(n)) this.toast('Something is hunting you…', 'bad');
       }
@@ -1457,10 +1683,11 @@ export class JungleScene {
     this.map.reveal(p.x, p.z, JUNGLE.explore.revealRadius);
     // Announce sites the first time you get near them.
     for (const it of this.interactables) {
-      if (it.done || this.seen.has(it) || Math.hypot(it.x - p.x, it.z - p.z) > 9) continue;
+      if (it.done || this.seen.has(it) || Math.hypot(it.x - p.x, it.z - p.z) > (it.kind === 'pylon' ? TIPS.beacon.range : it.kind === 'event' ? EVENT_RULES.announce : 9)) continue;
       this.seen.add(it);
       if (it.kind === 'optional') this.toast(`Bonus task: ${OPTIONAL[it.key].name}`, 'amber', 3);
-      if (it.kind === 'pylon') this.toast(`A ${WORDS.pylon} nearby: switch it on (hold E) and you can head home from it`, '', 3.5);
+      if (it.kind === 'event') { this.toast(`${EVENTS[it.key].name}: ${EVENTS[it.key].prompt.replace(/ \(\d+ s\)$/, '')}`, 'amber', 4.5); this.game.sfx.play('glint'); }
+      if (it.kind === 'pylon' && !this._tip('beacon')) this.toast(`A ${WORDS.pylon} nearby: switch it on (hold ${keyLabel(this.game.input.keyFor('interact'))}) and you can head home from it`, '', 3.5);
     }
     for (const n of this.nests) {
       if (n.dead || this.seen.has(n) || Math.hypot(n.x - p.x, n.z - p.z) > 10) continue;
@@ -1568,30 +1795,46 @@ export class JungleScene {
       el('div.j-row', { title: 'Your health' }, el('span.x-lbl', 'Health'), h.hp.node),
       el('div.j-row.j-stamrow', { title: 'Stamina: swings and rolls use it; it refills when you stop' }, el('span.x-lbl.j-st', 'Stamina'), h.stam.node, h.meds),
       lootRow);
-    // Top-right corner: a small round minimap ringed by the daylight left; clock and district under it.
+    // The top-left column: this panel (the relic strip joins it at the bottom, JungleRelics), then the coach / tip
+    // line, which flows under whatever is above it. The top centre stays free for an area boss's bar, and the
+    // top-right column ends with room for the weather tag (src/world/Weather.js appends it to h.tr).
+    h.tlcol = el('div.j-tlcol', {}, h.tl);
+    // Top-right corner: a small round minimap ringed by the daylight left; under it the clock with a sun
+    // (a moon after sunset) and its "Daylight" label (critic L §2.2), then the area name.
     h.mini = el('canvas.j-mini');
-    h.ring = el('div.j-ring', {}, h.mini, el('span.key.j-tabkey', 'Tab'));
-    h.timer = el('div.x-time.j-time', '');
+    h.tabKey = el('span.key.j-tabkey', keyLabel(this.game.input.keyFor('map')));
+    h.ring = el('div.j-ring', { title: 'The ring is the daylight left' }, h.mini, h.tabKey);
+    h.sun = el('span.j-sun', { style: { backgroundImage: `url(${import.meta.env.BASE_URL}sprites/ui_daylight.png)` }, 'aria-hidden': 'true' });
+    h.timer = el('span.x-time.j-time', '');
+    h.dayLbl = el('div.j-daylbl', 'Daylight');
     h.timerSub = el('div.j-district', this.D.name);
-    h.tr = el('div.j-tr', {}, h.ring, h.timer, h.timerSub);
+    h.tr = el('div.j-tr', {}, h.ring, el('div.j-clock', { title: 'Daylight left: at sunset the jungle starts hunting you' }, h.sun, h.timer), h.dayLbl, h.timerSub);
     // Bottom strip: the current objective step, where it is, and the nearest return point.
     h.steps = el('span.j-step');
     h.objDir = el('span.j-dir.obj', {}, el('span.x-dirarrow', '➤'), el('span', ''));
+    h.ford = el('span.j-dir.ford', { title: 'Deep water is in the way: cross where the stepping stones are (◇ on the minimap)' }, el('span.x-dirarrow', '➤'), el('span', ''));
     h.extract = el('span.j-dir.ext', {}, el('span.x-dirarrow', '➤'), el('span', ''));
     h.optList = el('span.j-opts');
-    h.strip = el('div.j-strip', { title: this.objDef.name }, el('span.j-objk', 'GOAL'), h.steps, h.objDir, h.extract, h.optList);
+    h.strip = el('div.j-strip', { title: this.objDef.name }, el('span.j-objk', 'GOAL'), h.steps, h.objDir, h.ford, h.extract, h.optList);
     h.coach = el('div.j-coach', { style: { display: 'none' } });
-    h.promptRing = el('span.x-ring', {}, el('span.key', 'E'));
+    h.tlcol.append(h.coach);
+    h.promptKey = el('span.key', keyLabel(this.game.input.keyFor('interact')));
+    h.promptRing = el('span.x-ring', {}, h.promptKey);
     h.promptText = el('span.x-plabel');
     h.promptTime = el('span.x-ptime');
     h.prompt = el('div.x-prompt', {}, el('div.x-ptext', {}, h.promptRing, h.promptText, h.promptTime));
     h.arrowObj = el('div.x-edge.obj', {}, el('span', '▲'));
     h.arrowExt = el('div.x-edge.ext', {}, el('span', '▲'));
+    h.arrowCrate = el('div.x-edge.crate', {}, el('span', '▲'));   // the coached crate (guided day)
+    // In-world ◆ over the coached crate and the guided route's crates (pixel diamonds at the world's texel scale).
+    h.marks = [];
+    h.lowhp = el('div.j-lowhp');   // red screen-edge pulse at low health
     // Big map (Tab): pauses the day; zoom + pan.
     h.big = el('canvas.x-bigcanvas');
     // Beacons join the legend once you have met one (no unexplained terms on day 1).
     const metPylon = this.data.pylons.some((p) => this.map.isExplored(p.x, p.z));
-    const legendKeys = ['player', 'relay', this.state.pylons.size ? 'pylon_on' : null, metPylon ? 'pylon_off' : null, 'objective', 'optional', 'container'].filter(Boolean);
+    const legendKeys = ['player', 'relay', this.state.pylons.size ? 'pylon_on' : null, metPylon ? 'pylon_off' : null, 'objective', 'optional', 'container',
+      this.game.run.isGuidedDay() ? null : 'relic', 'ford'].filter(Boolean);   // relics: strongboxes / shrines (not on the guided day); ford: the crossing to use
     const legend = el('div.x-legend', {}, legendKeys.map((k) =>
       el('span.x-leg', {}, JungleMap.legendIcon(k, 12 * this.game.u), MAP_MARKERS[k].label)));
     h.bigSteps = el('div.j-bigsteps');
@@ -1600,13 +1843,43 @@ export class JungleScene {
         el('div.x-bigtitle', {}, el('b', 'The Jungle'), el('span.muted', ` · ${this.D.name}: `), el('span.amber', this.objDef.name),
           el('span.j-paused', 'DAY PAUSED'), el('span.muted.x-bigclose', 'Tab / Esc close')),
         h.big,
-        el('div.j-bigfoot', {}, h.bigSteps, el('div.j-bighelp.muted', {}, 'Drag / WASD pan · wheel / + − zoom · Space: you', el('br'), 'Dark blue: deep water · pale strips: crossings')),
+        el('div.j-bigfoot', {}, h.bigSteps, el('div.j-bighelp.muted', {}, `Drag / ${['up', 'left', 'down', 'right'].map((a) => keyLabel(this.game.input.keyFor(a))).join('')} / arrows pan · wheel / + − zoom · Space: you`, el('br'), 'Dark blue: deep water · pale strips: crossings')),
         legend));
     this._bindBigMap(h.big);
-    h.root = el('div.x-hud', {}, h.tl, h.tr, h.strip, h.coach, h.prompt, h.arrowObj, h.arrowExt, h.bigmap);
+    h.root = el('div.x-hud', {}, h.lowhp, h.tlcol, h.tr, h.strip, h.prompt, h.arrowObj, h.arrowExt, h.arrowCrate, h.bigmap);
+    h.root.style.setProperty('--hudfade', String(JUICE.hudFade?.opacity ?? 0.5));
     ui.append(h.root);
     this.hud = h;
     this._hudCache = {};
+  }
+
+  /** An in-world ◆ marker (DOM canvas, pixel diamond scaled by whole texels); pooled. */
+  _mark(i) {
+    const h = this.hud;
+    if (!h.marks[i]) {
+      const c = el('canvas.j-mark');
+      c.width = c.height = 13;
+      drawMarker(c.getContext('2d'), 'objective', 6, 6, 6.5);   // a 9-texel diamond, ink outline
+      h.root.append(c);
+      h.marks[i] = c;
+    }
+    return h.marks[i];
+  }
+
+  /** Place in-world ◆ markers over these containers (hide the rest of the pool). */
+  _placeMarks(list) {
+    const h = this.hud;
+    const v = new THREE.Vector3();
+    let n = 0;
+    for (const it of list) {
+      const top = (it.vis?.userData?.vis?.height || 0.8) + HUD.markLift;
+      const pr = this.game.project(v.set(it.x, top, it.z), this.camera);
+      if (!pr.visible) continue;
+      const m = this._mark(n++);
+      m.style.display = '';
+      m.style.transform = `translate(${Math.round(pr.x)}px, ${Math.round(pr.y)}px) translate(-50%, -100%)`;
+    }
+    for (let i = n; i < h.marks.length; i++) h.marks[i].style.display = 'none';
   }
 
   _bumpLoot(k) {
@@ -1628,7 +1901,7 @@ export class JungleScene {
 
   /** Current objective target point (or null). */
   _objectiveTarget() {
-    if (this.objectiveDone) return null;
+    if (this.objectiveDone || this.objectiveFailed) return null;
     let best = null, bd = Infinity;
     const p = this.player.pos;
     for (const t of this.objTargets) {
@@ -1704,12 +1977,14 @@ export class JungleScene {
     const hit = new Set();
     const p = this.player.pos;
     const v = new THREE.Vector3();
+    const pad = (JUICE.hudFade?.pad ?? 8) * this.game.u * 0.6;
     for (const e of this.enemies) {
       if (e.dead || Math.abs(e.x - p.x) > 16 || Math.abs(e.z - p.z) > 12) continue;
       const pr = this.game.project(v.set(e.x, 0.6, e.z), this.camera);
-      for (const r of rects) if (pr.x > r.l - 8 && pr.x < r.r + 8 && pr.y > r.t - 8 && pr.y < r.b + 8) hit.add(r.n);
+      for (const r of rects) if (pr.x > r.l - pad && pr.x < r.r + pad && pr.y > r.t - pad && pr.y < r.b + pad) hit.add(r.n);
     }
-    for (const n of [this.hud.tl, this.hud.tr, this.hud.strip]) n.classList.toggle('x-fade', hit.has(n));
+    // (to --hudfade, JUICE.hudFade.opacity: half see-through, so the clock and minimap stay readable)
+    for (const n of [this.hud.tl, this.hud.tr, this.hud.strip, this.hud.coach]) n.classList.toggle('x-fade', hit.has(n));
   }
 
   /** Player heading for the map arrow: movement direction, else where you aim. */
@@ -1732,10 +2007,13 @@ export class JungleScene {
     }
     for (const it of this.interactables) {
       if (it.done) continue;
-      if (it.kind === 'optional' && this.seen.has(it)) out.push({ x: it.x, z: it.z, type: 'optional' });
+      if ((it.kind === 'optional' || it.kind === 'event') && this.seen.has(it)) out.push({ x: it.x, z: it.z, type: 'optional' });
       else if (it.kind === 'container' && this.map.isExplored(it.x, it.z) && Math.hypot(it.x - this.player.pos.x, it.z - this.player.pos.z) < MAP_VIEW.containerRange) out.push({ x: it.x, z: it.z, type: 'container' });
     }
     for (const n of this.nests) if (!n.dead && this.seen.has(n)) out.push({ x: n.x, z: n.z, type: 'optional' });
+    if (this.relicsCtl) out.push(...this.relicsCtl.markers());   // strongboxes, shrines, relics, logs, compass caches
+    this.bosses?.markers(out);   // ☠ area bosses' lairs
+    if (this._ford) out.push({ x: this._ford.x, z: this._ford.z, type: 'ford' });   // deep water in the way: cross here
     out.push({ x: this.player.pos.x, z: this.player.pos.z, type: 'player', a: this._heading() });
     return out;
   }
@@ -1748,11 +2026,13 @@ export class JungleScene {
   _stepsHtml(all) {
     const def = this.objDef;
     if (this.objectiveDone) return `<span class="x-step claim">✔ ${def.name}: done. Head home to claim the reward</span>`;
+    if (this.objectiveFailed) return `<span class="x-step fail">✘ ${def.name}: failed. Loot what you can and head home</span>`;
     const multi = def.steps.length > 1 || (def.steps[0].count || 1) > 1;
     const cnt = (s, i) => (s.count && i === this.objStep ? ` (${this.stepCount}/${s.count})` : '');
+    const note = this.goals?.note() || '';   // live: the engineer's health, the uplink's time left, nests popped…
     if (!all) {
       const s = def.steps[this.objStep];
-      return `<span class="x-step cur">${def.name}${multi && s ? `: ${s.label}${cnt(s, this.objStep)}` : ''}</span>`;
+      return `<span class="x-step cur">${def.name}${multi && s ? `: ${s.label}${cnt(s, this.objStep)}` : ''}${note}</span>`;
     }
     if (!multi) return `<span class="x-step cur">☐ ${def.name}</span>`;
     return [`<span class="x-step cur">${def.name}</span>`, ...def.steps.map((s, i) => {
@@ -1766,10 +2046,15 @@ export class JungleScene {
     const pl = this.player;
     const hpf = pl.hp / pl.maxHp;
     h.hp.set(hpf, `${Math.ceil(pl.hp)} / ${pl.maxHp}`);
-    this._set('hpc', h.hp.node.firstChild, 'background', hpf > 0.5 ? 'var(--good)' : hpf > 0.25 ? 'var(--amber)' : 'var(--danger)');
+    // Green → yellow → red (never the stamina bar's orange), and a red screen-edge pulse when low (HUD.health).
+    const HH = HUD.health;
+    this._set('hpc', h.hp.node.firstChild, 'background', hpf > HH.ok ? HH.colors[0] : hpf > HH.low ? HH.colors[1] : HH.colors[2]);
+    this._set('lowhp', h.lowhp, 'className', `j-lowhp${hpf < HH.pulse && !this.ending && !pl.dead ? ' on' : ''}`);
+    // The world's texel size in CSS px (×2 at 720p, ×3 at 1080p): pixel icons in the HUD are drawn on that grid.
+    this._set('tx', h.root, '--tx', `${this.game._layout().k / (window.devicePixelRatio || 1)}px`);
     h.stam.set(pl.stamina / STAMINA.max, '');
     this._set('stc', h.stam.node.firstChild, 'background', pl.exhausted ? '#8b9bb4' : '#feae34');
-    this._set('meds', h.meds, 'html', `${resIconHtml('pick_med')}<b>${pl.meds}</b><span class="muted">/${CONFIG.player.maxMeds}</span>`);
+    this._set('meds', h.meds, 'html', `${resIconHtml('pick_med')}<b>${pl.meds}</b><span class="muted">/${pl.maxMeds ?? CONFIG.player.maxMeds}</span>`);
     this._set('medsd', h.meds, 'display', pl.meds > 0 ? '' : 'none');   // shows once you carry one
     for (const k of RESOURCE_KEYS) {
       const L = h.loot[k];
@@ -1789,6 +2074,13 @@ export class JungleScene {
     this._set('timerc', h.timer, 'className', `x-time j-time${dayLeft <= 0 ? ' bad' : dayLeft < 60 ? ' amber' : ''}`);
     this._set('sun', h.ring, '--day', String(Math.round((dayLeft / DAY.length) * 200) / 200));
     this._set('ringc', h.ring, 'className', `j-ring${dayLeft <= 0 ? ' bad' : dayLeft < 60 ? ' amber' : ''}`);
+    // The sun icon turns into a moon after sunset; the label says what the clock is (critic L §2.2).
+    this._set('sunf', h.sun, 'className', `j-sun${dayLeft <= 0 ? ' moon' : ''}`);
+    this._set('daylbl', h.dayLbl, 'text', dayLeft <= 0 ? 'After dark: head home' : dayLeft < TIPS.sunset.lead ? 'Daylight: sunset soon' : 'Daylight');
+    this._set('daylblc', h.dayLbl, 'className', `j-daylbl${dayLeft <= 0 ? ' bad' : dayLeft < TIPS.sunset.lead ? ' amber' : ''}`);
+    // Keycaps follow the bindings (Settings → Controls can change them from the pause menu).
+    this._set('tabk', h.tabKey, 'text', keyLabel(this.game.input.keyFor('map')));
+    this._set('promptk', h.promptKey, 'text', keyLabel(this.game.input.keyFor('interact')));
     // Objective strip.
     this._set('steps', h.steps, 'html', this._stepsHtml(false));
     const ot = this._objectiveTarget();
@@ -1796,6 +2088,14 @@ export class JungleScene {
     if (ot) {
       this._dirArrow(h.objDir.firstChild, ot.x, ot.z);
       this._set('objd', h.objDir.lastChild, 'text', `${Math.round(ot.d)} m`);
+    }
+    // River wayfinding (critic L §3): deep water on the straight line to the goal → the crossing to use.
+    this._updateFord(ot);
+    const fd = this._ford;
+    this._set('fordd', h.ford, 'display', fd ? '' : 'none');
+    if (fd) {
+      this._dirArrow(h.ford.firstChild, fd.x, fd.z);
+      this._set('fordt', h.ford.lastChild, 'text', `cross at the stepping stones ${Math.round(Math.hypot(fd.x - pl.pos.x, fd.z - pl.pos.z))} m`);
     }
     const ex = this._nearestExit();
     // "Home N m" only when going home is the next thing to do (goal done, sunset close, low health).
@@ -1818,10 +2118,15 @@ export class JungleScene {
       const f = hold > 0 ? t.progress / hold : 0;
       h.promptRing.style.background = `conic-gradient(var(--amber) ${Math.round(f * 360)}deg, rgba(58,68,102,0.6) 0deg)`;
     }
+    // The guided day's crates: an in-world ◆ over the coached one (and over the trail-side ones on the route, when
+    // near); while "open the crate" is the step, its arrow replaces the goal's at the screen edge (one arrow at a time).
+    const cc = this._coachCrate();
+    this._placeMarks(this.mapOpen ? [] : this._coachMarks(cc));
     // Off-screen arrows: clear of the HUD boxes and of each other.
     const rects = this._hudRects();
-    const ra = this._edgeArrow(h.arrowObj, ot, rects);
-    this._edgeArrow(h.arrowExt, homeNow && ex.d > 6 ? ex : null, ra ? [...rects, ra] : rects);
+    const ra = this._edgeArrow(h.arrowObj, cc ? null : ot, rects);
+    const rc = this._edgeArrow(h.arrowCrate, cc, ra ? [...rects, ra] : rects);
+    this._edgeArrow(h.arrowExt, homeNow && ex.d > 6 ? ex : null, [...rects, ra, rc].filter(Boolean));
     // Minimap and threat fade (a few times a second).
     this._mapT = (this._mapT || 0) - 1;
     if (this._mapT <= 0) {
@@ -1839,14 +2144,15 @@ export class JungleScene {
   /** "Head home" is offered once there is something to bring home or a reason to leave (RETURN_PROMPT). */
   _homeOffered() {
     if (this.objectiveDone || this.dayT > RETURN_PROMPT.after || this.duskK > 0) return true;
-    if (RESOURCE_KEYS.some((k) => this.carried[k] > 0)) return true;
+    if (RESOURCE_KEYS.some((k) => this.carried[k] > 0) || this.relicsCtl?.carried.length) return true;   // (loot or a relic)
     return this.player.hp / this.player.maxHp < RETURN_PROMPT.lowHp;
   }
 
   /**
-   * The guided first day (GUIDE): one instruction at a time in a line at the top of the screen —
-   * move → cut through plants → open a crate (if one is near) → the goal → head home. One-off tips
-   * (an enemy, out of stamina, a crate you walk past) briefly take the line over.
+   * The guided first day (GUIDE): one instruction at a time in a line at the top-left — move → cut through
+   * plants → open the crate on the way (◆ over it, an arrow at the screen edge) → the map → the goal → loot the
+   * goal site → head home. One-off tips (TIPS: each verb when it first matters; an enemy; out of stamina) briefly
+   * take the line over.
    */
   _setupCoach() {
     const run = this.game.run;
@@ -1856,48 +2162,160 @@ export class JungleScene {
     this.game.saveMeta();
     const C = GUIDE.coach;
     const p0 = { x: this.player.pos.x, z: this.player.pos.z };
-    const key = (k) => `<span class="key">${k}</span>`;
+    const dirTo = (it) => {
+      const p = this.player.pos;
+      const d = Math.round(Math.hypot(it.x - p.x, it.z - p.z));
+      const a = Math.round((Math.atan2(it.z - p.z, it.x - p.x) * 180) / Math.PI / 15) * 15;
+      return `${d} m <span class="x-dirarrow" style="transform:rotate(${a}deg)">➤</span>`;
+    };
+    const opened = () => this._openedCount || 0;
     this.coach = {
-      i: -1, t: 0, tip: null, tipT: 0, crate: null, seenFoe: false, seenCrate: false,
+      i: -1, t: 0, crate: null, loot: [], seenFoe: false, seenCrate: false,
       steps: [
-        { text: () => `Move with ${key('W')}${key('A')}${key('S')}${key('D')}`,
+        { id: 'move', text: () => `Move with ${this._moveKeys()}`,
           done: () => Math.hypot(this.player.pos.x - p0.x, this.player.pos.z - p0.z) >= C.moveDist },
-        { text: () => `Plants slow you down or block the way: <b>click</b> to swing your machete and cut a path`,
+        { id: 'cut', text: () => `Plants slow you down or block the way: <b>click</b> to swing your machete and cut a path`,
           done: (t) => (this._cutCount || 0) >= 2 || t > C.cutWait },
-        { text: () => {
-          const c = this.coach.crate;
-          const d = c ? Math.round(Math.hypot(c.x - this.player.pos.x, c.z - this.player.pos.z)) : 0;
-          const a = c ? Math.round((Math.atan2(c.z - this.player.pos.z, c.x - this.player.pos.x) * 180) / Math.PI / 15) * 15 : 0;
-          return `Open the supply crate ${d} m away <span class="x-dirarrow" style="transform:rotate(${a}deg)">➤</span>: walk up to it and hold ${key('E')}`;
-        },
-        start: () => { this.coach.crate = this._nearCrate(C.crateRange, true); return !!this.coach.crate; },
-        done: (t) => (this._openedCount || 0) > 0 || this.coach.crate?.done || t > C.crateWait },
-        { text: () => `Goal: <b>${this.objDef.name}</b>. Follow the <span class="amber">amber ◆ arrow</span>`,
+        { id: 'crate', text: () => (this.coach.crate ? `Open the supply crate (◆) ${dirTo(this.coach.crate)}: walk up to it and hold ${this._key('interact')}` : ''),
+          start: () => { this.coach.crate = this._guidedCrate(); this.coach.opened0 = opened(); return !!this.coach.crate; },
+          done: (t) => opened() > this.coach.opened0 || this.coach.crate?.done || t > C.crateWait },
+        { id: 'map', text: () => `Lost? ${this._key('map')} opens the map. The day waits while it is open`,
+          done: (t) => this._mapOpened || t > C.mapWait },
+        { id: 'goal', text: () => `Goal: <b>${this.objDef.name}</b>. Follow the <span class="amber">amber ◆ arrow</span>`,
           done: () => this.objectiveDone },
-        { text: () => `Head home: follow the <span class="accent">cyan arrow</span> to the Relay and hold ${key('E')}`,
+        { id: 'loot', text: () => { const n = this.coach.loot.filter((it) => !it.done).length; return `Goal done! Open the ${n === 1 ? 'crate' : `${n} crates`} here (◆): the Scrap you bring home builds towers`; },
+          start: () => { this.coach.loot = this._siteCrates(); return this.coach.loot.length > 0; },
+          done: (t) => !this.coach.loot.some((it) => !it.done) || t > C.crateWait },
+        { id: 'home', text: () => `Head home: follow the <span class="accent">cyan arrow</span> to the Relay and hold ${this._key('interact')}`,
           done: () => false },
       ],
     };
     this._coachNext();
   }
 
-  /** Nearest unopened container within `range`; `onTheWay`: only ones roughly toward the objective (GUIDE.coach.crateCone). */
+  /**
+   * The crate the coach points at: the nearest unopened trail-side crate of the guided route (JungleGen
+   * guidedRoute), else the nearest easy-to-reach one on the way to the goal.
+   */
+  _guidedCrate() {
+    const p = this.player.pos;
+    let best = null, bd = Infinity;
+    for (const it of this.interactables) {
+      if (it.kind !== 'container' || it.done || !it.cont?.guided) continue;
+      const d = Math.hypot(it.x - p.x, it.z - p.z);
+      if (d < bd && d < GUIDE.coach.crateRange * 1.5) { bd = d; best = it; }
+    }
+    return best || this._nearCrate(GUIDE.coach.crateRange, true);
+  }
+
+  /** Unopened containers at the goal's site (the guided day's "loot here" step). */
+  _siteCrates() {
+    const site = this.objTargets.find((t) => t.site)?.site;
+    if (!site) return [];
+    return this.interactables.filter((it) => it.kind === 'container' && !it.done && !it.cont?.hidden && Math.hypot(it.x - site.x, it.z - site.z) < (site.r || 6) + 3);
+  }
+
+  /** The container the coach points at right now (the crate step, the nearest left at the goal site), or null. */
+  _coachCrate() {
+    const c = this.coach;
+    const st = c && !this.ending ? c.steps[c.i] : null;
+    if (!st) return null;
+    if (st.id === 'crate') return c.crate && !c.crate.done ? c.crate : null;
+    if (st.id === 'loot') {
+      const p = this.player.pos;
+      let best = null, bd = Infinity;
+      for (const it of c.loot) { const d = Math.hypot(it.x - p.x, it.z - p.z); if (!it.done && d < bd) { bd = d; best = it; } }
+      return best;
+    }
+    return null;
+  }
+
+  /** In-world ◆ markers this frame: the coached crate, the goal site's crates (loot step), the route's crates nearby. */
+  _coachMarks(cc) {
+    const out = cc ? [cc] : [];
+    const c = this.coach;
+    if (!this.game.run.isGuidedDay() || this.ending || this.mapOpen) return out;
+    if (c?.steps[c.i]?.id === 'loot') for (const it of c.loot) if (!it.done && it !== cc) out.push(it);
+    const p = this.player.pos;
+    for (const it of this.interactables) {
+      if (it.kind === 'container' && !it.done && it.cont?.guided && !out.includes(it) && Math.hypot(it.x - p.x, it.z - p.z) < GUIDE.coach.markRange) out.push(it);
+    }
+    return out;
+  }
+
+  /**
+   * Nearest unopened container within `range` that is easy to reach (GUIDE.coach: a walking path over open ground
+   * at most cratePath × the straight line, within crateTrail tiles of a trail). `onTheWay`: only ones roughly toward
+   * the objective (GUIDE.coach.crateCone).
+   */
   _nearCrate(range, onTheWay = false) {
+    const C = GUIDE.coach;
     const p = this.player.pos;
     const ot = onTheWay ? this._objectiveTarget() : null;
     const oa = ot ? Math.atan2(ot.z - p.z, ot.x - p.x) : 0;
+    const ptx = Math.floor(p.x), ptz = Math.floor(p.z);
+    const f = this._bfs(ptx, ptz, false);   // open-ground steps from the player (brush blocks), radius 24
+    const W = this.data.size, trail = this.data.trail;
+    const steps = (tx, tz) => {
+      let m = -1;
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+        const x = tx + dx, z = tz + dz;
+        if (Math.abs(x - f.sx) > f.R || Math.abs(z - f.sz) > f.R) continue;
+        const d = f.dist[(z - f.sz + f.R) * f.S + (x - f.sx + f.R)];
+        if (d >= 0 && (m < 0 || d < m)) m = d;
+      }
+      return m < 0 ? Infinity : m + 1;
+    };
+    const nearTrail = (tx, tz) => {
+      const r = C.crateTrail;
+      for (let z = tz - r; z <= tz + r; z++) for (let x = tx - r; x <= tx + r; x++) if (x >= 0 && z >= 0 && x < W && z < W && trail[z * W + x]) return true;
+      return false;
+    };
     let best = null, bd = range;
     for (const it of this.interactables) {
-      if (it.kind !== 'container' || it.done) continue;
+      if (it.kind !== 'container' || it.done || it.cont?.hidden) continue;
+      const d = Math.hypot(it.x - p.x, it.z - p.z);
+      if (d >= bd) continue;
       if (ot) {
         let da = Math.atan2(it.z - p.z, it.x - p.x) - oa;
         da = Math.atan2(Math.sin(da), Math.cos(da));
-        if (Math.abs(da) > (GUIDE.coach.crateCone * Math.PI) / 180) continue;
+        if (Math.abs(da) > (C.crateCone * Math.PI) / 180) continue;
       }
-      const d = Math.hypot(it.x - p.x, it.z - p.z);
-      if (d < bd) { bd = d; best = it; }
+      const tx = Math.floor(it.x), tz = Math.floor(it.z);
+      const cheb = Math.max(1, Math.abs(tx - ptx), Math.abs(tz - ptz));
+      if (steps(tx, tz) > cheb * C.cratePath + 1 || !nearTrail(tx, tz)) continue;
+      bd = d; best = it;
     }
     return best;
+  }
+
+  /** River wayfinding: when the straight line to the goal crosses deep water, the ford to use (this._ford) or null. */
+  _updateFord(ot) {
+    this._fordT = (this._fordT || 0) - 1;
+    if (this._fordT > 0) return;
+    this._fordT = 15;   // frames
+    this._ford = null;
+    if (!ot || this.objectiveDone) return;
+    const p = this.player.pos, W = this.data.size, deep = this.data.deep, ford = this.data.ford;
+    if (!deep || !ford) return;
+    const len = Math.hypot(ot.x - p.x, ot.z - p.z), n = Math.ceil(len * 2);
+    let crosses = false;
+    for (let i = 1; i < n && !crosses; i++) {
+      const x = Math.floor(p.x + ((ot.x - p.x) * i) / n), z = Math.floor(p.z + ((ot.z - p.z) * i) / n);
+      if (x >= 0 && z >= 0 && x < W && z < W && deep[z * W + x]) crosses = true;
+    }
+    if (!crosses) return;
+    // The ford tile with the shortest walk you → ford → goal (a pond with no crossing nearby: walk round it).
+    const pad = 30;
+    const x0 = Math.max(0, Math.floor(Math.min(p.x, ot.x) - pad)), x1 = Math.min(W - 1, Math.ceil(Math.max(p.x, ot.x) + pad));
+    const z0 = Math.max(0, Math.floor(Math.min(p.z, ot.z) - pad)), z1 = Math.min(W - 1, Math.ceil(Math.max(p.z, ot.z) + pad));
+    let best = null, bd = len * 2.5;
+    for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+      if (!ford[z * W + x]) continue;
+      const d = Math.hypot(x + 0.5 - p.x, z + 0.5 - p.z) + Math.hypot(ot.x - x - 0.5, ot.z - z - 0.5);
+      if (d < bd) { bd = d; best = { x: x + 0.5, z: z + 0.5 }; }
+    }
+    this._ford = best;
   }
 
   _coachNext() {
@@ -1909,45 +2327,140 @@ export class JungleScene {
       if (!st) return;
       if (!st.start || st.start()) break;   // a step whose start() says "not now" is skipped
     }
-    this.game.sfx.play('open');
+    this.game.sfx.play('coach');
     this._coachKey = null;
   }
 
-  /** A one-off tip in the coach line ('warn' = red, danger). Without the coach it is a toast. */
+  /** A passing tip in the coach / tip line ('warn' = red, danger): feedback, not tied to the profile. */
   _coachTip(html, cls = '') {
-    if (!this.coach) { this.toast(html.replace(/<[^>]+>/g, ''), cls === 'warn' ? 'bad' : 'amber', 3); return; }
-    this.coach.tip = { html, cls };
-    this.coach.tipT = GUIDE.coach.tipTime;
-    this._coachKey = null;
+    this._tipN = (this._tipN || 0) + 1;
+    this._tip(`x${this._tipN}`, { html, cls, once: false, time: GUIDE.coach.tipTime });
   }
 
+  // ---------------------------------------------------------------- tips: each verb when it first matters
+
+  /**
+   * Queue a one-off tip (TIPS; text from TIPS.text[id] unless opts.html). It shows once per profile
+   * (meta.hints['tip_' + id], only with tutorial hints on) unless opts.once === false. opts.urgent: shows at once
+   * (a calm tip on screen waits its turn again), and goes stale after 1.5 s in the queue. Returns true if it is
+   * showing or queued (so the caller can skip its plain toast), false if it was seen before.
+   */
+  _tip(id, opts = {}) {
+    const T = this._tips, meta = this.game.meta;
+    if (!T) return false;
+    const once = opts.once !== false;
+    if (once && (!meta.settings.hints || meta.hints[`tip_${id}`])) return false;
+    if (T.cur?.id === id || T.q.some((t) => t.id === id)) return true;
+    const t = { id, once, html: opts.html || this._tipText(TIPS.text[id] || ''), cls: opts.cls || '', urgent: !!opts.urgent, time: opts.time ?? TIPS[id]?.time ?? TIPS.time, at: this.time };
+    if (t.urgent) T.q.unshift(t); else T.q.push(t);
+    return true;
+  }
+
+  /** TIPS text → HTML: {action} = that action's bound key, {heal} = a med kit's heal. */
+  _tipText(s) {
+    return s.replace(/\{(\w+)\}/g, (m, k) => (k === 'heal' ? String(CONFIG.player.medHeal) : this._key(k)));
+  }
+
+  /** The triggers (a few times a second): roll, deflect, heavy chop, machete throw, med kit (TIPS). */
+  _checkTips(dt) {
+    const T = this._tips, meta = this.game.meta;
+    if (!meta.settings.hints) return;
+    T.scanT -= dt;
+    if (T.scanT > 0) return;
+    T.scanT = 0.15;
+    const seen = meta.hints, p = this.player, pp = p.pos, run = this.game.run, TT = TIPS;
+    if (p.dead) return;
+    const near = (e, r) => Math.hypot(e.x - pp.x, e.z - pp.z) < r;
+    if (!seen.tip_roll) {
+      // Roll: the first wind-up close to you.
+      if (this.enemies.some((e) => !e.dead && !e.hidden && e.state === 'windup' && near(e, TT.roll.range))) this._tip('roll', { urgent: true, cls: 'warn' });
+    } else if (!seen.tip_deflect) {
+      // Deflect: a lunge at you, from day 2 (on the guided day, a while after the roll tip).
+      const rollAt = T.shownAt?.roll;
+      const ok = run.night >= TT.deflect.fromNight || (run.isGuidedDay() && rollAt != null && this.time - rollAt > TT.deflect.afterRoll);
+      if (ok && this.enemies.some((e) => !e.dead && e.state === 'windup' && (e.mv === 'lunge' || e.mv === 'thrust2') && near(e, (e.def?.reach || 1.5) + (e.def?.lunge || 2) + 0.5))) {
+        this._tip('deflect', { urgent: true, cls: 'warn' });
+      }
+    }
+    // Heavy chop: the first bramble you walk into.
+    if (!seen.tip_bramble && p.moving && p.state === 'free') {
+      const a = TT.bramble.ahead;
+      if (this.world.brushAt(Math.floor(pp.x + p.moveDir.x * a), Math.floor(pp.z + p.moveDir.z * a)) === BRUSH.bramble) this._tip('bramble');
+    }
+    // Machete throw: the first Spitter (or another shooter) close by that you can't walk up to.
+    if (!seen.tip_throw && p.weapon?.throw && !p.blade) {
+      const f = this.flow.blocked;
+      const reachable = (e) => {
+        if (!f) return true;
+        const tx = Math.floor(e.x), tz = Math.floor(e.z);
+        for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+          const x = tx + dx, z = tz + dz;
+          if (Math.abs(x - f.sx) <= f.R && Math.abs(z - f.sz) <= f.R && f.dist[(z - f.sz + f.R) * f.S + (x - f.sx + f.R)] >= 0) return true;
+        }
+        return false;
+      };
+      if (this.enemies.some((e) => !e.dead && !e.hidden && e.alerted && e.def?.attack === 'ranged' && near(e, TT.throw.range) && !reachable(e))) this._tip('throw');
+    }
+    // Med kit: hurt, with a kit in the bag.
+    if (!seen.tip_med && p.meds > 0 && p.hp / p.maxHp < TT.med.below) this._tip('med');
+  }
+
+  /** One tip at a time: urgent ones first (a calm tip on screen goes back in the queue), a short gap between. */
+  _updateTips() {
+    const T = this._tips;
+    const dt = Math.max(0, this.time - (T.last ?? this.time));
+    T.last = this.time;
+    if (!this.ending) this._checkTips(dt);
+    if (T.cur) {
+      T.cur.left -= dt;
+      if (T.cur.left <= 0 || this.ending) { T.cur = null; T.gapT = TIPS.gap; }
+    }
+    T.gapT -= dt;
+    T.q = T.q.filter((t) => this.time - t.at < (t.urgent ? 1.5 : TIPS.wait));
+    if (T.q[0]?.urgent && T.cur && !T.cur.urgent) {
+      if (T.cur.left > 1.5) { T.cur.at = this.time; T.q.splice(1, 0, T.cur); }
+      T.cur = null;
+    }
+    if (!T.cur && T.q.length && !this.ending && (T.gapT <= 0 || T.q[0].urgent)) {
+      const t = T.q.shift();
+      t.left = t.left ?? t.time;
+      T.cur = t;
+      if (t.once && !this.game.meta.hints[`tip_${t.id}`]) { this.game.meta.hints[`tip_${t.id}`] = true; this.game.saveMeta(); }
+      T.shownAt = { ...(T.shownAt || {}), [t.id]: this.time };
+      if (!t.urgent) this.game.sfx.play('coach');
+    }
+  }
+
+  /** The top-left line: the current tip, else the guided day's step (with its number), else nothing. */
   _updateCoach() {
-    const c = this.coach;
     const n = this.hud.coach;
-    if (!c || this.ending) { if (n.style.display !== 'none') n.style.display = 'none'; return; }
-    const dt = Math.max(0, this.time - (c.last ?? this.time));
-    c.last = this.time;
-    c.t += dt;
-    const st = c.steps[c.i];
-    if (st && st.done(c.t)) this._coachNext();
-    // One-off tips: the first creature that comes for you, a crate you walk past later.
-    if (!c.seenFoe && this.enemies.some((e) => !e.dead && e.alerted && Math.hypot(e.x - this.player.pos.x, e.z - this.player.pos.z) < 9)) {
-      c.seenFoe = true;
-      this._coachTip('Enemy! <b>Click</b> to slash it, <span class="key">Space</span> to roll out of the way', 'warn');
+    this._updateTips();
+    const c = this.coach;
+    if (c && !this.ending) {
+      const dt = Math.max(0, this.time - (c.last ?? this.time));
+      c.last = this.time;
+      c.t += dt;
+      const st = c.steps[c.i];
+      if (st && st.done(c.t)) this._coachNext();
+      // Passing tips: the first creature that comes for you, a crate you walk past later.
+      if (!c.seenFoe && this.enemies.some((e) => !e.dead && e.alerted && Math.hypot(e.x - this.player.pos.x, e.z - this.player.pos.z) < 9)) {
+        c.seenFoe = true;
+        this._coachTip('Enemy! <b>Click</b> to slash it. Watch for the red <b>!</b>: it is about to strike', 'warn');
+      }
+      if (!c.seenCrate && c.i > 2 && !this._openedCount && this._nearCrate(5)) {
+        c.seenCrate = true;
+        this._coachTip(`A supply crate: walk up to it and hold ${this._key('interact')} to open it`);
+      }
     }
-    if (!c.seenCrate && c.i > 2 && !this._openedCount && this._nearCrate(5)) {
-      c.seenCrate = true;
-      this._coachTip('A supply crate: walk up to it and hold <span class="key">E</span> to open it');
-    }
-    if (c.tip) { c.tipT -= dt; if (c.tipT <= 0) { c.tip = null; this._coachKey = null; } }
-    const cur = c.steps[c.i];
-    const html = c.tip ? c.tip.html : cur ? cur.text() : '';
-    const key = `${c.i}|${c.tip ? 'tip' : ''}|${html}`;
+    const tip = this._tips.cur;
+    const cur = c && !this.ending ? c.steps[c.i] : null;
+    const html = this.ending ? '' : tip ? tip.html : cur ? cur.text() : '';
+    const key = `${c?.i}|${tip ? tip.id : ''}|${html}`;
     if (key === this._coachKey) return;
     this._coachKey = key;
     n.style.display = html ? '' : 'none';
-    n.className = `j-coach${c.tip ? ` tip ${c.tip.cls}` : ''}`;
-    n.innerHTML = c.tip ? `<span class="j-coach-t">${html}</span>` : `<span class="j-coach-n">${c.i + 1}/${c.steps.length}</span><span class="j-coach-t">${html}</span>`;
+    n.className = `j-coach${tip ? ` tip ${tip.cls}` : ''}`;
+    n.innerHTML = tip || !cur ? `<span class="j-coach-t">${html}</span>` : `<span class="j-coach-n">${c.i + 1}/${c.steps.length}</span><span class="j-coach-t">${html}</span>`;
   }
 
   // ================================================================== debug
@@ -1987,15 +2500,29 @@ export class JungleScene {
       // Stage 6 solid jungle: outline every collider footprint / deep water / ford; the generator's reachability report.
       colliders: (on = true) => this.world.showColliders(on),
       reach: () => this.data.reach,
+      // Stage 7 days: the goal module, the area bosses (`boss(area?)` stands you 6 tiles from a lair), today's event.
+      goals: () => this.goals,
+      bosses: () => (this.bosses?.lairs || []).map((L) => ({ area: L.area, x: L.boss?.x ?? L.x, z: L.boss?.z ?? L.z, hp: L.boss?.hp, maxHp: L.boss?.maxHp, phase: L.boss?.phase, engaged: !!L.boss?.engaged, dead: L.dead })),
+      boss: (area) => {
+        const L = (this.bosses?.lairs || []).find((q) => !area || q.area === area);
+        if (!L) return null;
+        const x = L.boss?.x ?? L.x, z = (L.boss?.z ?? L.z) + 6;
+        this.player.pos.set(x, 0, z); this._placeCamera(0, true);
+        return { area: L.area, x, z };
+      },
+      event: () => (this.events || []).map((it) => ({ key: it.key, x: it.x, z: it.z, done: it.done })),
+      weather: () => this.weather?.key || null,
       info: () => ({ pos: { ...this.player.pos }, enemies: this.enemies.length, chunks: this.world.chunks.size, day: this.dayT, objective: this.objKey, target: this._objectiveTarget() }),
     };
   }
 
   exit() {
+    this.game.input.useBindings(null);   // other scenes read physical keys
     document.removeEventListener('visibilitychange', this._onVis);
+    window.removeEventListener('blur', this._onBlur);
     for (const e of this.enemies) e.dispose();
     for (const p of this.pickups) { this.game.assets.disposeVisual(p.vis); p.glow.removeFromParent(); }
-    for (const it of this.interactables) { if (it.vis) this.game.assets.disposeVisual(it.vis); it.glow?.geometry.dispose(); it.glow?.material.dispose(); }
+    for (const it of this.interactables) { if (it.vis) this.game.assets.disposeVisual(it.vis); it.glow?.geometry.dispose(); it.glow?.material.dispose(); it.glow?.userData.beam?.material.dispose(); }
     for (const n of this.nests) { if (n.vis) this.game.assets.disposeVisual(n.vis); n.barBg.material.dispose(); n.barFill.material.dispose(); }
     for (const v of this.props) this.game.assets.disposeVisual(v);
     for (const s of this.slashes || []) s.g.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
@@ -2003,10 +2530,15 @@ export class JungleScene {
     for (const m of Object.values(this._glowMats || {})) m.dispose();
     this._glowGeom?.dispose();
     this.player.dispose();
+    this.relicsCtl?.dispose();
+    this.goals?.dispose();
+    this.bosses?.dispose();
+    this.weather?.dispose();
     this.spores?.dispose();
     this.shots.dispose();
     this.fx.dispose();
     this.ambience.dispose();
+    this.wading.dispose();
     this.world.dispose();
     this.post.dispose();
     this.game.stage.style.cursor = '';

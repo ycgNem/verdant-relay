@@ -51,8 +51,7 @@ export class MenuBackdrop {
     this.world = new JungleWorld(game, scene, data, cut);
     this.post = new PostFx(game);
     const U = this.post.uniforms;
-    U.tShade.value = this.world.shadeTex;
-    U.uWorld.value = data.size;
+    this.post.setWorld(this.world);
     U.uTint.value.setRGB(...m.tint);
     U.uAmbient.value = m.ambient;
     U.uLightR.value = 9999;

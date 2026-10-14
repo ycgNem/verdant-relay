@@ -1,0 +1,230 @@
+{
+  "boss_brood_hive": {
+    "file": "boss_brood_hive.png",
+    "ppu": 32,
+    "frames": 8,
+    "fw": 96,
+    "fh": 82,
+    "anchor": [
+      50,
+      73
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "attack": [
+        4,
+        5
+      ],
+      "hurt": [
+        6
+      ],
+      "dead": [
+        7
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "attack": 7,
+      "hurt": 8,
+      "dead": 1
+    }
+  },
+  "boss_drowned_engine": {
+    "file": "boss_drowned_engine.png",
+    "ppu": 32,
+    "frames": 8,
+    "fw": 94,
+    "fh": 90,
+    "anchor": [
+      47,
+      87
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "attack": [
+        4,
+        5
+      ],
+      "hurt": [
+        6
+      ],
+      "dead": [
+        7
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "attack": 7,
+      "hurt": 8,
+      "dead": 1
+    }
+  },
+  "boss_thorn_mother": {
+    "file": "boss_thorn_mother.png",
+    "ppu": 32,
+    "frames": 8,
+    "fw": 90,
+    "fh": 95,
+    "anchor": [
+      45,
+      87
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "attack": [
+        4,
+        5
+      ],
+      "hurt": [
+        6
+      ],
+      "dead": [
+        7
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "attack": 7,
+      "hurt": 8,
+      "dead": 1
+    }
+  },
+  "boss_warden": {
+    "file": "boss_warden.png",
+    "ppu": 32,
+    "frames": 8,
+    "fw": 76,
+    "fh": 96,
+    "anchor": [
+      38,
+      88
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "attack": [
+        4,
+        5
+      ],
+      "hurt": [
+        6
+      ],
+      "dead": [
+        7
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "attack": 7,
+      "hurt": 8,
+      "dead": 1
+    }
+  },
+  "prop_relay_pylon": {
+    "file": "prop_relay_pylon_v3.png",
+    "ppu": 32,
+    "frames": 5,
+    "fw": 32,
+    "fh": 113,
+    "anchor": [
+      17,
+      105
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0
+      ],
+      "off": [
+        0
+      ],
+      "on": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    "animFps": {
+      "on": 6
+    }
+  },
+  "relay_core": {
+    "file": "relay_core_v3.png",
+    "ppu": 32,
+    "frames": 4,
+    "fw": 109,
+    "fh": 118,
+    "anchor": [
+      55,
+      110
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "idle": 5
+    }
+  },
+  "ruin_apartment_facade": {
+    "file": "ruin_apartment_facade.png",
+    "ppu": 32,
+    "anchor": [
+      55,
+      140
+    ]
+  },
+  "ruin_market_kiosks": {
+    "file": "ruin_market_kiosks.png",
+    "ppu": 32,
+    "anchor": [
+      76,
+      53
+    ]
+  },
+  "ruin_server_hall": {
+    "file": "ruin_server_hall.png",
+    "ppu": 32,
+    "anchor": [
+      62,
+      62
+    ]
+  },
+  "ruin_station_platform": {
+    "file": "ruin_station_platform.png",
+    "ppu": 32,
+    "anchor": [
+      70,
+      62
+    ]
+  }
+}

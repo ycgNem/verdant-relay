@@ -10,8 +10,13 @@
 //   burrow  underground for a fraction of the route: semi-transparent, bullets can't target it
 //   spit    stops within `spit.range` of the core and lobs sap after a telegraphed wind-up
 //   onDeath bursts into seedlings unless the killing blow was a blast (handled by the scene)
-//   resist  e.g. Ruin Guard: kinetic damage halved, with shield sparks on every blocked hit
-//   phases  the Colossus loop: approach → root (telegraph, spawns crawlers) → charge (wind-up, fast)
+//   resist  e.g. Ruin Guard: kinetic damage halved, with shield sparks on every blocked hit (Piercer rounds
+//           ignore it: opts.pierce)
+//   phases  the Colossus loop: approach → root (telegraph, spawns crawlers) → charge (wind-up, fast);
+//           a Vine Snare protocol holds it (protocolRoot) and cancels a charge wind-up (interruptCharge)
+//   siege   the Colossus stops `siege.stopAt` tiles short of the Relay and slams it every `siege.every` s
+//           (ring telegraph at the core) until killed; after `maxSlams` it collapses (scene.bossSpent)
+// Also: stun (Arc Lance, non-boss) stops it briefly; a Flare (scene.litAt) lets bullets hit it burrowed.
 
 import * as THREE from 'three';
 import { DEFENSE_ENEMIES } from '../data/enemies.js';
@@ -116,6 +121,7 @@ export class DefenseEnemy {
     this.slowMult = 1;
     this.rootT = 0;
     this.rootReady = 0;
+    this.stunT = 0;
     this.tint = '#ffffff';
     this.burrowed = false;
     this.dead = false;
@@ -129,7 +135,8 @@ export class DefenseEnemy {
     this.stateT = 0;
     this.tele = null;            // active telegraph handle(s)
     this.phaseLabel = '';
-    if (this.boss) { this.state = 'approach'; this.stateT = def.phases.approach; this.phaseLabel = 'Advancing'; }
+    this.slams = 0;
+    if (this.boss) { this.state = 'approach'; this.stateT = def.phases.firstApproach ?? def.phases.approach; this.phaseLabel = 'Advancing'; }
 
     this._place();
     scene.three.add(this.obj);
@@ -145,7 +152,8 @@ export class DefenseEnemy {
 
   canBeTargetedBy(kind) {
     if (this.dead || this.removed || !this.onField) return false;
-    return kind === 'bullet' ? !this.burrowed : true;
+    // Bullets can't reach a burrowed enemy — unless a Flare lights the ground it tunnels under.
+    return kind === 'bullet' ? !this.burrowed || !!this.scene.litAt?.(this.pos) : true;
   }
 
   get remaining() { return this.lane.total - this.dist; }
@@ -174,12 +182,49 @@ export class DefenseEnemy {
     return true;
   }
 
-  /** Apply damage after resistances. Returns the damage actually dealt. */
+  /** Stun (Arc Lance): stops a non-boss for `time` s, with a white crackle. */
+  applyStun(time) {
+    if (this.dead || this.boss) return false;
+    this.stunT = Math.max(this.stunT, time);
+    return true;
+  }
+
+  /**
+   * The Vine Snare protocol on the Colossus (root-immune to towers): it is held for `time` s; a charge
+   * wind-up (or a charge under way) is cancelled; on the plaza the next slam is pushed back by `time`.
+   * Returns 'cancel' when a charge was stopped, true when held.
+   */
+  protocolRoot(time) {
+    if (this.dead || !this.boss) return false;
+    if (this.state === 'siege') {
+      this.stateT += time;
+      if (this._slamTele) { this.cancelTelegraphs(); this._slamTele = false; this.stateT = Math.max(this.stateT, this.def.siege.windup + time); }
+      return true;
+    }
+    const cancel = this.state === 'chargeWind' || this.state === 'charge';
+    if (cancel) this.interruptCharge();
+    this.rootT = Math.max(this.rootT, time);
+    return cancel ? 'cancel' : true;
+  }
+
+  /** Back to walking from a charge wind-up / charge (the red path telegraph is removed). */
+  interruptCharge() {
+    if (!this.boss || (this.state !== 'chargeWind' && this.state !== 'charge')) return false;
+    this.cancelTelegraphs();
+    const P = this.enraged ? (this._enragedP ||= { ...this.def.phases, ...this.def.enrage.phases }) : this.def.phases;
+    this.state = 'approach';
+    this.stateT = P.approach;
+    this.phaseLabel = this.enraged ? 'ENRAGED — charge stopped!' : 'Charge stopped!';
+    setAnim(this.visual, 'walk');
+    return true;
+  }
+
+  /** Apply damage after resistances. Returns the damage actually dealt. opts.pierce ignores resistances. */
   hit(amount, type, opts = {}) {
     if (this.dead) return 0;
-    // Boss second act: the enraged Colossus hardens its bark (enrage.damageTaken; enrage.roarTaken while roaring).
+    // Boss second act: enrage.damageTaken (1 since Stage 7: no hardened bark), enrage.roarTaken while roaring.
     const E = this.enraged ? this.def.enrage : null;
-    const mult = (this.def.resist?.[type] ?? 1) * (E ? (this.state === 'roar' ? E.roarTaken ?? E.damageTaken ?? 1 : E.damageTaken ?? 1) : 1);
+    const mult = (opts.pierce ? 1 : this.def.resist?.[type] ?? 1) * (E ? (this.state === 'roar' ? E.roarTaken ?? E.damageTaken ?? 1 : E.damageTaken ?? 1) : 1);
     const dealt = Math.min(this.hp, amount * mult);
     this.hp -= amount * mult;
     if (!opts.silent) {
@@ -221,9 +266,14 @@ export class DefenseEnemy {
     if (this.boss) m = Math.max(m, DEFENSE.bossSlowMin);
     this.slowMult = m;
     if (this.rootT > 0) this.rootT -= dt;
+    if (this.stunT > 0) {
+      this.stunT -= dt;
+      this._stunFx = (this._stunFx || 0) - dt;
+      if (this._stunFx <= 0) { this._stunFx = 0.12; scene.fx.burst(this.pos, { color: '#ffffff', color2: '#2ce8f5', count: 2, speed: 1.2, up: 1, life: 0.2, size: 0.05, y: this.height * 0.8 }); }
+    }
     this._updateStatusLook(dt);
 
-    const rooted = this.rootT > 0;
+    const rooted = this.rootT > 0 || this.stunT > 0;
     let speed = this.def.speed * this.speedJitter * scene.enemySpeedMult(this.laneIndex) * m;
     if (rooted) speed = 0;
 
@@ -235,6 +285,8 @@ export class DefenseEnemy {
     this.stopped = speed <= 0;
     this.curSpeed = speed;
     this.dist += speed * dt;
+    // A besieging boss never walks into the Relay: it stops on the plaza (see _bossUpdate 'siege').
+    if (this.boss && this.def.siege) this.dist = Math.min(this.dist, this.lane.total - this.def.siege.stopAt);
 
     // Burrowers are underground for the configured stretch of their route.
     if (this.def.burrow) {
@@ -287,7 +339,7 @@ export class DefenseEnemy {
   }
 
   _updateStatusLook(dt) {
-    const rooted = this.rootT > 0;
+    const rooted = this.rootT > 0;   // (a boss is only ever rooted by the Vine Snare protocol)
     const tint = rooted ? ROOT_TINT : this.slowMult < 0.999 ? SLOW_TINT : this.enraged ? this.def.enrage.tint : '#ffffff';
     if (tint !== this.tint) {
       this.tint = tint;
@@ -378,7 +430,19 @@ export class DefenseEnemy {
 
   _bossUpdate(dt, speed) {
     const E = this.def.enrage;
+    const S = this.def.siege;
     const scene = this.scene;
+    // The finale: on reaching the plaza (siege.stopAt short of the Relay) it stops and besieges the Relay.
+    if (S && this.state !== 'siege' && this.state !== 'roar' && this.dist >= this.lane.total - S.stopAt - 1e-3) {
+      this.cancelTelegraphs();
+      this.state = 'siege';
+      this.stateT = S.every;
+      this._slamTele = false;
+      this.phaseLabel = 'SIEGE — slamming the Relay!';
+      setAnim(this.visual, 'idle');
+      setFacing(this.visual, scene.corePos.x - this.pos.x, scene.corePos.z - this.pos.z);
+      scene.bossCue('siege');
+    }
     // Second act: once hurt past E.at it roars (never mid-charge), then loops on the enraged values.
     if (E && !this.enraged && this.hp <= this.maxHp * E.at && ['approach', 'rootTele', 'rooted'].includes(this.state)) {
       this.cancelTelegraphs();
@@ -466,6 +530,26 @@ export class DefenseEnemy {
         }
         // The charge ignores the slow floor partly: slows still apply but roots never do.
         return this.def.speed * this.speedJitter * scene.enemySpeedMult(this.laneIndex) * this.slowMult * P.chargeMult;
+      case 'siege': {
+        // Slam loop: a ring telegraph closes on the Relay for `windup` s, then the slam lands.
+        if (!this._slamTele && this.stateT <= S.windup) {
+          this._slamTele = true;
+          this.tele = scene.fx.telegraph(scene.corePos, { radius: scene.coreRadius + 0.6, color: '#e43b44', time: Math.max(0.1, this.stateT) });
+          setAnim(this.visual, 'windup', true);
+        }
+        if (this.stateT <= 0) {
+          this.tele = null;
+          this._slamTele = false;
+          this.slams += 1;
+          setAnim(this.visual, 'attack', true);
+          scene.bossSlam(this, S.damage);
+          if (this.removed || this.dead) return 0;
+          if (this.slams >= S.maxSlams) { scene.bossSpent(this); return 0; }
+          this.stateT = S.every;
+          this.phaseLabel = `SIEGE — slam ${this.slams} of ${S.maxSlams}`;
+        }
+        return 0;
+      }
       default:
         return speed;
     }

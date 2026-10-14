@@ -1,0 +1,264 @@
+{
+  "fg_leaf_1": {
+    "file": "fg_leaf_1.png",
+    "ppu": 32,
+    "shadow": 0,
+    "anchor": [
+      0,
+      127
+    ]
+  },
+  "fg_leaf_2": {
+    "file": "fg_leaf_2.png",
+    "ppu": 32,
+    "shadow": 0,
+    "anchor": [
+      0,
+      0
+    ]
+  },
+  "fg_leaf_3": {
+    "file": "fg_leaf_3.png",
+    "ppu": 32,
+    "shadow": 0,
+    "anchor": [
+      74,
+      159
+    ]
+  },
+  "fg_leaf_4": {
+    "file": "fg_leaf_4.png",
+    "ppu": 32,
+    "shadow": 0,
+    "anchor": [
+      127,
+      111
+    ]
+  },
+  "fg_leaf_5": {
+    "file": "fg_leaf_5.png",
+    "ppu": 32,
+    "shadow": 0,
+    "anchor": [
+      24,
+      0
+    ]
+  },
+  "fx_ripple": {
+    "file": "fx_ripple.png",
+    "ppu": 32,
+    "frames": 3,
+    "fps": 6,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2
+      ]
+    },
+    "flat": true,
+    "shadow": 0
+  },
+  "fx_splash": {
+    "file": "fx_splash.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 12,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "flat": true,
+    "shadow": 0
+  },
+  "spore_pod": {
+    "file": "spore_pod.png",
+    "ppu": 32,
+    "frames": 4,
+    "fps": 3,
+    "anchor": [
+      10,
+      19
+    ],
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "swell": [
+        2,
+        3
+      ]
+    },
+    "animFps": {
+      "swell": 8
+    },
+    "shadow": 0.3
+  },
+  "spore_puff_1": {
+    "file": "spore_puff_1.png",
+    "ppu": 32,
+    "shadow": 0,
+    "anchor": [
+      16,
+      12
+    ]
+  },
+  "spore_puff_2": {
+    "file": "spore_puff_2.png",
+    "ppu": 32,
+    "shadow": 0,
+    "anchor": [
+      16,
+      12
+    ]
+  },
+  "spore_puff_3": {
+    "file": "spore_puff_3.png",
+    "ppu": 32,
+    "shadow": 0,
+    "anchor": [
+      16,
+      12
+    ]
+  },
+  "ui_logo": {
+    "file": "ui_logo.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "ui_panel_frame": {
+    "file": "ui_panel_frame.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_parang": {
+    "file": "icon_parang.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_wide_choice": {
+    "file": "icon_wide_choice.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_scarf": {
+    "file": "icon_scarf.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_arc": {
+    "file": "icon_arc.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_salvage": {
+    "file": "icon_salvage.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_flare": {
+    "file": "icon_flare.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_map": {
+    "file": "icon_map.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_swap": {
+    "file": "icon_swap.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_notes": {
+    "file": "icon_notes.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_scout": {
+    "file": "icon_scout.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_reroll": {
+    "file": "icon_reroll.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_archivist": {
+    "file": "icon_archivist.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_sap_cannon": {
+    "file": "icon_sap_cannon.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_lure_totem": {
+    "file": "icon_lure_totem.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_bramble_wall": {
+    "file": "icon_bramble_wall.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_beacon": {
+    "file": "icon_beacon.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_district_overgrown_market": {
+    "file": "icon_district_overgrown_market.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_district_flooded_transit": {
+    "file": "icon_district_flooded_transit.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_district_canopy_greenhouse": {
+    "file": "icon_district_canopy_greenhouse.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_district_collapsed_residential": {
+    "file": "icon_district_collapsed_residential.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_district_data_center": {
+    "file": "icon_district_data_center.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_lock": {
+    "file": "icon_lock.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_protocol_snare": {
+    "file": "icon_protocol_snare.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_protocol_arc": {
+    "file": "icon_protocol_arc.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_protocol_flare": {
+    "file": "icon_protocol_flare.png",
+    "ppu": 32,
+    "shadow": 0
+  }
+}

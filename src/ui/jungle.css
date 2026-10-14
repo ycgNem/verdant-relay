@@ -1,27 +1,43 @@
 /* Jungle exploration HUD (the shared x-* pieces live in explore.css).
    Layout rule: the HUD hugs the corners and the edges so the fight around the player stays clear —
-   one compact panel top-left, a small round minimap top-right, one slim objective strip at the bottom.
+   one compact panel top-left (the coach / tip line under it), a small round minimap top-right with the clock
+   under it, one slim objective strip at the bottom. The top centre is left free (an area boss's bar).
    Sizes are calc(var(--u) * N) (N px on a 960-wide stage), so the layout follows the stage, not the
-   internal render resolution. */
+   internal render resolution.
+   Text grid (critic H §5 / L §3): HUD text is N = 12 (16 px at 720p, 24 px at 1080p, 32 px at 1440p): one font
+   pixel per world texel, never smaller than 12 CSS px at 720p; the clock is N = 24 (two font pixels per texel).
+   Pixel icons scale by --tx, the world's texel size in CSS px (JungleScene._updateHud). */
 
-/* ---- top-left: HP, stamina + med kits, carried loot */
-.j-tl {
-  position: absolute; left: calc(var(--u) * 8); top: calc(var(--u) * 8); width: calc(var(--u) * 168);
-  padding: calc(var(--u) * 4) calc(var(--u) * 6); background: rgba(24, 20, 37, 0.72);
+.jungle-ui { --hud-f: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }
+
+/* ---- top-left column: the panel (HP, stamina + med kits, carried loot, carried relics), then the coach line */
+.j-tlcol {
+  position: absolute; left: calc(var(--u) * 8); top: calc(var(--u) * 8); z-index: 21;
+  display: flex; flex-direction: column; align-items: flex-start; gap: calc(var(--u) * 5); pointer-events: none;
 }
-.j-row { display: flex; align-items: center; gap: calc(var(--u) * 4); margin-bottom: calc(var(--u) * 3); }
-.j-row .x-lbl { width: calc(var(--u) * 16); font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); }
-.j-tl .x-hpbar { height: calc(var(--u) * 12); min-width: 0; }
-.j-tl .x-hpbar .barlbl { font-size: max(var(--fq), round(calc(var(--u) * 9 - 0.01px), var(--fq))); }
+.j-tl {
+  position: relative; width: calc(var(--u) * 204);
+  padding: calc(var(--u) * 5) calc(var(--u) * 7); background: rgba(24, 20, 37, 0.74);
+}
+.j-row { display: flex; align-items: center; gap: calc(var(--u) * 5); margin-bottom: calc(var(--u) * 4); }
+.j-row .x-lbl { width: calc(var(--u) * 46); flex: none; font-size: var(--hud-f); line-height: 1; }
+.j-tl .x-hpbar { height: calc(var(--u) * 15); min-width: 0; }
+/* The HP number: on the text grid, with a one-font-pixel dark outline so it reads on green, yellow or red. */
+.j-tl .x-hpbar .barlbl {
+  --fp: calc(var(--hud-f) / 8);
+  font-size: var(--hud-f); color: #fff;
+  text-shadow: var(--fp) 0 0 #181425, calc(var(--fp) * -1) 0 0 #181425, 0 var(--fp) 0 #181425, 0 calc(var(--fp) * -1) 0 #181425,
+    var(--fp) var(--fp) 0 #181425, calc(var(--fp) * -1) var(--fp) 0 #181425, var(--fp) calc(var(--fp) * -1) 0 #181425, calc(var(--fp) * -1) calc(var(--fp) * -1) 0 #181425;
+}
 .j-stambar { flex: 1; height: calc(var(--u) * 8); min-width: 0; }
 .j-st { color: var(--amber); }
-.j-meds { display: inline-flex; align-items: center; gap: calc(var(--u) * 1); font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); }
-.j-lootrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: calc(var(--u) * 3); }
-.x-res.j-res { padding: calc(var(--u) * 1) calc(var(--u) * 3); gap: calc(var(--u) * 2); font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); }
+.j-meds { display: inline-flex; align-items: center; gap: calc(var(--u) * 1); font-size: var(--hud-f); }
+.j-lootrow { display: flex; flex-wrap: wrap; gap: calc(var(--u) * 3); }
+.x-res.j-res { padding: calc(var(--u) * 1) calc(var(--u) * 3); gap: calc(var(--u) * 2); font-size: var(--hud-f); }
 
 /* ---- top-right corner: round minimap; its ring is the daylight left (--day 1 → 0) */
 .j-tr {
-  position: absolute; right: calc(var(--u) * 8); top: calc(var(--u) * 8); width: calc(var(--u) * 96);
+  position: absolute; right: calc(var(--u) * 8); top: calc(var(--u) * 8); width: calc(var(--u) * 120);
   display: flex; flex-direction: column; align-items: center; text-shadow: 1px 1px 0 #000;
 }
 .j-ring {
@@ -37,13 +53,28 @@
   opacity: 0.86; background: rgba(11, 10, 18, 0.55);
 }
 .j-tabkey {
-  position: absolute; left: calc(var(--u) * -4); bottom: calc(var(--u) * -2); margin: 0;
-  font-size: max(var(--fq), round(calc(var(--u) * 8 - 0.01px), var(--fq))); background: #181425;
+  position: absolute; left: calc(var(--u) * -8); bottom: calc(var(--u) * -4); margin: 0;
+  font-size: var(--hud-f); line-height: 1.1; background: #181425;
 }
-.j-time { margin-top: calc(var(--u) * 2); font-size: max(var(--fq), round(calc(var(--u) * 16 - 0.01px), var(--fq))); line-height: 1.1; }
+/* the clock: a pixel sun (a moon after sunset) and the time left */
+.j-clock { display: flex; align-items: center; gap: calc(var(--u) * 4); margin-top: calc(var(--u) * 3); }
+.j-sun {
+  flex: none; display: inline-block; width: calc(var(--tx) * 12); height: calc(var(--tx) * 12);
+  background-repeat: no-repeat; background-position: 0 0; background-size: calc(var(--tx) * 24) calc(var(--tx) * 12);
+  image-rendering: pixelated;
+}
+.x-hud { --tx: 2px; }   /* default; JungleScene sets the real texel size on the HUD root */
+.j-sun.moon { background-position: calc(var(--tx) * -12) 0; }
+.j-time { font-size: max(var(--fq), round(calc(var(--u) * 24 - 0.01px), var(--fq))); line-height: 1; }
+.j-daylbl {
+  color: #e8d27a; font-size: var(--hud-f); line-height: 1.2;
+  text-shadow: 1px 0 0 #181425, -1px 0 0 #181425, 0 1px 0 #181425, 0 -1px 0 #181425;
+}
+.j-daylbl.amber { color: var(--amber); }
+.j-daylbl.bad { color: var(--danger); }
 .j-district {
-  max-width: calc(var(--u) * 110); text-align: center; line-height: 1.2; color: #a9b6cc;
-  font-size: max(var(--fq), round(calc(var(--u) * 8 - 0.01px), var(--fq)));
+  max-width: calc(var(--u) * 130); text-align: center; line-height: 1.2; color: #a9b6cc;
+  font-size: var(--hud-f);
   text-shadow: 1px 0 0 #181425, -1px 0 0 #181425, 0 1px 0 #181425, 0 -1px 0 #181425;
 }
 .x-time.amber { color: var(--amber); }
@@ -52,30 +83,49 @@
 /* ---- bottom: one slim objective strip */
 .j-strip {
   position: absolute; left: 50%; bottom: calc(var(--u) * 6); transform: translateX(-50%);
-  display: flex; align-items: center; gap: calc(var(--u) * 8); max-width: calc(var(--u) * 620); white-space: nowrap;
-  padding: calc(var(--u) * 2) calc(var(--u) * 8); background: rgba(24, 20, 37, 0.7);
+  display: flex; align-items: center; gap: calc(var(--u) * 8); max-width: calc(var(--u) * 700); white-space: nowrap;
+  padding: calc(var(--u) * 3) calc(var(--u) * 8); background: rgba(24, 20, 37, 0.72);
   border: calc(var(--u) * 1) solid #3a4466; border-radius: calc(var(--u) * 3);
-  font-size: max(var(--fq), round(calc(var(--u) * 10.5 - 0.01px), var(--fq))); text-shadow: 1px 1px 0 #000;
+  font-size: var(--hud-f); line-height: 1.1; text-shadow: 1px 1px 0 #000;
 }
-.j-objk { color: var(--amber); font-size: max(var(--fq), round(calc(var(--u) * 8 - 0.01px), var(--fq))); letter-spacing: round(0.1em, var(--fpx)); }
+.j-objk { color: var(--amber); font-size: var(--hud-f); }
 .j-step { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .j-step .x-step { color: var(--text); }
 .x-step.claim { color: var(--good); text-decoration: none; }
 .j-dir { display: inline-flex; align-items: center; gap: calc(var(--u) * 3); }
 .j-dir.obj { color: var(--amber); }
+.j-dir.ford { color: #c8e4f0; padding-left: calc(var(--u) * 8); border-left: 1px solid #3a4466; }
 .j-dir.ext { color: var(--accent); padding-left: calc(var(--u) * 8); border-left: 1px solid #3a4466; }
-.j-dir .x-dirarrow { font-size: max(var(--fq), round(calc(var(--u) * 10 - 0.01px), var(--fq))); color: inherit; }
+.j-dir .x-dirarrow { font-size: var(--hud-f); color: inherit; }
 .j-opts { color: #c47bff; }
 .j-opts:empty { display: none; }
 
 /* The interaction prompt sits just above the strip. */
-.jungle-ui .x-prompt { bottom: calc(var(--u) * 34); }
+.jungle-ui .x-prompt { bottom: calc(var(--u) * 36); }
+.jungle-ui .x-ptext { font-size: var(--hud-f); }
 
 /* Off-screen arrows: positioned by their top-left corner (JungleScene._edgeArrow). */
 .jungle-ui .x-edge { width: calc(var(--u) * 34); height: calc(var(--u) * 34); }
+.x-edge.crate { color: var(--amber); }
 
-/* Banners stay in the middle band, clear of the corner HUD. */
+/* Banners stay in the upper band (~22% of the height), off the player and clear of the corner HUD. */
 .jungle-ui .x-banner { max-width: calc(var(--u) * 600); }
+
+/* In-world ◆ over the coached crate / the guided route's crates: a 13-texel canvas (9-texel diamond), whole texels. */
+.j-mark {
+  position: absolute; left: 0; top: 0; z-index: 4; pointer-events: none;
+  width: calc(var(--tx) * 13); height: calc(var(--tx) * 13); image-rendering: pixelated;
+  animation: j-bob 1s steps(2) infinite;
+}
+@keyframes j-bob { 50% { margin-top: calc(var(--tx) * -2); } }
+
+/* Low health (< HUD.health.pulse): the screen edge pulses red in two hard steps (no blur). */
+.j-lowhp {
+  position: absolute; inset: 0; pointer-events: none; z-index: 2; opacity: 0;
+  box-shadow: inset 0 0 0 calc(var(--u) * 5) rgba(228, 59, 68, 0.55), inset 0 0 0 calc(var(--u) * 12) rgba(162, 38, 51, 0.28);
+}
+.j-lowhp.on { animation: j-lowhp 1s steps(2) infinite; }
+@keyframes j-lowhp { 0% { opacity: 1; } 100% { opacity: 0.25; } }
 
 /* ---- big map (Tab): the day is paused while it is open */
 .jungle-ui .x-bigmap { cursor: default; }
@@ -87,7 +137,7 @@
 }
 .jungle-ui .x-bigcanvas.drag { cursor: grabbing; }
 .j-paused {
-  color: var(--amber); font-size: max(var(--fq), round(calc(var(--u) * 9 - 0.01px), var(--fq))); letter-spacing: round(0.1em, var(--fpx));
+  color: var(--amber); font-size: var(--hud-f); letter-spacing: round(0.1em, var(--fpx));
   border: 1px solid var(--amber); border-radius: calc(var(--u) * 2); padding: 0 calc(var(--u) * 4);
 }
 .j-bigfoot {
@@ -99,22 +149,19 @@
 .jungle-ui .x-legend { width: auto; align-self: stretch; justify-content: flex-start; }
 .x-legicon { width: calc(var(--u) * 12); height: calc(var(--u) * 12); image-rendering: pixelated; }
 /* While the big map is open the world is frozen: hide the live overlays that would sit on top of it. */
-.j-mapopen .toasts, .j-mapopen .x-edge, .j-mapopen .x-prompt, .j-mapopen .hint { visibility: hidden; }
-.j-tl, .j-tr, .j-strip { transition: opacity 0.15s steps(2); }
+.j-mapopen .toasts, .j-mapopen .x-edge, .j-mapopen .x-prompt, .j-mapopen .hint, .j-mapopen .j-mark { visibility: hidden; }
+.j-tl, .j-tr, .j-strip, .j-coach { transition: opacity 0.15s steps(2); }
 
-/* ---- simplicity pass: full-word labels, the guided-day coach line, "tired" stamina */
-.j-tl { width: calc(var(--u) * 186); }
-.j-row .x-lbl { width: calc(var(--u) * 40); }
+/* ---- "tired" stamina, the coach / tip line */
 .j-stambar.tired { animation: j-tired 0.5s steps(2) infinite; }
-.j-stambar.tired .barlbl { color: #fff; font-size: max(var(--fq), round(calc(var(--u) * 8 - 0.01px), var(--fq))); }
+.j-stambar.tired .barlbl { color: #fff; font-size: var(--hud-f); }
 @keyframes j-tired { 50% { box-shadow: 0 0 0 calc(var(--u) * 1) var(--danger); background: rgba(228, 59, 68, 0.35); } }
-.j-lootrow { display: flex; flex-wrap: wrap; }
 .j-coach {
-  position: absolute; left: calc(var(--u) * 8); top: calc(var(--u) * 74); z-index: 21;
-  display: flex; align-items: flex-start; gap: calc(var(--u) * 6); width: max-content; max-width: calc(var(--u) * 230); box-sizing: border-box;
-  padding: calc(var(--u) * 5) calc(var(--u) * 12); background: rgba(24, 20, 37, 0.9);
+  position: relative;
+  display: flex; align-items: flex-start; gap: calc(var(--u) * 6); width: max-content; max-width: calc(var(--u) * 260); box-sizing: border-box;
+  padding: calc(var(--u) * 5) calc(var(--u) * 10); background: rgba(24, 20, 37, 0.9);
   border: calc(var(--u) * 2) solid var(--accent); border-radius: calc(var(--u) * 3);
-  font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); line-height: 1.3; text-shadow: 1px 1px 0 #000;
+  font-size: var(--hud-f); line-height: 1.3; text-shadow: 1px 1px 0 #000;
   pointer-events: none;
 }
 .j-coach-t { min-width: 0; }
@@ -122,9 +169,10 @@
 .j-coach b { color: var(--amber); }
 .j-coach .accent { color: var(--accent); }
 .j-coach .amber { color: var(--amber); }
+.j-coach .key { line-height: 1.1; }
 .j-coach.tip { border-color: var(--amber); }
 .j-coach.tip.warn { border-color: var(--danger); color: #ffd0d0; }
 .j-coach-n {
-  flex: none; color: var(--accent); font-size: max(var(--fq), round(calc(var(--u) * 9 - 0.01px), var(--fq)));
+  flex: none; color: var(--accent); font-size: var(--hud-f); line-height: 1.2;
   border: 1px solid var(--accent); border-radius: calc(var(--u) * 2); padding: 0 calc(var(--u) * 4);
 }

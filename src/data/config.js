@@ -32,6 +32,17 @@ export const CONFIG = {
     hp: 100,
     speed: 5.6,          // tiles/sec (~180 px/s at 32 px tiles)
     accel: 48,           // tiles/sec² toward the input direction (snappy, slight weight)
+    turnAccel: 110,      // …when the input opposes your velocity (a 180° turn in ~0.1 s: dodging must be instant)
+    stopAccel: 64,       // …when you let go (a ~0.25-tile stop instead of a slide)
+    // Move-speed multipliers while acting: charging a chop · a swing at a creature · a swing that only meets
+    // plants (cutting keeps you moving, critic I #4) · winding up a machete throw.
+    actSlow: { charge: 0.42, swing: 0.3, plants: 0.75, throw: 0.5 },
+    // Corner nudge (JungleWorld.moveBody, critic I #10): walking into a trunk / rock / ruin footprint (input within
+    // `cone`° of its surface normal) whose edge is within `edge` tiles of your centre to one side steers you round it at up to
+    // `speed` × your speed; brush tiles use `tileEdge` (12 texels).
+    nudge: { cone: 35, edge: 0.45, tileEdge: 12 / 32, speed: 0.6 },
+    // Going down (critic I #12): slow-mo (s, × speed) over the collapse; creatures within `radius` step `stepBack` tiles off.
+    death: { slowMo: 0.5, scale: 0.25, stepBack: 1.5, radius: 3.5 },
     radius: 0.32,
     dodgeCooldown: 2.0,
     dodgeDuration: 0.25,
@@ -55,10 +66,11 @@ export const CONFIG = {
     extractHold: 2.0,
     extractRadius: 1.8,
     interactRadius: 1.4,
-    deathReturnHp: 35,       // player HP after a failed expedition
+    deathReturnHp: 35,       // player HP after a failed expedition (going down, abandoning, quitting mid-day)
     deathFloorAfter: 15,     // seconds into the day before the salvage Scrap floor applies (abandoning at once earns nothing)
-    nightlyHeal: 25,         // player HP recovered each night
-    maxSkillPoints: 2,       // skill points one expedition can earn (primary + bonus optionals)
+    nightlyHeal: 25,         // player HP recovered each night…
+    dawnHpFloor: 60,         // …and you wake with at least this much, whether you got home or went down (Run.dawnHp)
+    maxSkillPoints: 1,       // skill points one trip can earn (the goal, or a bonus task if the goal isn't done); area bosses add one each on top (skills.js)
     quickExtraction: 0.75,   // hold-time multiplier with the Quick Extraction skill
     packRatMagnet: 1.5,      // magnet radius multiplier with Pack Rat I
     packRatScrap: 1.1,       // container Scrap multiplier with Pack Rat II
@@ -116,8 +128,6 @@ export const CONFIG = {
     reinforceMaxDist: 14,
     spawnInTime: 0.7,          // seconds a reinforcement spends emerging (harmless, telegraphed)
     enemyDrop: { scrap: [1, 3], componentChance: 0.15, medChance: 0.04 },   // jungle kills: a small top-up, not income
-    ambushCount: [2, 3],       // districts with ambushChance: enemies that burst out of a container
-    alarmSpawn: 3,             // reinforcements when a security laser is tripped
     // Spore pods (the jungle hazard) are tuned in SPORES, src/data/jungle.js.
     // Elite objective enemy (Clear the Blockage). HP multiplier comes from byNight.eliteHp.
     // windupMult: longer, clearer charge telegraphs; supportTypes: the only enemies allowed beside it.
@@ -132,7 +142,19 @@ export const CONFIG = {
     //   attacks alone would only stop the post-hit i-frames from soaking simultaneous hits)
     //   release: seconds a token stays taken after the attacker's recovery · holdDist / circleSpeed: enemies
     //   waiting for a token circle the player at about this distance (tiles) and speed (× their own).
-    attackers: { max: [2, 2, 2, 2, 3, 3], gap: 0.2, afterHit: 1.0, release: 0.3, holdDist: 2.4, circleSpeed: 0.55 },
+    // Critic I #2 (no stacking): anything still on cooldown (> circleCd s) or without a free token circles instead of
+    //   walking in · flank: waiting creatures hold a slot this many degrees off the player's aim, either side (the
+    //   flanks and back, not the front), backArc for Skitters (they come from behind, with a chitter cue) ·
+    //   slotTurn: rad/s a slot follows the aim · hopBack: tiles a melee attacker hops away after its lunge.
+    // No-path fallback (critic I #5): a walker that makes no progress toward you for `stuck` s throws (Ferals, if
+    //   it can see you) or hacks one brush tile toward you every `hackEvery` s.
+    // predict: a melee creature starts its wind-up when you're within reach *or* will be by the end of it (your
+    //   walking velocity × wind-up × predict), so running past one gets met by the lunge (critic I #1, kiting).
+    attackers: {
+      max: [2, 2, 2, 2, 3, 3], gap: 0.2, afterHit: 1.0, release: 0.3, holdDist: 2.4, circleSpeed: 0.75, predict: 1.0,
+      circleCd: 0.3, flank: [120, 180], backArc: [150, 180], slotTurn: 2.2, hopBack: 0.7,
+      stuck: 1.5, hackEvery: 0.8,
+    },
     camera: { dist: 12.4, lookAhead: 2.2, follow: 7 },   // pitch / scale: CONFIG.pixel
     light: { hemi: 2.4, sun: 2.0 },
   },
@@ -140,11 +162,15 @@ export const CONFIG = {
   // Repair: repairScrap buys repairAmount HP; a partial repair near max pays only for the HP restored
   // (rounded up), so Relay health is never cheaper than towers.
   // fullRepairScrap: an engineer's free repair on a full Relay is paid out as this much Scrap instead.
-  relay: { hp: 100, repairScrap: 25, repairAmount: 15, fullRepairScrap: 15 },
+  // stipend: Scrap the Relay pays at the start of each night's prep (index = night − 1; the last entry
+  // repeats), so income follows the difficulty curve and one bad day doesn't end the run (critic J M6).
+  relay: { hp: 100, repairScrap: 25, repairAmount: 15, fullRepairScrap: 15, stipend: [0, 10, 15, 20, 25, 30] },
   sellRefund: 0.7,
   // Each tower of a type you already own makes the next one of that type cost this much more Scrap
-  // (keeps one-tower spam from beating upgrades and mixed builds). Shown on the build cards.
-  towerSurcharge: 5,
+  // (keeps one-tower spam from beating upgrades and mixed builds). Stage 7 sim: with level-2 upgrades now
+  // efficient, 12 made wide builds 25–35 Relay HP worse than tall ones at equal spend; 6 evens them out.
+  // Shown on the build cards.
+  towerSurcharge: 6,
   // Intel is spent during night prep: Decrypt turns it into Research Data; Sabotage shrinks
   // tonight's wave (once per night).
   intel: { decryptCost: 1, decryptResearch: 4, sabotageCost: 3, sabotageWave: 0.9 },
@@ -163,6 +189,11 @@ export const CONFIG = {
 // charged heavy swing (hold RMB). Times in seconds, ranges in tiles, arcs in radians (total width).
 //   hitAt: when in the swing the blade connects · lunge: forward step (tiles/s impulse)
 //   cut: undergrowth power (1 clears ferns/thickets, 2 also clears brambles) · stagger: seconds enemies reel
+// stamina is the cost of a swing that meets a creature, nest or pod; one that only meets plants (or air) costs
+// STAMINA.plantSwing / plantFinisher instead (critic I #4). hackEvery: holding LMB while you walk swings on its own
+// this often ("hack-through"). throw (F, critic I §9E): wind-up, flight range / speed, piercing damage out and back,
+// return time, stamina, cooldown, hit radius; it cuts thickets and ferns (not brambles) along its line.
+// shove: what LMB does while the blade is out (no cutting).
 export const WEAPONS = {
   machete: {
     name: 'Machete',
@@ -172,7 +203,10 @@ export const WEAPONS = {
       { damage: 24, arc: 2.5, range: 1.65, time: 0.44, hitAt: 0.13, lunge: 4.5, knockback: 9, stamina: 14, cut: 1, stagger: 0.35 },
     ],
     comboWindow: 0.38,
+    hackEvery: 0.28,
     chop: { charge: 0.42, damage: 40, arc: 2.9, range: 1.9, time: 0.5, hitAt: 0.15, lunge: 5, knockback: 13, stamina: 22, cut: 2, stagger: 0.9 },
+    throw: { windup: 0.25, range: 6, speed: 16, damage: 18, returnTime: 0.4, returnDamage: 9, knockback: 3, stamina: 25, cooldown: 3, radius: 0.35 },
+    shove: { damage: 4, arc: 2.2, range: 1.25, time: 0.26, hitAt: 0.07, lunge: 1.5, knockback: 6, stamina: 4, noCut: true },
   },
   parang: {
     name: 'Parang',
@@ -182,18 +216,48 @@ export const WEAPONS = {
       { damage: 30, arc: 2.6, range: 1.75, time: 0.5, hitAt: 0.15, lunge: 4, knockback: 11, stamina: 16, cut: 2, stagger: 0.5 },
     ],
     comboWindow: 0.38,
+    hackEvery: 0.32,
     chop: { charge: 0.5, damage: 50, arc: 3.0, range: 2.0, time: 0.56, hitAt: 0.17, lunge: 5, knockback: 15, stamina: 24, cut: 2, stagger: 1.1 },
+    throw: { windup: 0.3, range: 5.5, speed: 14, damage: 22, returnTime: 0.45, returnDamage: 11, knockback: 4, stamina: 27, cooldown: 3.2, radius: 0.38 },
+    shove: { damage: 5, arc: 2.2, range: 1.3, time: 0.28, hitAt: 0.08, lunge: 1.5, knockback: 7, stamina: 4, noCut: true },
   },
 };
 // Old saves name the start weapon 'carbine' / 'scattergun'.
 export const WEAPON_ALIAS = { carbine: 'machete', scattergun: 'parang' };
 
-// Stamina and the dodge roll.
-export const STAMINA = { max: 100, regen: 40, delay: 0.5, roll: 22, exhaustedRegen: 0.6 };
-export const ROLL = { time: 0.34, speed: 12, iframes: 0.28, cooldown: 0.12 };
+// Stamina and the dodge roll (critic I #4: cutting and short fights shouldn't leave you waiting on an empty bar).
+//   plantSwing / plantFinisher / plantChop: a swing that meets only plants or air · deflect / perfectDodge: refunds.
+//   Empty = exhausted until `max` × 0.35, regen × exhaustedRegen; spending while exhausted doesn't restart `delay`.
+export const STAMINA = { max: 100, regen: 40, delay: 0.35, roll: 20, exhaustedRegen: 1.0, plantSwing: 2, plantFinisher: 3, plantChop: 6, deflect: 15, perfectDodge: 15 };
+//   buffer: a Space press in the last `buffer` s of a roll, during its cooldown or before a chop lands waits and
+//   rolls as soon as it can (critic I #7) · perfect: an i-frame save this early in a roll is a perfect dodge
+//   (stamina back, `slowMo` [s, × speed], a cyan rim `rim` s; once per roll).
+export const ROLL = { time: 0.34, speed: 12, iframes: 0.28, cooldown: 0.12, buffer: 0.15, perfect: 0.15, slowMo: [0.2, 0.4], rim: 0.28, rimColor: '#2ce8f5' };
 
-// Pulse Cutter (v1, unused by the machete player; kept for the defense codex text).
-export const TOOL = { name: 'Pulse Cutter', damage: 22, radius: 1.8, arc: 1.7, cooldown: 0.6, knockback: 7 };
+// Deflect / riposte (critic I §9A): the first `window` s after pressing RMB (charging a chop, or the light swing a
+// tap gives) turns an attack from the front half away. A new window opens at most every `lockout` s (a deflect
+// resets it), so tap-spam doesn't work. Melee: the attacker reels `stun` s (elites `eliteStun`) and your next light
+// slash within `riposte.time` s does × `riposte.mult` and always staggers. A Spitter glob is batted back for `glob`
+// damage; a Razorback charge: you sidestep `sidestep` tiles and it takes `chargeDamage` and a `chargeStun` s stun.
+export const DEFLECT = {
+  window: 0.14, lockout: 0.5, hitStop: 0.09, stun: 1.0, eliteStun: 0.4,
+  riposte: { time: 1.0, mult: 2.5, stagger: 0.5 },
+  glob: 25, sidestep: 0.6, chargeDamage: 15, chargeStun: 0.8,
+  ring: '#ffffff', spark: '#fee761', ringRadius: 1.2,
+};
+
+// Status effects on the player (critic I §9F). sap: standing in a Spitter's puddle slows you, and a roll that starts
+// in one costs `rollCost` more stamina. bleed: a Bramble Crawler's bite (EXPLORE_ENEMIES.crawler.bleed s) takes `dps`
+// HP a second in `tick` s steps; a roll stops it. root: the Thorn Stalker's grip (you can't walk; a roll breaks it).
+export const STATUS = {
+  sap: { slow: 0.6, rollCost: 10 },
+  bleed: { dps: 2, tick: 0.5, color: '#e43b44' },
+  root: { color: '#8c4026' },
+};
+
+// Wall splat (critic I §9B): a creature knocked back at ≥ `speed` tiles/s into a trunk / rock / ruin, or into a
+// bramble (which it nicks), takes the extra damage and reels.
+export const SPLAT = { speed: 4, object: { damage: 10, stun: 0.5 }, bramble: { damage: 14, stun: 0.6 } };
 
 // Game feel ("juice"): hit-stop, death beats, shot VFX, floating numbers, readability helpers.
 // Times in seconds, sizes in tiles (1 tile = 32 texels, so 1/32 = one sprite pixel).
@@ -216,11 +280,17 @@ export const JUICE = {
     squash: 0.16,         // squash-and-pop duration
     fade: 0.32,           // corpse fade after the squash
     knock: 0.12,          // tiles the corpse slides along the killing hit
-    decalLife: 5,         // splat decal on the floor (fades over its last second)
+    decalLife: 30,        // splat decal on the floor (critic H #7: a stain that fades over ~30 s)...
+    decalFade: 24,        // ...dissolving texel by texel over its last decalFade seconds
     decalSize: 0.9,       // × enemy size
     decalShade: 0.92,     // splat colour = the enemy's dark burst colour × this (the splat shades its own core darker)
+    splatDesat: 0.55,     // death splats pulled this far toward the ground colour (3-tone, not saturated paint)
+    splatGround: '#3b3122',
     maxDecals: 28,
   },
+  // Hit flash (Fx.hitFlash, critic H #7): `white` frames of flat white, then `tint` frames of the sprite pushed
+  // `mix` of the way toward `color` (red-orange), only on the sprite hit; edge texels stay `ink`.
+  hitFlash: { white: 1, tint: 2, color: '#ff6a3d', mix: 0.45, ink: '#181425' },
   muzzle: { size: 0.42, life: 0.05, light: 2.2, lightDist: 3.2, lightLife: 0.06 },
   // y: world height shots are drawn at (the gun barrels on the upright sprite cards; aim uses shotHeight)
   tracer: { bullet: 0.62, pellet: 0.42, bolt: 0.7, width: 2 / 32, headSize: 3 / 32, y: 0.85 },
@@ -233,11 +303,16 @@ export const JUICE = {
     mergeWindow: 0.5,    // repeated damage on one target within this merges into one number
     stackPx: 13,          // vertical step (stage units) when numbers would overlap
   },
-  pickup: { sparkleEvery: 1.3, bobPx: 1, flyTime: 0.45 },
+  // glowZ: the ground glow disc's offset (tiles, - = north) so it sits centred under the item's base (critic H #12).
+  pickup: { sparkleEvery: 1.3, bobPx: 1, flyTime: 0.45, glowZ: -3 / 32 },
   hostileRing: { color: '#ff2e2e', opacity: 1 },   // simplicity pass: hot red = danger (brighter than anything friendly)
+  // In the jungle the always-on ring under a creature is a dim dark red (~60%), so the hot-red wind-up telegraphs pop (critic I #12).
+  hostileRingJungle: '#9a1d22',
+  // The thrown machete's pale motion streak (tiles long, behind the spinning blade) so it reads in flight.
+  bladeTrail: { length: 0.75, color: '#c0cbdc', width: 2 / 32 },
   // Simplicity pass: a red "!" pops over a jungle creature as it winds up an attack (JungleScene._updateLight).
   attackBang: { color: '#ff2e2e', life: 0.55 },
-  hudFade: { opacity: 0.22, pad: 14 },   // HUD panels fade while a threat is behind them (pad: stage units)
+  hudFade: { opacity: 0.5, pad: 14 },    // HUD panels fade while a threat is behind them (pad: stage units; critic L: 0.22 hid the clock)
   // Explore: red arrows at the screen edge pointing at enemies winding up an attack off-screen
   // (max arrows, inset from the edge in stage units, how far off-screen an enemy still counts in tiles).
   threatArrows: { max: 4, inset: 20, range: 12 },
@@ -251,11 +326,17 @@ export const JUICE = {
   },
   separation: { pad: 0.12, player: 0.16 },  // extra spacing between enemies / from the player (tiles)
   extraction: { scroll: 0.9, width: 1.6, height: 3.4 },
-  // Where each tower's drawn muzzle / emitter is in its 32×48 sprite (texels from the left, from the
-  // bottom, facing right), so shots, flashes and bolts start where the art draws its own flash.
+  // Where each tower's drawn muzzle / emitter is, per art (48 × 64 sprites, facing right), so shots, flashes and
+  // bolts start where the art draws its own flash: [x, y] with x on a 32-wide scale (16 = the sprite's centre;
+  // 48-px art: 16 + (column − 24)) and y = texels above the sprite's bottom. Keys: level 1 / 2 / 3 and the
+  // level-3 branches 3a / 3b (a missing one uses level 3); `color` = the flash colour.
   towerMuzzle: {
-    scrap_turret: [30, 13, '#fee761'], thorn_nest: [17, 30, '#99e550'], arc_spire: [16, 37, '#2ce8f5'],
-    mortar_pod: [25, 25, '#feae34'], snare_vine: [16, 20, '#b55088'], pulse_beacon: [16, 30, '#fee761'],
+    scrap_turret: { color: '#fee761', 1: [34, 34], 2: [34, 34], 3: [34, 36], '3a': [38, 36], '3b': [35, 36] },
+    thorn_nest: { color: '#99e550', 1: [16, 29], 2: [16, 32], 3: [16, 38] },
+    arc_spire: { color: '#2ce8f5', 1: [16, 39], 2: [16, 47], 3: [16, 48], '3a': [16, 57], '3b': [16, 44] },      // the orb
+    snare_vine: { color: '#b55088', 1: [16, 36], 2: [16, 41], 3: [16, 45], '3a': [16, 42] },
+    mortar_pod: { color: '#feae34', 1: [22, 35], 2: [22, 37], 3: [23, 39], '3b': [18, 31] },                    // 3b: front tube
+    pulse_beacon: { color: '#fee761', 1: [16, 41], 2: [16, 49], 3: [16, 54] },                                  // the lamp
   },
   // Defense feedback
   defense: {
