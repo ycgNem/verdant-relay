@@ -100,7 +100,7 @@ export class ResultsScene {
         ? el('div.record.amber', `★ Today's best Daily: ${r.victory ? 'a win' : `${nights} night${nights === 1 ? '' : 's'}`}`)
         : el('div.record.muted', `Today's best Daily: ${d?.victory ? 'a win' : `${d?.nights || 0} nights`}.`);
     } else if (win) record = el('div.record.good', meta.lifetime.victories > 1 ? `★ Victory #${meta.lifetime.victories}` : '★ Victory!');
-    else if (nights > 0 && nights >= best.nights && !best.victory) record = el('div.record.amber', `★ Best run so far: ${nights} night${nights === 1 ? '' : 's'}`);
+    else if (nights > 0 && nights >= best.nights && !best.victory && !r.debug) record = el('div.record.amber', `★ Best run so far: ${nights} night${nights === 1 ? '' : 's'}`);
     else record = el('div.record.muted', best.victory ? 'Your best: a full victory.' : `Your best: ${best.nights}/${CONFIG.nights} nights.`);
     const nextMod = OVERGROWTH.mods[OVERGROWTH.order[r.overgrowth]];
     const ogLine = ogNew && nextMod && !firstWin ? el('div.record.good', `★ Overgrowth ${r.overgrowth + 1} is open: ${nextMod.name} (pick it on the title screen).`) : null;

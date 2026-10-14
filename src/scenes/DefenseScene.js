@@ -348,6 +348,7 @@ export class DefenseScene {
   exit() {
     if (!this._alive) return;
     this._alive = false;
+    this._sideRO?.disconnect();
     const game = this.game;
     try { this.settingsOpen?.close?.(); } catch { /* overlay already gone */ }
     for (const [target, ev, fn, opt] of this._listeners) target.removeEventListener(ev, fn, opt);
@@ -1401,8 +1402,11 @@ export class DefenseScene {
     else this._renderPreview(head, body);
     // The coach hint docks under the paths in the wave preview (critic M2 P0-1: the night-6 boss hint pushed both
     // paths and Start Wave out of the panel), under the title otherwise.
-    const lanes = mode === 'preview' ? body.querySelectorAll(':scope > .df-lane, :scope > .df-threat1') : [];
+    // Preview: after the paths, the danger, the rewards and the night-1 zap line (QA 8 P2-1). A selected tower: at the
+    // end of its details (QA 8 P1-2: the Colossus hint pushed Upgrade / Sell below the fold).
+    const lanes = mode === 'preview' ? body.querySelectorAll(':scope > .df-lane, :scope > .df-threat1, :scope > .df-boons, :scope > .df-zapline') : [];
     if (lanes.length) lanes[lanes.length - 1].after(this.hintDock);
+    else if (mode === 'tower') body.append(this.hintDock);
     else if (this.hintDock.parentNode !== this.side || this.hintDock.nextSibling !== body) this.side.insertBefore(this.hintDock, body);
     // "▾ more" pinned to the body's bottom edge while content sits below the fold (_sideMore).
     this._moreCue = el('div.df-morecue');
@@ -1417,6 +1421,74 @@ export class DefenseScene {
     }
     this._renderLeakFeed();   // (ends with _keepActInView: the feed's height changes the body's)
     this._tipify(this.side);
+    this._fitBody();
+  }
+
+  /**
+   * The body scroller ends on a whole block, never through a line of text (QA 8 P1-2: the danger box, a hint and a
+   * button were cut mid-line under "▾ more"): when it overflows, its height stops at the last block (or row inside
+   * one) that fits above a full-width "▾ more" bar; the room left over goes under it. Re-run when the panel or the
+   * docked hint changes size (_watchSide).
+   */
+  _fitBody() {
+    const b = this.sideBody;
+    if (!b?.isConnected) return;
+    this._watchSide();
+    b.style.flex = ''; b.style.height = ''; b.style.marginBottom = '';
+    const H = b.clientHeight;
+    if (b.scrollHeight <= H + 1) { this._sideMore(); return; }
+    const cs = this._moreCue && getComputedStyle(this._moreCue, '::before');
+    const cueH = Math.ceil(parseFloat(cs?.height) || (parseFloat(cs?.fontSize) || 16) * 1.25 + 2);
+    const top = b.getBoundingClientRect().top - b.scrollTop;
+    const room = H - cueH;
+    let cut = 0;
+    const consider = (n) => {
+      if (n === this._moreCue || !n.getBoundingClientRect) return;
+      if (/absolute|fixed/.test(getComputedStyle(n).position)) return;   // (a hint's × sits at its top)
+      if (n.parentElement?.closest('.btn')) return;
+      const bot = Math.ceil(n.getBoundingClientRect().bottom - top);
+      if (bot <= room && bot > cut) cut = bot;
+    };
+    for (const c of b.children) {
+      consider(c);
+      // Rows inside a tall block (a hint's lines, the "Also tonight" list) count too, so one long block can't empty the
+      // view; never inside a path, which shows whole or not at all.
+      if (c !== this._moreCue && !c.classList.contains('df-lane') && c.getBoundingClientRect().bottom - top > room) {
+        for (const cc of c.querySelectorAll(':scope > *, :scope > * > *')) consider(cc);
+        // …and its text lines (a hint is one paragraph): the bottom of each line box, plus the block's padding.
+        const pad = Math.ceil(parseFloat(getComputedStyle(c).paddingBottom) || 0);
+        const tw = document.createTreeWalker(c, NodeFilter.SHOW_TEXT);
+        const rg = document.createRange();
+        while (tw.nextNode()) {
+          if (!tw.currentNode.textContent.trim() || tw.currentNode.parentElement?.closest('.btn')) continue;   // (never through a button)
+          rg.selectNodeContents(tw.currentNode);
+          for (const r of rg.getClientRects()) {
+            const bot = Math.ceil(r.bottom - top) + pad;
+            if (bot <= room && bot > cut) cut = bot;
+          }
+        }
+      }
+    }
+    if (cut < room * 0.5) { this._sideMore(); return; }   // (nothing sensible to stop on: leave it)
+    const hgt = cut + cueH;
+    b.style.flex = '0 0 auto';
+    b.style.height = `${hgt}px`;
+    b.style.marginBottom = `${H - hgt}px`;
+    this._sideMore();
+  }
+
+  /** Re-fit the body (one per frame) when the side panel or its docked hint changes size. */
+  _watchSide() {
+    if (this._sideRO || typeof ResizeObserver !== 'function') return;
+    let queued = false;
+    const later = () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => { queued = false; if (this.side?.isConnected) this._fitBody(); });
+    };
+    this._sideRO = new ResizeObserver(later);
+    this._sideRO.observe(this.side);
+    this._sideRO.observe(this.hintDock);
   }
 
   /**
@@ -1593,6 +1665,9 @@ export class DefenseScene {
     }
     const notes = [];   // lines under the Upgrade / Sell row
     let upBtn = null;
+    // The buttons you act on are pinned at the top of the footer, like Start Wave (QA 8 P1-2: with the Colossus hint up,
+    // Upgrade / Sell scrolled below the fold); the details above them scroll.
+    const pin = this.sideFoot;
     if (!up) {
       body.append(el('div.small.good', '★ Max level'));
     } else if (up.branches) {
@@ -1607,9 +1682,9 @@ export class DefenseScene {
         return button(el('span', {}, el('b', b.name), el('span.df-bline', b.line), costLine(cost, run.res)),
           () => this._upgrade(t, bk), { disabled: !!reason, reason, cls: 'df-half df-branch', title: `${b.name}: ${b.detail || b.line}${reason ? ` (${reason})` : ''}` });
       }));
-      body.append(row);
-      if (free) body.append(el('div.small.good', 'Free upgrade: tonight\'s reward.'));
-      else if (anyReason) body.append(el('div.small.bad', anyReason));
+      pin.append(row);
+      if (free) pin.append(el('div.small.good', 'Free upgrade: tonight\'s reward.'));
+      else if (anyReason) pin.append(el('div.small.bad', anyReason));
     } else {
       const cost = run.upgradeCost(t.rec);
       const ok = run.canAfford(cost);
@@ -1636,10 +1711,10 @@ export class DefenseScene {
       const left = Math.max(0, this.sellArmed.until - this.game.time);
       sellBtn.append(el('span.df-sellbar', { style: { animationDuration: `${DEFENSE.sellConfirm}s`, animationDelay: `${-(DEFENSE.sellConfirm - left).toFixed(2)}s` } }));
     }
-    body.append(el(`div.df-act${upBtn ? '' : '.df-act1'}`, {}, upBtn, sellBtn));
-    body.append(...notes);
+    pin.append(el(`div.df-act${upBtn ? '' : '.df-act1'}`, {}, upBtn, sellBtn));
+    pin.append(...notes);
     if (armed) {
-      body.append(el('div.small.bad', 'Click Sell again (or press S) to confirm.'));
+      pin.append(el('div.small.bad', 'Click Sell again (or press S) to confirm.'));
       requestAnimationFrame(() => sellBtn.scrollIntoView({ block: 'nearest' }));
     }
   }
@@ -1665,7 +1740,7 @@ export class DefenseScene {
 
     // Per-lane counts first (critic M2 P0-1: the list is the most important thing on the night screen; in a wave:
     // what's still to spawn). In prep each path is a row of icon chips (icon + ×N; name, role and NEW in the
-    // tooltip, NEW also as an amber corner dot), like the briefing; mid-wave the counts change, so rows stay.
+    // tooltip, NEW also as an amber corner dot), like the briefing (mid-wave too: the counts update).
     let perLane = this.wave.perLane;
     if (inWave && this.events) {
       perLane = this.lanes.map(() => new Map());
@@ -1679,21 +1754,14 @@ export class DefenseScene {
       const m = perLane[li];
       let n = 0;
       for (const c of m.values()) n += c;
-      const box = el(`div.df-lane${inWave ? '' : '.df-chips'}`, {}, el('div.df-lanehead', {}, el('b', lane.name.replace(/lane/i, 'path')), el('span.muted', ` ${n}`)));
+      // Chips mid-wave too (QA 8 P1-2: on night 6 the row form put the second path below the fold mid-wave).
+      const box = el('div.df-lane.df-chips', {}, el('div.df-lanehead', {}, el('b', lane.name.replace(/lane/i, 'path')), el('span.muted', ` ${n}`)));
       if (!m.size) box.append(el('div.small.muted', lull ? 'Quiet in this push.' : inWave ? 'All here.' : 'Quiet tonight.'));
       for (const [type, c] of m) {
         const d = DEFENSE_ENEMIES[type];
         const fresh = night > 1 && isNewType(type, night) && !inWave;
-        if (!inWave) {
-          box.append(el(`span.df-echip${d.boss ? '.boss' : ''}${fresh ? '.new' : ''}`, { title: `${d.name}${fresh ? ' (NEW tonight)' : ''} · ${d.role}${d.note ? `: ${d.note}` : ''}` },
-            this._iconFor('enemy', type, d.boss ? 28 : 18), el('b', `×${c}`)));
-          continue;
-        }
-        box.append(el(`div.df-erow${d.boss ? '.boss' : ''}`, { title: `${d.name} (${d.role}): ${d.note || ''}` },
-          el(`span.df-icoslot${d.boss ? '.boss' : ''}`, {}, this._iconFor('enemy', type, d.boss ? 28 : 18)),
-          el('span.df-ename', d.name),
-          el('span.grow'),
-          el('b', `×${c}`)));
+        box.append(el(`span.df-echip${d.boss ? '.boss' : ''}${fresh ? '.new' : ''}`, { title: `${d.name}${fresh ? ' (NEW tonight)' : ''} · ${d.role}${d.note ? `: ${d.note}` : ''}` },
+          this._iconFor('enemy', type, d.boss ? 28 : 18), el('b', `×${c}`)));
       }
       body.append(box);
     });
@@ -1716,13 +1784,10 @@ export class DefenseScene {
       const area = DISTRICTS[this.district]?.name || 'the area';
       // One row (critic H2 §4.5: the box clipped at 720p prep with a docked hint above it and mid-wave at 1080p); where
       // the area lies goes in the box's tooltip.
-      const via = dl ? el('div.small.df-via', `Comes down the ${dl.name.replace(/lane/i, 'path')}.`) : null;
       const where = dl ? ` It comes down the ${dl.name.replace(/lane/i, 'path')}${dir && faces ? ` (${area} lies ${dir})` : `, the side nearest ${area}`}.` : '';
-      if (inWave) body.append(el('div.df-threat', { title: `Danger from ${area}, the area you visited.${where}` }, el('div.df-tag.bad', '⚠ Danger tonight'), el('div.small', thr.text), via));
-      else {
-        body.append(el('div.df-threat.df-threat1', { title: `${thr.text} Danger from ${area}, the area you visited.${where}` },
-          el('div.small', {}, el('span.df-threatglyph', '⚠ '), thr.short || thr.text, dl ? el('span.df-via', `: ${dl.name.replace(/lane/i, 'path')}`) : null)));
-      }
+      // (Mid-wave too, QA 8 P1-2: the full box was cut to its heading in a lull.)
+      body.append(el('div.df-threat.df-threat1', { title: `${thr.text} Danger from ${area}, the area you visited.${where}` },
+        el('div.small', {}, el('span.df-threatglyph', '⚠ '), thr.short || thr.text, dl ? el('span.df-via', `: ${dl.name.replace(/lane/i, 'path')}`) : null)));
     }
     const boons = tn.boons || [];
     // Wave-size cuts stack under one cap (critic J2 C3): say the combined cut and the cap plainly.
@@ -1734,6 +1799,12 @@ export class DefenseScene {
     })() : null;
     if (boons.length || cutLine) {
       body.append(el('div.df-boons', {}, el('div.df-tag.good', '▲ Rewards'), boons.map((b) => el('div.small', b.text)), cutLine));
+    }
+    // Priority order (QA 8 P2-1): paths, danger, rewards, the night-1 zap line; tips and notes after.
+    if (!inWave && run.night <= 1 && !this.game.meta.hints?.relay_zap) {
+      // The Relay's own zap (RELAY_ZAP), said once on night 1 (critic M P1-6: after that it lives in the Relay bar's
+      // tooltip). In the body, under the paths (critic M2 P0-1: in the footer it pushed the enemy list out of view).
+      body.append(el('div.small.df-zapline', {}, el('span.df-zapglyph', 'ϟ '), RELAY_ZAP.hint));
     }
 
     // Boss tip (critic K #3: putting every tower on Toughest abandons the escort).
@@ -1778,16 +1849,14 @@ export class DefenseScene {
           r.down ? el('span.rl-down', ` · ${r.down}`) : null))));
     }
     if (!inWave) body.append(el('div.small.muted.df-note', 'Click a glowing square to build. Click a tower to upgrade it.'));
-    if (!inWave && run.night <= 1 && !this.game.meta.hints?.relay_zap) {
-      // The Relay's own zap (RELAY_ZAP), said once on night 1 (critic M P1-6: after that it lives in the Relay bar's
-      // tooltip). In the body, under the paths (critic M2 P0-1: in the footer it pushed the enemy list out of view).
-      body.append(el('div.small.df-zapline', {}, el('span.df-zapglyph', 'ϟ '), RELAY_ZAP.hint));
-    }
   }
 
   _renderFoot(foot) {
     const run = this.run;
     const prep = this.phase === 'prep';
+    // Intel and trades go in the body under the must-see blocks (paths, danger, rewards, the coach hint), not in the
+    // pinned footer (QA 8 P1-2 / P2-1: with both up, the footer left the second path below the fold).
+    const acts = el('div.df-prepacts');
     if (prep && this.sideMode === 'preview' && run.res.intel > 0) {
       // Intel: Decrypt (→ Research Data) and Sabotage (smaller wave, once per night). Shown with the
       // wave preview only, and only once you have Intel (a newcomer never sees two dead buttons).
@@ -1796,12 +1865,12 @@ export class DefenseScene {
       const dReason = run.missing(dCost);
       const sReason = run.sabotageBlocked();
       const cut = Math.round((1 - I.sabotageWave) * 100);
-      foot.append(el('div.df-intel', {},
+      acts.append(el('div.df-intel', {},
         button(el('span', {}, 'Read ', costLine(dCost, run.res), el('span.df-arrow', ` → +${I.decryptResearch} Research`)), () => this._decrypt(), {
           disabled: !!dReason, cls: 'df-half',
           title: `Read Intel: spend ${I.decryptCost} Intel for ${I.decryptResearch} Research (kept forever; spend it on new gear in Collection).${dReason ? ` ${dReason}.` : ''}`,
         }),
-        button(el('span', {}, 'Disrupt ', costLine(run.sabotageCost(), run.res), el('span.df-arrow', ` → ${cut}% fewer enemies`)), () => this._sabotage(), {
+        button(el('span', {}, 'Disrupt ', costLine(run.sabotageCost(), run.res), el('span.df-arrow', ` → −${cut}% enemies`)), () => this._sabotage(), {
           disabled: !!sReason, cls: 'df-half',
           title: `Disrupt the attack: spend ${I.sabotageCost} Intel for ${cut}% fewer enemies tonight (once per night).${sReason ? ` ${sReason}.` : ''}`,
         })));
@@ -1811,9 +1880,15 @@ export class DefenseScene {
     const X = DEFENSE.exchange;
     if (this.phase === 'prep' && this.sideMode === 'preview' && run.res.scrap >= X.showAt && run.exchangeLeft() > 0) {
       // One row: "Trade [⚙35 → ▣1] [⚙35 → ✿1]" (critic M2 P0-1: two-line buttons ate the enemy list's room).
-      foot.append(el('div.df-intel.df-exchange', {}, el('span.df-xlbl', 'Trade'), X.gives.map((k) => button(
+      acts.append(el('div.df-intel.df-exchange', {}, el('span.df-xlbl', 'Trade'), X.gives.map((k) => button(
         el('span', {}, costLine({ scrap: X.scrap }, run.res), el('span.df-arrow', '→'), costLine({ [k]: 1 })),
         () => this._exchange(k), { cls: 'df-half', title: `Trade ${X.scrap} Scrap for 1 ${k === 'circuits' ? 'Circuit' : 'Biofiber'} (${run.exchangeLeft()} trade${run.exchangeLeft() === 1 ? '' : 's'} left tonight).` }))));
+    }
+    if (acts.childNodes.length) {
+      const body = this.sideBody;
+      const at = this.hintDock.parentNode === body ? this.hintDock.nextSibling
+        : [...body.querySelectorAll(':scope > .df-lane, :scope > .df-threat1, :scope > .df-boons, :scope > .df-zapline')].pop()?.nextSibling;
+      body.insertBefore(acts, at || this._moreCue || null);
     }
     // Repair and Emergency Patch: side by side as half buttons when both show (keeps the footer short
     // so the wave preview above keeps its room), full width otherwise. Repairs work in prep and lulls.
@@ -1848,7 +1923,7 @@ export class DefenseScene {
       const r = this._readiness();
       const armed = this.startArmed && this.game.time < this.startArmed;
       // Not while picking or placing a tower (critic M2 P0-1: not actionable then, and it hid half the build list).
-      const showRd = this.sideMode !== 'build' && this.sideMode !== 'placing';
+      const showRd = this.sideMode === 'preview';   // (a selected tower pins its Upgrade / Sell here instead, QA 8 P1-2)
       const say = {
         weak: this.towers.length ? 'Too weak: expect heavy damage' : 'No towers yet: enemies will walk right in',
         risky: 'Risky: the Relay will take damage',

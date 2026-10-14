@@ -430,9 +430,9 @@ export class Assets {
     const dpr = window.devicePixelRatio || 1;
     const r = (boxPx * dpr) / Math.max(w, h);
     // Up to ~15% over the box is allowed (a 48 px tower in a 45 px slot stays 1× instead of halving).
-    // Creatures never shrink below 1× unless they are over twice the slot (critic H §2: a ½ Razorback was a
-    // 10-px smudge); the box grows to fit (screensKit.iconEl).
-    const ds = r >= 0.85 ? Math.max(1, Math.floor(r + 0.15)) : creature && r >= 0.5 ? 1 : 1 / Math.ceil(1 / r - 0.15);
+    // Creatures never shrink below 1× (critic H §2: a ½ Razorback was a 10-px smudge; QA 8 P2-2: ⅓ Ruin Guard and
+    // Colossus): one much bigger than the slot shows a 1× portrait crop instead (iconSpec).
+    const ds = r >= 0.85 ? Math.max(1, Math.floor(r + 0.15)) : creature ? 1 : 1 / Math.ceil(1 / r - 0.15);
     return ds / dpr;
   }
 
@@ -477,8 +477,16 @@ export class Assets {
     if (!k) return null;
     const def = this.manifest[k];
     const img = this.textures[k].image;
-    const f = this.iconFrame(k, CREATURE_KEYS.has(key) || CREATURE_KEYS.has(k));
+    const creature = CREATURE_KEYS.has(key) || CREATURE_KEYS.has(k);
+    let f = this.iconFrame(k, creature);
     const scale = this.iconScale(key, sizePx);
+    // A creature over 1.5× the slot at 1×: a portrait crop (front half, facing east; the top of a tall one), never
+    // a fractional shrink (QA 8 P2-2).
+    const maxT = Math.max(1, Math.floor((sizePx * 1.5) / scale));
+    if (creature && (f.w > maxT || f.h > maxT)) {
+      const cw = Math.min(f.w, maxT), ch = Math.min(f.h, maxT);
+      f = { sx: f.sx + (f.w - cw), sy: f.sy + (f.h > f.w ? 0 : Math.floor((f.h - ch) / 2)), w: cw, h: ch };
+    }
     const w = f.w * scale, h = f.h * scale;
     return {
       w, h,

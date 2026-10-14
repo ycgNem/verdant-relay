@@ -419,16 +419,14 @@
   font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); line-height: 1.1; padding: 0 round(calc(var(--u) * 2), 1px);
 }
 .df-side .df-hintdock { flex: none; }
-.df-side .df-leaks { flex: 0 1 auto; min-height: 0; overflow: hidden; }
+.df-side .df-leaks { flex: none; }   /* never squeezed through a line (QA 8 P1-2); the body gives way instead */
 .df-side .df-body { min-height: round(calc(var(--u) * 96), 1px); }
 /* The Relay's health digits (critic K2 §4: "94" read as "34" at 720p — white anti-aliased digits with a 1-px shadow
    on bright cyan lost the 9's left stroke): no shadow; dark navy over the cyan fill, white over the empty bar
    (one label, its colour split at the fill edge: --f is the fill fraction, set with the bar). */
-.df-relaybar .barlbl {
-  text-shadow: none; color: transparent;
-  background: linear-gradient(90deg, #0b1a2e calc(var(--f, 1) * 100%), #ffffff 0);
-  -webkit-background-clip: text; background-clip: text;
-}
+/* QA 8 P2-4: the two-tone label split a digit at the fill edge ("=2 / 100"): one colour with the one-font-pixel
+   ink outline instead, readable on the cyan fill and the empty bar alike. */
+.df-relaybar .barlbl { color: #fff; text-shadow: var(--ol); }
 .df-side.df-nodock .df-hintdock { display: none; }
 
 /* ---------------------------------------------------------------- wave preview as chips (critic M2 P0-1)
@@ -453,8 +451,10 @@
 /* "▾ more" pinned to the scroller's bottom edge (zero height: it never adds to the scroll height itself). */
 .df-morecue { position: sticky; bottom: 0; height: 0; flex: none; margin-top: round(calc(var(--u) * -6), 1px); pointer-events: none; }
 .df-morecue::before {
-  content: '▾ more'; position: absolute; right: 0; bottom: 0; padding: 0 round(calc(var(--u) * 4), 1px);
-  color: var(--text); background: rgba(24, 20, 37, 0.92); border: 1px solid var(--panel-edge); border-radius: round(calc(var(--u) * 2), 1px);
+  /* A full-width bar (QA 8 P1-2): the body's height stops on a whole block above it (DefenseScene._fitBody), so it
+     covers only the strip where the next block starts, never half a line of a visible one. */
+  content: '▾ more'; position: absolute; left: 0; right: 0; bottom: 0; padding: 0 round(calc(var(--u) * 4), 1px); text-align: right;
+  color: var(--text); background: #181425; border-top: 1px solid var(--panel-edge);
   font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); line-height: 1.25;
 }
 /* Trades on one row: a "Trade" label and two one-line buttons. */
@@ -462,3 +462,11 @@
 .df-xlbl { flex: none; align-self: center; color: var(--muted); }
 .df-exchange .btn.df-half { flex-direction: row; justify-content: flex-start; padding: round(calc(var(--u) * 2), 1px) round(calc(var(--u) * 2), 1px); }
 .df-exchange .btn.df-half > span { flex-wrap: nowrap; gap: round(calc(var(--u) * 2), 1px); }
+/* QA 8 P1-1: the Intel / trade arrow line may wrap inside its half button (it ran past the button and the panel). */
+.btn.df-half .df-arrow { white-space: normal; text-align: center; }
+/* QA 8 P2-1: the readiness verdict flows on after "Your defense ■□□" instead of taking a line of its own. */
+.df-side .df-rd-line { display: block; }
+.df-side .df-rd-line > .df-rd-k, .df-side .df-rd-line > .df-rd-t { display: inline; }
+.df-side .df-rd-line > .df-meter { display: inline-flex; vertical-align: middle; margin: 0 round(calc(var(--u) * 6), 1px) 0 round(calc(var(--u) * 4), 1px); }
+/* Intel / trades in the body (QA 8): one block, rows spaced like the footer's. */
+.df-prepacts { display: flex; flex-direction: column; gap: round(calc(var(--u) * 5), 1px); }

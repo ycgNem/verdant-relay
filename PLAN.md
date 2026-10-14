@@ -323,6 +323,13 @@ Wave C — the jungle gets content (critic J M3–M5, M7, N2, N4; critic L UX)
       (624 / 547) and Collection research (766 / 678) scroll, briefing card rows overprint, the night panel's second
       path drops below the fold and the trade row overflows. Needs: a two-column summary, workbench tabs, one research
       branch per tab, label-above-value briefing rows, a wider night panel at Large
+- [x] QA 8 fixes (`critique/qa_stage8.md`): the night body scroller ends on a whole block / line above a full-width
+      "▾ more" bar (`_fitBody`), Intel + trades moved from the pinned footer into the body under paths / danger /
+      rewards / zap line, path chips mid-wave too, the danger one line in waves and lulls, a selected tower's Upgrade
+      / Sell pinned in the footer (its hint docks at the end of the details), Disrupt "→ −10% enemies" wraps inside its
+      button, creature icons never below 1× (a 1× portrait crop when much bigger than the slot), the big-map legend
+      rebuilt on open (dusk bloom the same day), one-colour Relay bar label with `--ol`, no "best run" on debug defeats,
+      no break in "right-click"
 
 ### Next (deferred from the round-2 critics — start here)
 Economy and pacing

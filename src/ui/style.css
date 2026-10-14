@@ -249,6 +249,8 @@ html, body, #stage, #ui, #ui * { font-synthesis: none; font-synthesis-weight: no
 b, strong { font-weight: 400; filter: brightness(1.3); }
 
 /* Pause menus (explore + defense): one column, Resume on top, the destructive choice at the bottom. */
+/* Key words never break at their hyphen (QA 8 P2-6: "right-/click"). */
+.x-pause .modal b, .hint b { white-space: nowrap; }
 .x-pause .modal .row.end { flex-direction: column; align-items: stretch; gap: round(calc(var(--u) * 6), 1px); }
 .x-pause .modal .row.end .btn { text-align: center; }
 .x-pause .modal .row.end .btn.danger { margin-top: round(calc(var(--u) * 8), 1px); }

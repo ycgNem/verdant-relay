@@ -1484,6 +1484,7 @@ export class JungleScene {
     this.game.stage.style.cursor = open ? '' : 'none';
     if (open) {
       this._mapOpened = true;   // (the guided day's "map" coach step)
+      h.fillLegend?.();
       for (const b of this.game.ui.querySelectorAll('.x-banner')) b.remove();
       h.bigSteps.innerHTML = this._stepsHtml(true);
       this._sizeBig();
@@ -1879,12 +1880,20 @@ export class JungleScene {
     // Big map (Tab): pauses the day; zoom + pan.
     h.big = el('canvas.x-bigcanvas');
     // Beacons join the legend once you have met one (no unexplained terms on day 1).
+    // Rebuilt each time the map opens (QA 8 P2-3: a bloom met today, a beacon found, joined only the next day).
+    const legend = el('div.x-legend');
+    h.fillLegend = () => {
     const metPylon = this.data.pylons.some((p) => this.map.isExplored(p.x, p.z));
     const legendKeys = ['player', 'relay', this.state.pylons.size ? 'pylon_on' : null, metPylon ? 'pylon_off' : null, 'objective', 'optional', 'container',
       this.game.run.isGuidedDay() ? null : 'relic', 'ford', this.bosses?.lairs.length ? 'boss' : null,
       'forage_fruit', 'forage_fungus', [...(this.state.forage || [])].some((id) => id[0] === 'b') ? 'forage_bloom' : null].filter(Boolean);   // relics: strongboxes / shrines (not on the guided day); ford: the crossing to use; ☠ area bosses (day 3+); forage you have seen (the bloom once met)
-    const legend = el('div.x-legend', {}, legendKeys.map((k) =>
+    const key = legendKeys.join('|');
+    if (legend._key === key) return;
+    legend._key = key;
+    legend.replaceChildren(...legendKeys.map((k) =>
       el('span.x-leg', {}, JungleMap.legendIcon(k, 12 * this.game.u), MAP_MARKERS[k].label)));
+    };
+    h.fillLegend();
     h.bigSteps = el('div.j-bigsteps');
     h.bigmap = el('div.x-bigmap.ui-block', { style: { display: 'none' }, onclick: (e) => { if (e.target === h.bigmap) this.toggleMap(false); } },
       el('div.x-bigbox.x-panel', {},
