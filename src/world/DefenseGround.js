@@ -228,6 +228,13 @@ export function buildDefenseGround(game, map, { seed, laneTiles, pads = [], tint
   return {
     group, world,
     stats: { cards: all.length, dropped: all.length - cards.length },
+    // The baked ground under a rectangle of defense-space texels (32 per tile) as RGBA bytes, or null off the canvas
+    // (Fx.decal stains splats into it, critic H2 §7).
+    patch(tx, tz, w, h) {
+      const x = tx - X0 * 32, y = tz - Z0 * 32;
+      if (x < 0 || y < 0 || x + w > big.width || y + h > big.height) return null;
+      return g.getImageData(x, y, w, h).data;
+    },
     update(dt) { cmat.uniforms.uTime.value += dt; },
     dispose() {
       group.removeFromParent();
@@ -479,7 +486,9 @@ export function laneTint(tiles, color, alpha = 0.35, seed = 1) {
  * and chipped corners (DEFENSE_VIEW.plinth), so a row of pads doesn't read as a grid of identical squares.
  * `grow` (texels) widens it for bigger tower art (DefenseScene sizes it from the widest tower sprite).
  */
-export function makePlinth(seed, wood = false, grow = 0) {
+export function makePlinth(seed, wood = false, grow = 0, assets = null) {
+  const art = assets && plinthArt(seed, wood, assets);
+  if (art) return art;
   const r = (i) => hash2(seed * 13 + i, i * 7, 911);
   const PS = DEFENSE_VIEW.plinth || { w: [30, 30], top: [26, 26], face: [7, 7], chips: [0, 0] };
   const span = (a, i) => a[0] + Math.floor(r(i) * (a[1] - a[0] + 1));
@@ -569,6 +578,48 @@ export function makePlinth(seed, wood = false, grow = 0) {
   m.userData.zOffset = (PLINTH_H / 2 - (y0 + y1 + 1) / 2) / 32;
   m.userData.topW = bw / 32;
   m.userData.topH = tb / 32;
+  m.userData.faceZ = (y1 + 1 + PLINTH_FACE / 2 - (y0 + y1 + 1) / 2) / 32;   // front face's middle, from the pad centre
+  m.userData.dispose = () => { m.geometry.dispose(); mat.dispose(); tex.dispose(); };
+  return m;
+}
+
+/**
+ * The hand-made plinth (critic H2 §11): DEFENSE_VIEW.plinthArt — the wood key on wood pads, else one of its keys
+ * picked by the pad seed. Same mesh contract as the drawn one (flat, 1 texel = 1 px, zOffset / xOffset centre the
+ * manifest's "top" box [x0, y0, x1, y1] (texels, inclusive) on the pad; topW / topH; faceZ = the front face's middle).
+ * Null when the art isn't loaded.
+ */
+function plinthArt(seed, wood, assets) {
+  const PA = DEFENSE_VIEW.plinthArt;
+  if (!PA) return null;
+  let key = wood ? PA.wood : null;
+  if (!key) {
+    const ws = PA.weights || PA.keys.map(() => 1);
+    const sum = ws.reduce((a, b) => a + b, 0);
+    let q = hash2(seed * 13 + 5, 17, 433) * sum;
+    key = PA.keys.find((_, i) => (q -= ws[i]) < 0) || PA.keys[0];
+  }
+  const info = assets.spriteInfo?.(key);
+  const img = info?.tex?.image;
+  if (!img || !info.def?.top) return null;
+  const W = img.width, H = img.height;
+  const [x0, y0, x1, y1] = info.def.top;
+  const tex = info.tex.clone();
+  tex.needsUpdate = true;
+  const mat = new THREE.MeshLambertMaterial({ map: tex, transparent: true, alphaTest: 0.5, depthWrite: false });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(W / 32, H / 32), mat);
+  m.rotation.x = -Math.PI / 2;
+  // Mirror half the stone / rubble pads (seeded) so neighbours differ; timber keeps its lit side.
+  if (key !== PA.wood && hash2(seed, 29, 71) < 0.5) m.scale.x = -1;
+  m.renderOrder = -2;
+  m.userData.pxSnap = true;
+  const cx = (x0 + x1 + 1) / 2, cy = (y0 + y1 + 1) / 2;
+  m.userData.zOffset = (H / 2 - cy) / 32;
+  m.userData.xOffset = (m.scale.x < 0 ? cx - W / 2 : W / 2 - cx) / 32;
+  m.userData.topW = (x1 - x0 + 1) / 32;
+  m.userData.topH = (y1 - y0 + 1) / 32;
+  m.userData.faceZ = ((y1 + 1 + H) / 2 - cy) / 32;
+  m.userData.art = key;
   m.userData.dispose = () => { m.geometry.dispose(); mat.dispose(); tex.dispose(); };
   return m;
 }

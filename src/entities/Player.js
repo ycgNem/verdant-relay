@@ -11,7 +11,7 @@
 // mashing LMB flows through the combo; a Space press is buffered too (ROLL.buffer, critic I #7). Stamina is paid
 // when the blade lands: full price on a creature, a nest or a pod, a token on plants (critic I #4).
 //
-// Critic I additions: deflect / riposte (tryDeflect, DEFLECT), perfect dodge (ROLL.perfect), status effects
+// Critic I additions: deflect / riposte (tryDeflect, DEFLECT), perfect dodge (ROLL, nearMiss), status effects
 // (sap puddles, bleeding, the Thorn Stalker's root: STATUS), the machete throw (WEAPONS.*.throw), fast turns and
 // the corner nudge (CONFIG.player.turnAccel / nudge), and a collapse when you go down.
 //
@@ -66,7 +66,10 @@ export class Player {
     this.rollCd = 0;
     this.rollDir = { x: 1, z: 0 };
     this.rollQ = 0;            // a buffered Space press (s left)
+    this.rollFrom = { x, z };  // where the current roll started (near-miss perfect dodges)
     this.perfectUsed = false;
+    this.dodgedShown = false;  // DODGED shows once per roll
+    this.turnT = 0;            // keep the snappy turn accel this long after a reversal (CONFIG.player.turnHold)
     this.iframes = 0;
     this.guardT = 0;           // a deflect's own short invulnerability (no flicker)
     this.medCd = 0;
@@ -125,7 +128,7 @@ export class Player {
     const input = this.game.input;
     const sc = this.scene;
     this.iframes -= dt; this.medCd -= dt; this.hurtT -= dt; this.rollCd -= dt; this.comboT -= dt;
-    this.deflectT -= dt; this.deflectLock -= dt; this.riposteT -= dt; this.hackT -= dt; this.throwCd -= dt; this.guardT -= dt;
+    this.deflectT -= dt; this.deflectLock -= dt; this.riposteT -= dt; this.hackT -= dt; this.throwCd -= dt; this.guardT -= dt; this.turnT -= dt;
     this.stateT += dt;
     this.eFreeT = input.isDown('KeyE') ? 0 : this.eFreeT + dt;
     if (this.rimT > 0) { this.rimT -= dt; if (this.rimT <= 0) this.vis.userData.outlineOverride = null; }
@@ -262,8 +265,10 @@ export class Player {
       const ix = rooted ? 0 : mx, iz = rooted ? 0 : mz;
       const tx = ix * sp, tz = iz * sp;
       const ax = tx - this.vel.x, az = tz - this.vel.z;
-      // Snappy reversals (critic I #7): input against your motion turns you round at turnAccel; letting go stops at stopAccel.
-      const accel = !(ix || iz) ? C.stopAccel : ix * this.vel.x + iz * this.vel.z < 0 ? C.turnAccel : C.accel;
+      // Snappy reversals (critic I #7): input against your motion turns you round at turnAccel, kept for turnHold s
+      // after so the new way gets up to speed fast too (critic I2: 180 degrees in ~0.1 s); letting go stops at stopAccel.
+      if ((ix || iz) && ix * this.vel.x + iz * this.vel.z < 0) this.turnT = C.turnHold;
+      const accel = !(ix || iz) ? C.stopAccel : this.turnT > 0 ? C.turnAccel : C.accel;
       const al = Math.hypot(ax, az), maxA = accel * dt;
       if (al > maxA) { this.vel.x += (ax / al) * maxA; this.vel.z += (az / al) * maxA; } else { this.vel.x = tx; this.vel.z = tz; }
     }
@@ -328,15 +333,17 @@ export class Player {
       if (this.combo === 0) this.comboT = 0;
     }
     const spec = this.weapon.combo[step];
-    // Exhausted swings are slower and weaker.
-    const sw = this.exhausted ? { ...spec, time: spec.time * 1.35, hitAt: spec.hitAt * 1.35, damage: Math.round(spec.damage * 0.7) } : { ...spec };
-    // A riposte (the first light slash after a deflect): × DEFLECT.riposte.mult and it always staggers.
+    const sw = this._tired(spec);
+    // A riposte (the first light slash after a deflect): × DEFLECT.riposte.mult, it always staggers, reaches and
+    // lunges further; it is only spent when it connects (_connect), so a whiff doesn't waste it (critic I2 #7).
+    let lunge = spec.lunge;
     if (this.riposteT > 0 && !o.hack) {
       const R = DEFLECT.riposte;
       sw.damage = Math.round(spec.damage * (this.kit.riposteMult || R.mult));   // Riposte Master: ×3
       sw.stagger = Math.max(sw.stagger || 0, R.stagger);
+      sw.range += R.range;
       sw.riposte = true;
-      this.riposteT = 0;
+      lunge += R.lunge;
     }
     sw.step = step;
     sw.plantsOnly = !this._creatureNear(sw.range + 1.2);
@@ -346,16 +353,23 @@ export class Player {
     this.swingDir = dir;
     this.hitDone = false;
     this._enter('swing');
-    this._lunge(spec.lunge);
+    this._lunge(lunge);
     const anim = hasAnim(this.vis, 'slash') ? 'slash' : 'attack';
     setFacing(this.vis, this.swingDir.x, this.swingDir.z, true);
     this._playStrike(anim);
     this.game.sfx.play('slash');
   }
 
+  /** A swing spec as an exhausted arm throws it: slower and weaker (STAMINA.exhaustedSwing). */
+  _tired(spec) {
+    if (!this.exhausted) return { ...spec };
+    const X = STAMINA.exhaustedSwing;
+    return { ...spec, time: spec.time * X.time, hitAt: spec.hitAt * X.time, damage: Math.round(spec.damage * X.damage) };
+  }
+
   startChop() {
     const spec = this.weapon.chop;
-    this.swing = { ...spec, step: 3 };
+    this.swing = { ...this._tired(spec), step: 3 };
     this.swingDir = { x: this.aim.x, z: this.aim.z };
     this.hitDone = false;
     this.combo = 0; this.comboT = 0;
@@ -384,7 +398,8 @@ export class Player {
   startThrow() {
     const T = this.weapon.throw;
     if (!T) return;
-    if (this.blade) { this.scene.shots.recallBlade(this.blade); return; }
+    // F again calls it back, but not in the first `recallLock` s, so a double-tap doesn't waste the throw.
+    if (this.blade) { if (this.blade.t >= (T.recallLock || 0)) this.scene.shots.recallBlade(this.blade); return; }
     if (this.throwCd > 0) { this.scene.fx.text(this.pos, 'Not yet', { color: '#8b9bb4', y: this.vis.userData.vis.height + 0.3, life: 0.5, key: 'throwcd' }); return; }
     if (this.stamina < T.stamina * 0.5) {
       this.scene.fx.text(this.pos, 'Out of breath', { color: '#8b9bb4', y: this.vis.userData.vis.height + 0.3, life: 0.6, key: 'breath' });
@@ -452,8 +467,12 @@ export class Player {
     const hits = this.scene.meleeHit(this.pos.x, this.pos.z, a, S, power) || 0;
     S.plantsOnly = hits === 0;
     const plant = power >= 2 ? STAMINA.plantChop : S.step === 2 ? STAMINA.plantFinisher : STAMINA.plantSwing;
+    const wasTired = this.exhausted;
     this._spend(hits > 0 ? S.stamina : Math.min(S.stamina, plant * (this.kit.cutStamina || 1)));   // Brush Dancer: ½
+    // A heavy chop that lands holds stamina regen a little longer (critic I2 #6: the combo is the damage option).
+    if (power >= 2 && hits > 0 && !wasTired) this.staminaDelay = Math.max(this.staminaDelay, STAMINA.chopDelay);
     if (S.riposte && hits > 0) {
+      this.riposteT = 0;
       const fx = this.scene.fx;
       if (this.kit.riposteHeal) this.heal(this.kit.riposteHeal);   // Duelist
       fx.text(this.pos, 'RIPOSTE!', { color: '#fee761', cls: 'big', y: this.vis.userData.vis.height + 0.35, life: 0.7, key: 'riposte' });
@@ -478,6 +497,8 @@ export class Player {
     this._spend(cost);
     this.rollQ = 0;
     this.perfectUsed = false;
+    this.dodgedShown = false;
+    this.rollFrom = { x: this.pos.x, z: this.pos.z };
     this.deflectT = 0;
     const fx = this.scene.fx;
     // A roll breaks a root and stops bleeding (STATUS).
@@ -555,7 +576,8 @@ export class Player {
     fx.ring(this.pos, { color: D.ring, radius: D.ringRadius, life: 0.24 });
     fx.flash({ x: cx, y: 0.75, z: cz }, { color: '#ffffff', size: 0.75, life: 0.09 });
     fx.spark({ x: cx, y: 0.8, z: cz }, { color: D.spark, dir: { x: -dx / l, z: -dz / l }, count: 9, size: 0.5 });
-    fx.text(this.pos, 'DEFLECT', { color: '#ffffff', cls: 'big', y: this.vis.userData.vis.height + 0.3, life: 0.6, key: 'deflect' });
+    // One word per deflect (critic I2 #12): creatures add none of their own; a stationary area boss prints PARRIED itself.
+    if (!attacker?.stationary) fx.text(this.pos, 'DEFLECT', { color: '#ffffff', cls: 'big', y: this.vis.userData.vis.height + 0.3, life: 0.6, key: 'deflect' });
     flashVisual(this.vis, '#ffffff', 0.1);
     this.game.shake(3, 0.1);
     this.game.flash('#ffffff', 0.1);
@@ -572,7 +594,17 @@ export class Player {
     return true;
   }
 
-  /** An i-frame save early in a roll (ROLL.perfect, critic I #7): stamina back, a beat of slow-mo, a cyan rim. */
+  /**
+   * A near miss (critic I2 #8): an attack is committing now. `inZone(x, z)` says whether a point is inside what it
+   * hits; if you started a roll from inside it within ROLL.near s, that's a perfect dodge even though the roll carried
+   * you out and nothing touched you.
+   */
+  nearMiss(inZone) {
+    if (this.dead || this.state !== 'roll' || this.perfectUsed || this.stateT > ROLL.near) return;
+    if (inZone(this.rollFrom.x, this.rollFrom.z)) this._perfectDodge();
+  }
+
+  /** A perfect dodge (ROLL; critic I #7 / I2 #8): stamina back, a beat of slow-mo, a cyan rim. Once per roll. */
   _perfectDodge() {
     if (this.perfectUsed) return;
     this.perfectUsed = true;
@@ -641,9 +673,12 @@ export class Player {
   hurt(dmg, dx = 0, dz = 0, source = '') {
     if (this.dead) return false;
     if (this.dodging) {
+      // Any attack the roll's i-frames absorb is a perfect dodge (once per roll); DODGED shows once per roll, not
+      // every frame a beam or a cloud keeps touching you (critic I2 #8, #12).
       if (source) {
-        this.scene.fx.text(this.pos, 'DODGED', { color: '#2ce8f5', y: this.vis.userData.vis.height + 0.3, life: 0.5, key: 'dodged' });
-        if (this.stateT <= ROLL.perfect) this._perfectDodge();
+        if (!this.perfectUsed) this._perfectDodge();
+        else if (!this.dodgedShown) this.scene.fx.text(this.pos, 'DODGED', { color: '#2ce8f5', y: this.vis.userData.vis.height + 0.3, life: 0.5, key: 'dodged' });
+        this.dodgedShown = true;
       }
       this.scene.onPerfectDodge?.();
       return false;

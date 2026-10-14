@@ -19,7 +19,7 @@ import { BOSS, BOSSES } from '../data/bosses.js';
 import { DISTRICTS, DISTRICT_KEYS } from '../data/districts.js';
 import { nightTune, JUICE } from '../data/config.js';
 import { SPORES, ATMOS } from '../data/jungle.js';
-import { setAnim, updateVisual, setBaseColor, flashVisual } from '../core/Assets.js';
+import { setAnim, updateVisual, setBaseColor, flashVisual, addGroundRing } from '../core/Assets.js';
 import { bossLair, clearDisc } from '../world/JungleGen.js';
 import { FeralChief, setSpeedBuff } from './DayCreatures.js';
 import { el } from '../ui/ui.js';
@@ -27,6 +27,15 @@ import '../ui/objectives.css';
 
 /** A per-phase value: [phase 1, phase 2] or a plain number. */
 const pv = (v, phase) => (Array.isArray(v) ? v[Math.min(v.length, phase) - 1] : v);
+
+/** Phase 2's particle aura (BOSS.aura2[kind]): spores / embers / sparks / steam rising off the boss. */
+function bossAura(scene, kind, x, z, h, dt) {
+  const A = BOSS.aura2, a = A?.[kind];
+  if (!a || Math.random() > dt * A.rate) return;
+  const r = Math.random() * A.spread, t = Math.random() * Math.PI * 2;
+  scene.fx.burst({ x: x + Math.cos(t) * r, y: h * (0.25 + Math.random() * 0.5), z: z + Math.sin(t) * r * 0.6 },
+    { color: a[0], color2: a[1], count: 1, speed: 0.5, up: a[2], gravity: a[3], life: a[4], size: a[5] / 32 });
+}
 
 /** Positional sound with fallbacks (new names fall back to older ones). */
 function sfxAt(game, x, z, ...names) {
@@ -62,7 +71,8 @@ export class AreaBosses {
     const sc = this.scene;
     for (const L of this.lairs) {
       const s = L.site;
-      clearDisc(sc.data, s.x, s.z, BOSS.arena + L.def.radius);
+      // (The Pack Lord's lair is cleared wider: no x-ray silhouette fight in the brush, critic H2 §2.3.)
+      clearDisc(sc.data, s.x, s.z, Math.max(BOSS.arena + L.def.radius, L.def.kind === 'pack_lord' ? BOSS.packLord.clear : 0));
       const spot = this._spot(s.x, s.z, L.def.radius + 0.3);
       L.x = spot.x; L.z = spot.z;
       const Kind = KINDS[L.def.kind];
@@ -87,11 +97,15 @@ export class AreaBosses {
 
   update(dt) {
     const sc = this.scene, pl = sc.player, p = pl.pos;
+    // One fight at a time (critic H2 §5.2): while a boss is engaged no other one can start (its HUD bar never
+    // switches mid-fight); a blow on another boss meanwhile doesn't provoke it.
+    const busy = this.active && !this.active.dead && this.active.boss?.engaged ? this.active : null;
     for (const L of this.lairs) {
       const b = L.boss;
       if (!b || L.dead) { b?.update?.(dt); continue; }
       const d = Math.hypot(b.x - p.x, b.z - p.z);
-      if (!b.engaged && !sc.ending && !pl.dead && (d < BOSS.aggro || b.provoked)) this._engage(L);
+      if (busy && busy !== L) b.provoked = false;
+      else if (!b.engaged && !sc.ending && !pl.dead && (d < BOSS.aggro || b.provoked)) this._engage(L);
       if (b.engaged) {
         const far = Math.hypot(p.x - L.site.x, p.z - L.site.z) > BOSS.leash;
         L.away = far ? L.away + dt : 0;
@@ -110,11 +124,17 @@ export class AreaBosses {
     L.away = 0;
     this.active = L;
     b.onEngage?.();
-    sc._banner(L.def.name.toUpperCase(), L.def.intro);
-    if (!this._toldReward) {
-      this._toldReward = true;
-      sc.later(3.2, () => sc.toast(`Kill it and the ${DISTRICTS[L.area].name} sends no danger at night for the rest of the run`, 'amber', 4));
-    }
+    // One clean beat (critic H2 §5.1): its name and how it fights on the banner (which cuts a place name and holds
+    // the toasts); the first time today, what a kill earns follows as the banner's late line. The HUD bar (which
+    // names it too) waits for the banner, unless the boss is hit first.
+    const first = !this._toldReward;
+    this._toldReward = true;
+    const time = first ? BOSS.introTime[1] : BOSS.introTime[0];
+    this.barWait = time;
+    sc._banner(L.def.name.toUpperCase(), L.def.intro, {
+      prio: 2, time, cls: 'boss',
+      extra: first ? `Kill it and the ${DISTRICTS[L.area].name} sends no danger at night for the rest of the run` : null,
+    });
     sfxAt(this.game, b.x, b.z, `boss_wake_${L.def.kind}`, 'boss_roar', 'boss_cue');
     this.game.shake(4, 0.3);
     this.game.music?.play('lair');
@@ -126,8 +146,9 @@ export class AreaBosses {
     L.away = 0;
     if (this.active === L) this.active = null;
     if (recover) {
+      // Said only when it was hurt: an untouched boss has nothing to recover.
+      if (b.hp < b.maxHp) sc.toast(`You left the ${L.def.name}: it recovers`, 'amber', 3);
       b.reset();
-      sc.toast(`You left the ${L.def.name}: it recovers`, 'amber', 3);
     }
     if (!sc.ending) this.game.music?.play(sc.duskK > 0 ? 'dusk' : 'day');
   }
@@ -141,12 +162,16 @@ export class AreaBosses {
     run.clearBoss?.(L.area);
     this.killed.push(L.area);
     if (this.active === L) this.active = null;
-    sc._grantSkillPoint?.({ boss: true });
+    sc._grantSkillPoint?.({ boss: true, quiet: true });
     // The rare relic (relics stream), else a pile of parts.
-    const drop = sc.dropRelic?.(x, z, { rarity: BOSS.reward.relic });
+    const drop = sc.dropRelic?.(x, z, { rarity: BOSS.reward.relic, quiet: true });
     if (!drop) sc._spill(BOSS.reward.fallback, x, z, true);
-    sc._banner(`${L.def.name.toUpperCase()} KILLED`, `The ${DISTRICTS[L.area].name} sends no danger at night for the rest of the run`);
-    sc.later(1.2, () => sc.toast(`+${BOSS.reward.research} Research when the day ends · +1 skill point`, 'good', 3.5));
+    // The biggest moment of the day reads on its own (critic H2 §5.1): the banner first, the rewards as its late line
+    // (the relic's own label is left off: it would print over the banner).
+    sc._banner(`${L.def.name.toUpperCase()} KILLED`, `The ${DISTRICTS[L.area].name} sends no danger at night for the rest of the run`, {
+      prio: 2, time: BOSS.killTime,
+      extra: `+1 skill point · +${BOSS.reward.research} Research when the day ends${drop ? ' · it dropped a rare relic' : ''}`,
+    });
     sc.fx.slowMo?.(JUICE.slowmo?.bossDeath?.time ?? 0.6, JUICE.slowmo?.bossDeath?.scale ?? 0.3);
     sc.fx.hitStop(JUICE.hitStop.bossDeath ?? 0.14);
     this.game.shake(10, 0.6);
@@ -188,7 +213,9 @@ export class AreaBosses {
   _updateBar(dt) {
     const L = this.active && !this.active.dead ? this.active : null;
     const hud = this.scene.hud;
-    if (!L) {
+    // (While its name banner shows, the bar waits: one name on screen at a time — unless it is already hurt.)
+    this.barWait = (this.barWait || 0) - dt;
+    if (!L || (this.barWait > 0 && L.boss.hp >= L.boss.maxHp)) {
       if (this.bar) { this.bar.root.style.display = 'none'; this.bar.L = null; }
       return;
     }
@@ -209,7 +236,7 @@ export class AreaBosses {
     B.fill.style.width = `calc(${(f * 100).toFixed(2)}% - var(--u) * 2)`;
     B.lag.style.width = `calc(${(B.lagF * 100).toFixed(2)}% - var(--u) * 2)`;
     const note = b.barNote?.() || (b.phase === 2 ? 'Enraged' : '');
-    const cls = `j-bossbar${b.phase === 2 ? ' p2' : ''}${b.shielded?.() ? ' shield' : ''}`;
+    const cls = `j-bossbar${b.phase === 2 ? ' p2' : ''}${b.shielded?.() ? ' shield' : ''}${b.openT > 0 ? ' open' : ''}`;   // (open: a punish window)
     if (B.key !== `${cls}|${note}`) { B.key = `${cls}|${note}`; B.root.className = cls; B.sub.textContent = note; }
   }
 
@@ -234,7 +261,7 @@ class StationaryBoss {
     this.radius = L.def.radius;
     const night = this.game.run.night;
     this.dmgK = nightTune('enemyDamage', night);
-    this.maxHp = Math.round(BOSS.hp * nightTune('eliteHp', night));
+    this.maxHp = Math.round(BOSS.hp * (L.def.hpK ?? 1) * nightTune('eliteHp', night));
     this.hp = this.maxHp;
     this.phase = 1;
     this.engaged = false;
@@ -244,15 +271,39 @@ class StationaryBoss {
     this.lobs = [];
     this.teles = [];
     this.minions = [];
-    this.hurtT = 0; this.atkT = 0; this.roarT = 0; this._dt = 0;
-    this.vis = this.game.assets.makeVisual(L.def.sprite, {
+    this.hurtT = 0; this.atkT = 0; this.windT = 0; this.roarT = 0; this._dt = 0;
+    // The pattern (act): `step` in this phase's sequence, `busyT` the move under way, `gapT` the recovery after it,
+    // `openT` an opening (punish window), `spawned` minions released this fight (capped).
+    this.step = -1; this.busyT = 0; this.gapT = 0; this.openT = 0; this.pendingOpen = 0; this.spawned = 0; this._ph = 1;
+    this._visOpts = {
       ring: JUICE.hostileRingJungle || JUICE.hostileRing?.color || '#a22633',
       silhouette: ATMOS.silhouette.enemyDim, silhouetteSkipsMask: true,
-    });
+    };
+    this.visKey = L.def.sprite;
+    this.vis = this.game.assets.makeVisual(L.def.sprite, this._visOpts);
     this.vis.position.set(this.x, 0, this.z);
     setAnim(this.vis, 'idle');
     this.scene.three.add(this.vis);
     this.col = this.scene.world.addCollider({ x: this.x, z: this.z, r: this.radius * 0.8 });
+  }
+
+  /**
+   * Its look for a phase (critic H2 §2.1: phase 2 was only a tint): phase 2 swaps to the `<sprite>_p2` sheet (cracks,
+   * glowing veins, a hotter eye; same frame layout) when it is loaded, else the old BOSS.tint2 multiply.
+   */
+  _look(phase) {
+    const key = phase === 2 ? `${this.def.sprite}_p2` : this.def.sprite;
+    if (phase === 2 && !this.game.assets.hasSprite(key)) { setBaseColor(this.vis, BOSS.tint2); return; }
+    setBaseColor(this.vis, '#ffffff');
+    if (this.visKey === key) return;
+    const old = this.vis;
+    this.vis = this.game.assets.makeVisual(key, this._visOpts);
+    this.vis.position.copy(old.position);
+    this.vis.userData.alert = old.userData.alert;
+    setAnim(this.vis, this._anim || 'idle', true);
+    this.scene.three.add(this.vis);
+    this.game.assets.disposeVisual(old);
+    this.visKey = key;
   }
 
   get p() { return this.scene.player; }
@@ -265,15 +316,17 @@ class StationaryBoss {
   hurt(dmg, dx, dz, src) {
     if (this.dead) return;
     if (!this.engaged) this.provoked = true;
-    let k = this.damageTaken();
+    // Shield (the Brood Hive's brood) × an opening's punish multiplier × the phase-2 roar's armour.
+    const shield = this.damageTaken(), open = this.openT > 0;
+    let k = shield * (open ? this.def.punish?.mult ?? 1 : 1);
     if (this.roarT > 0) k *= BOSS.roarTaken;
     dmg = Math.max(1, Math.round(dmg * k));
     this.hp -= dmg;
     const fx = this.scene.fx, h = this.vis.userData.vis.height;
     fx.hitFlash(this.vis, JUICE.melee?.whiteFlash ?? 0.08);
-    fx.text({ x: this.x, z: this.z }, String(dmg), { color: k < 0.7 ? '#8b9bb4' : '#feae34', cls: 'elite', y: h + 0.4, life: 0.6, key: this, value: dmg });
+    fx.text({ x: this.x, z: this.z }, String(dmg), { color: open ? '#fee761' : k < 0.7 ? '#8b9bb4' : '#feae34', cls: open ? 'crit' : 'elite', y: h + 0.4, life: 0.6, key: this, value: dmg });
     fx.burst({ x: this.x - (dx || 0) * this.radius * 0.6, y: h * 0.4, z: this.z - (dz || 0) * this.radius * 0.6 }, { color: this.def.blood || '#7f9a3c', color2: '#ead4aa', count: 7, speed: 2.4, up: 1.8, life: 0.35, size: 2 / 32 });
-    if (k < 0.7 && Math.random() < 0.5) fx.text({ x: this.x, z: this.z }, 'SHIELDED', { color: '#8b9bb4', y: h + 0.8, life: 0.6, key: 'shield' });
+    if (shield < 0.7 && Math.random() < 0.5) fx.text({ x: this.x, z: this.z }, 'SHIELDED', { color: '#8b9bb4', y: h + 0.8, life: 0.6, key: 'shield' });
     this.game.sfx.playAt('hit', this.x, this.z);
     if (this.atkT <= 0) this.hurtT = BOSS.hurtFrame;
     if (this.hp <= 0) this._die();
@@ -282,14 +335,16 @@ class StationaryBoss {
 
   /** A deflected whip / lunge: it reels for a beat (all its moves wait). */
   deflected() {
+    // (The player's "DEFLECT" is the one word said: no second label over the boss, critic H2 §3.)
+    // A parried whip staggers it: a short opening (punish.parry s), its next move waits.
     for (const k of Object.keys(this.cd)) this.cd[k] += 1;
-    this.scene.fx.text({ x: this.x, z: this.z }, 'PARRIED', { color: '#ffffff', cls: 'big', y: this.vis.userData.vis.height + 0.3, life: 0.7 });
+    if (this.def.punish?.parry && this.openT <= 0) this._open(this.def.punish.parry, true);
   }
 
   _phase2() {
     this.phase = 2;
     this.roarT = BOSS.roar;
-    setBaseColor(this.vis, BOSS.tint2);
+    this._look(2);   // the _p2 sheet (else the tint)
     const fx = this.scene.fx;
     fx.ring({ x: this.x, z: this.z }, { color: '#ff0044', radius: 4, life: 0.6 });
     fx.burst({ x: this.x, y: 1, z: this.z }, { color: '#ff0044', color2: '#feae34', count: 30, speed: 3.5, up: 3, life: 0.7, size: 2 / 32 });
@@ -309,7 +364,7 @@ class StationaryBoss {
     this.endMoves?.();
     for (const l of this.lobs) this.game.assets.disposeVisual(l.vis);
     this.lobs = [];
-    setBaseColor(this.vis, '#ffffff');
+    setBaseColor(this.vis, '#ffffff');   // (a phase-2 sheet keeps its own dead frame)
     setAnim(this.vis, 'dead', true);
     this.vis.userData.alert = false;
     const fx = this.scene.fx, h = this.vis.userData.vis.height;
@@ -325,11 +380,12 @@ class StationaryBoss {
     this.phase = 1;
     this.roarT = 0;
     this.cd = {};
+    this.step = -1; this.busyT = this.gapT = this.openT = 0; this.pendingOpen = 0; this.spawned = 0; this._ph = 1; this.windT = this.atkT = 0;
     for (const t of this.teles) t.cancel?.();
     this.teles = [];
     this.sched = [];
     this.endMoves?.();
-    setBaseColor(this.vis, '#ffffff');
+    this._look(1);
   }
 
   /** True `every` s apart (with a little jitter); the first time after a short delay. */
@@ -342,7 +398,17 @@ class StationaryBoss {
   }
 
   later(t, fn) { this.sched.push({ t, fn }); }
-  playAttack(t = 0.32) { this.atkT = t; this.hurtT = 0; }
+  playAttack(t = 0.32) { this.atkT = t; this.windT = 0; this.hurtT = 0; }
+
+  /**
+   * Anticipation: the windup pose (strip frames 8–9) for `t` s, then the attack pose for `release` s, so the
+   * silhouette telegraphs every move before it lands. Returns t.
+   */
+  tell(t, release = 0.35) {
+    this.windT = t; this.atkT = 0; this.hurtT = 0;
+    this.later(t, () => this.playAttack(release));
+    return t;
+  }
 
   /** Ring telegraph at (x, z), then fn() when it commits. */
   ringAt(x, z, radius, time, color, color2, fn) {
@@ -361,6 +427,13 @@ class StationaryBoss {
   }
 
   /** Hit the player if they stand within a lane from (x, z) along dir, `len` long and `width` wide. */
+  /** Is the player inside that lane? */
+  _inLane(x, z, dir, len, width) {
+    const p = this.p, rx = p.pos.x - x, rz = p.pos.z - z;
+    const along = rx * dir.x + rz * dir.z, perp = Math.abs(rx * -dir.z + rz * dir.x);
+    return !p.dead && along >= -0.3 && along <= len + p.r && perp <= width / 2 + p.r * 0.5;
+  }
+
   hitLane(x, z, dir, len, width, dmg, knock = 0, deflectable = false) {
     const p = this.p;
     const rx = p.pos.x - x, rz = p.pos.z - z;
@@ -390,9 +463,14 @@ class StationaryBoss {
     if (!p) return null;
     const e = sc.spawnEnemy(type, p.x, p.z, { spawnIn: true, alerted: true });
     if (tint && e.vis) setBaseColor(e.vis, tint);
+    e.minion = true;   // a boss's minion: no loot, no kill-heals (JungleScene.onEnemyKilled)
     this.minions.push(e);
+    this.spawned++;
     return e;
   }
+
+  /** How many more minions it may release now: `max` alive at once, `cap` in the whole fight. */
+  minionRoom(max, cap) { return Math.max(0, Math.min(max - this.liveMinions(), cap - this.spawned)); }
 
   liveMinions() { this.minions = this.minions.filter((e) => !e.dead); return this.minions.length; }
 
@@ -411,20 +489,88 @@ class StationaryBoss {
       updateVisual(l.vis, dt);
       if (k >= 1) { this.lobs.splice(i, 1); this.game.assets.disposeVisual(l.vis); if (!this.dead) l.onLand(l.x1, l.z1); }
     }
-    this.hurtT -= dt; this.atkT -= dt; this.roarT -= dt;
+    this.hurtT -= dt; this.atkT -= dt; this.windT -= dt; this.roarT -= dt;
     if (!this.dead) {
       this.moves?.(dt);
       const busy = this.scene.ending || this.p.dead;
       if (this.engaged && this.roarT <= 0 && !busy) this.act(dt);
       this.vis.userData.alert = this.engaged;
-      const want = this.atkT > 0 ? 'attack' : this.hurtT > 0 ? 'hurt' : 'idle';
+      const want = this.atkT > 0 ? 'attack' : this.windT > 0 ? 'windup' : this.hurtT > 0 ? 'hurt' : 'idle';
       if (want !== this._anim) { setAnim(this.vis, want, true); this._anim = want; }
       if (this.roarT > 0 && Math.random() < dt * 20) this.scene.fx.burst({ x: this.x, y: 0.2, z: this.z }, { color: '#ff0044', count: 1, speed: 2.5, up: 2, life: 0.4, size: 2 / 32 });
+      if (this.phase === 2) bossAura(this.scene, this.def.kind, this.x, this.z, this.vis.userData.vis.height, dt);
     }
     updateVisual(this.vis, dt);
   }
 
-  act() {}
+  /**
+   * The fight (critic I2 #3): each phase runs its move PATTERN in order (bosses.js `pattern[phase]`; a '?' slot draws
+   * one move from `wild[phase]`), with `gap` s of recovery after each move. A move method starts its tell and
+   * telegraphs and returns how long it lasts. The big moves (`punish.after`) end in an OPENING: for `punish.time` s
+   * it is spent — no moves, × `punish.mult` damage taken, its bar says so (a parried whip opens it for
+   * `punish.parry` s). Phase 2 starts its own pattern from the top.
+   */
+  act(dt) {
+    this.tick?.(dt);
+    if (this._ph !== this.phase) { this._ph = this.phase; this.step = -1; this.busyT = 0; this.gapT = 0.4; this.pendingOpen = 0; this.openT = 0; }
+    if (this.busyT > 0) {
+      this.busyT -= dt;
+      if (this.busyT <= 0 && this.pendingOpen) { this._open(this.pendingOpen); this.pendingOpen = 0; }
+      return;
+    }
+    if (this.openT > 0) { this._opening(dt); return; }
+    if (this.gapT > 0) { this.gapT -= dt; return; }
+    const D = this.def, ph = this.phase, seq = pv(D.pattern, ph) || [];
+    if (!seq.length) return;
+    this.step = (this.step + 1) % seq.length;
+    let mv = seq[this.step];
+    if (mv === '?') { const w = pv(D.wild, ph) || []; mv = w[Math.floor(Math.random() * w.length)]; }
+    const t = (mv && this[mv]?.()) ?? 0.5;
+    this.move = mv;
+    this.busyT = t;
+    this.gapT = pv(D.gap, ph) ?? 0.8;
+    if (D.punish?.after?.includes(mv)) this.pendingOpen = D.punish.time;
+  }
+
+  /** Spent for `time` s: × punish.mult damage, no moves, a pulsing tell (flashes + the boss's own particles). */
+  _open(time, parry = false) {
+    const P = this.def.punish;
+    if (!P || this.dead) return;
+    this.openT = time;
+    this.pulseT = 0;
+    // The words go on the boss bar only (barNote: one place, not a second label over the boss that can sit on the
+    // bar when the boss is near the top of the view); in the world it's the gold ring and the flashing.
+    this.openLabel = parry ? 'Staggered' : P.label;
+    this.scene.fx.ring({ x: this.x, z: this.z }, { color: '#fee761', radius: this.radius + 0.8, life: 0.35 });
+    sfxAt(this.game, this.x, this.z, 'boss_open', 'glint');
+  }
+
+  _opening(dt) {
+    const P = this.def.punish;
+    this.openT -= dt;
+    this.pulseT -= dt;
+    if (this.pulseT <= 0) {
+      this.pulseT = 0.22;
+      flashVisual(this.vis, '#fee761', 0.07);
+      const h = this.vis.userData.vis.height;
+      this.scene.fx.burst({ x: this.x, y: h * 0.7, z: this.z }, { color: P.fx?.[0] || '#fee761', color2: P.fx?.[1] || '#ffffff', count: 5, speed: 1.2, up: P.up ?? 2, life: 0.5, size: 2 / 32, gravity: P.gravity ?? 2 });
+    }
+  }
+
+  /** The HUD bar's line: an opening says so; else the subclass's own (shield) or nothing. */
+  barNote() { return this.openT > 0 ? `${this.openLabel || this.def.punish.label}: hit it! (×${this.def.punish.mult} damage)` : ''; }
+
+  /** An anti-hug ring round itself (`M` = { radius, windup, damage, knock }): the move that reaches the chop's range. */
+  _ringSelf(M, colors, onHit) {
+    this.tell(M.windup);
+    this.ringAt(this.x, this.z, M.radius, M.windup, colors[0], colors[1], () => {
+      this.scene.fx.ring({ x: this.x, z: this.z }, { color: colors[2] || colors[1], radius: M.radius, life: 0.3 });
+      this.game.shake(5, 0.25);
+      onHit?.();
+      this.hitCircle(this.x, this.z, M.radius, M.damage, M.knock);
+    });
+    return M.windup + 0.25;
+  }
 
   dispose() {
     for (const t of this.teles) t.cancel?.();
@@ -439,19 +585,29 @@ class StationaryBoss {
 class ThornMother extends StationaryBoss {
   constructor(mgr, L) { super(mgr, L); this.def = { ...this.def, blood: '#7f9a3c' }; }
 
-  act() {
-    const D = this.def, ph = this.phase, dist = this.dist();
-    if (dist < D.whip.range + 0.5 && this.ready('whip', pv(D.whip.every, ph))) this.whip();
-    else if (dist < D.barrage.range && this.ready('barrage', pv(D.barrage.every, ph))) this.barrage();
-    if (ph === 2 && this.liveMinions() < D.brood.max && this.ready('brood', D.brood.every)) this.spawnMinion(D.brood.type);
+  // Moves (pattern in bosses.js): whip (lanes, deflectable: a parry staggers it), thorns (a ring round itself that
+  // reaches the chop's range), barrage (then it wilts: the opening), brood (phase 2 Crawlers, capped).
+  thorns() {
+    return this._ringSelf(this.def.thorns, ['#ff0044', '#4b8139', '#c23a3a'], () => {
+      const R = this.def.thorns.radius;
+      for (let i = 0; i < 14; i++) { const a = (i / 14) * Math.PI * 2; this.scene.fx.burst({ x: this.x + Math.cos(a) * R * 0.8, y: 0.2, z: this.z + Math.sin(a) * R * 0.8 }, { color: '#2a5628', color2: '#c23a3a', count: 3, speed: 1.6, up: 2.6, life: 0.4, size: 2 / 32 }); }
+      sfxAt(this.game, this.x, this.z, 'roots_burst', 'crack');
+    });
   }
 
-  onPhase2() { for (let i = 0; i < this.def.brood.at2; i++) this.spawnMinion(this.def.brood.type); }
+  brood() {
+    const B = this.def.brood, n = Math.min(pv(B.n, this.phase), this.minionRoom(B.max, B.cap));
+    if (!n) return this.whip();
+    this.tell(0.3);
+    for (let i = 0; i < n; i++) this.spawnMinion(B.type);
+    sfxAt(this.game, this.x, this.z, 'hive_spawn', 'nest_burst');
+    return 0.6;
+  }
 
   /** Vine lanes toward you (a fan of them in phase 2): deflectable. */
   whip() {
     const W = this.def.whip, n = pv(W.fan, this.phase), base = this.aimAt();
-    this.playAttack(W.windup + 0.2);
+    this.tell(W.windup);
     sfxAt(this.game, this.x, this.z, 'vine_whip_windup', 'windup');
     for (let i = 0; i < n; i++) {
       const a = base + (i - (n - 1) / 2) * W.spread;
@@ -466,24 +622,41 @@ class ThornMother extends StationaryBoss {
         sfxAt(this.game, ox + dir.x * W.range * 0.5, oz + dir.z * W.range * 0.5, 'vine_whip', 'crack');
       });
     }
+    return W.windup + 0.25;
   }
 
-  /** Spore pods lobbed round you: each lands in a ring; the first few leave a spore cloud. */
+  /**
+   * Spore pods lobbed round you (critic I2 #1: the telegraph tells the truth). A CLOUD pod's ring is the cloud's own
+   * size (SPORES.radius, spore green) and it leaves a cloud there (`cloudLife` s; at most `maxClouds` of hers at
+   * once); a HIT pod's ring (`radius`, red) is the whole of its damage. The first pod goes where you're heading.
+   */
   barrage() {
-    const B = this.def.barrage, n = pv(B.count, this.phase), clouds = pv(B.clouds, this.phase);
+    const B = this.def.barrage, n = pv(B.count, this.phase);
+    const now = this.scene.time;
+    this.clouds = (this.clouds || []).filter((t) => t > now);
+    let clouds = Math.min(pv(B.clouds, this.phase), pv(B.maxClouds, this.phase) - this.clouds.length);
     const p = this.p, v = p.vel || { x: 0, z: 0 };
-    this.playAttack(0.5);
+    // She rears back (`tell` s, the windup pose), then lobs: the pods are aimed at release.
+    this.tell(B.tell);
+    this.later(B.tell, () => this._lobPods(B, n, clouds, now, p, v));
+    return B.tell + B.fuse + 0.35;
+  }
+
+  _lobPods(B, n, clouds, now, p, v) {
     sfxAt(this.game, this.x, this.z, 'spore_barrage', 'lob');
     for (let i = 0; i < n; i++) {
-      let x = p.pos.x + v.x * B.fuse * 0.5, z = p.pos.z + v.z * B.fuse * 0.5;
-      if (i > 0) { const a = Math.random() * Math.PI * 2, r = 1.2 + Math.random() * (B.spread - 1.2); x += Math.cos(a) * r; z += Math.sin(a) * r; }
-      const cloud = i < clouds;
-      this.teles.push(this.scene.fx.ringTele({ x, z }, { radius: B.radius, color: SPORES.color, color2: '#7f9a3c', time: B.fuse, fade: 0.06 }));
+      let x = p.pos.x + v.x * B.fuse * B.lead, z = p.pos.z + v.z * B.fuse * B.lead;
+      if (i > 0) { const a = Math.random() * Math.PI * 2, r = B.near + Math.random() * (B.spread - B.near); x += Math.cos(a) * r; z += Math.sin(a) * r; }
+      const cloud = clouds-- > 0;
+      if (cloud) this.clouds.push(now + B.tell + B.fuse + B.cloudLife);
+      const r = cloud ? SPORES.radius : B.radius;
+      this.teles.push(this.scene.fx.ringTele({ x, z }, cloud
+        ? { radius: r, color: SPORES.color, color2: SPORES.color2, time: B.fuse, fade: 0.06 }
+        : { radius: r, color: '#ff0044', color2: '#feae34', time: B.fuse, fade: 0.06 }));
       this.lob('spore_pod', x, z, B.fuse, (lx, lz) => {
         this.scene.fx.burst({ x: lx, y: 0.3, z: lz }, { color: SPORES.color, color2: SPORES.color2, count: 14, speed: 2.4, up: 2, life: 0.5, size: 2 / 32 });
-        this.hitCircle(lx, lz, B.radius, B.damage, 3);
-        if (cloud) this.scene.spores?.cloudAt?.(lx, lz);
-        else this.game.sfx.playAt('spore_burst', lx, lz);
+        if (cloud) this.scene.spores?.cloudAt?.(lx, lz, { life: B.cloudLife, src: this.def.name });
+        else { this.hitCircle(lx, lz, B.radius, B.damage, 3); this.game.sfx.playAt('spore_burst', lx, lz); }
       });
     }
   }
@@ -494,37 +667,44 @@ class ThornMother extends StationaryBoss {
 class BroodHive extends StationaryBoss {
   constructor(mgr, L) { super(mgr, L); this.def = { ...this.def, blood: '#b55088' }; this.shieldT = 0; }
 
-  damageTaken() { const S = this.def.shield; return 1 - Math.min(S.max, this.liveMinions() * S.per); }
-  shielded() { return this.engaged && this.liveMinions() > 0; }
+  // The fight is the hive, not its brood (critic I2 #4): brood comes in waves from the pattern (`brood` move, at
+  // most `spawn.max` alive and `spawn.cap` in a fight), minions drop nothing and feed no kill-heals; the burst splits
+  // the shell open (the opening: no shield).
+  damageTaken() { if (this.openT > 0) return 1; const S = this.def.shield; return 1 - Math.min(S.max, this.liveMinions() * S.per); }
+  shielded() { return this.engaged && this.openT <= 0 && this.liveMinions() > 0; }
   barNote() {
+    if (this.openT > 0) return super.barNote();
     const n = this.liveMinions();
     if (!n) return this.phase === 2 ? 'Enraged' : '';
     return `Brood shield: it takes ${Math.round((1 - this.damageTaken()) * 100)}% less damage. Kill the Crawlers`;
   }
 
-  act(dt) {
-    const D = this.def, ph = this.phase, dist = this.dist();
-    if (this.liveMinions() < pv(D.spawn.max, ph) && this.ready('spawn', pv(D.spawn.every, ph))) {
-      this.playAttack();
-      this.spawnMinion(D.spawn.type);
-      sfxAt(this.game, this.x, this.z, 'hive_spawn', 'nest_burst');
-    }
-    if (dist < D.burst.radius + 3 && this.ready('burst', pv(D.burst.every, ph))) this.burst();
-    if (ph === 2 && dist < D.eggs.range && this.ready('eggs', D.eggs.every)) this.eggs();
-    // The shield shows: a pale ring pulses round the hive while its brood lives.
+  /** The shield shows: a pale ring pulses round the hive while its brood lives. */
+  tick(dt) {
     this.shieldT -= dt;
     if (this.shieldT <= 0 && this.shielded()) { this.shieldT = 0.9; this.scene.fx.ring({ x: this.x, z: this.z }, { color: '#8b9bb4', radius: this.radius + 0.5, life: 0.5 }); }
   }
 
+  /** A wave of brood crawls out (capped); with no room left it lobs eggs instead. */
+  brood() {
+    const S = this.def.spawn, n = Math.min(pv(S.n, this.phase), this.minionRoom(pv(S.max, this.phase), S.cap));
+    if (!n) return this.eggs();
+    this.tell(0.3);
+    for (let i = 0; i < n; i++) this.later(i * 0.25, () => this.spawnMinion(S.type));
+    sfxAt(this.game, this.x, this.z, 'hive_spawn', 'nest_burst');
+    return 0.6 + n * 0.25;
+  }
+
   onPhase2() {
-    for (let i = 0; i < this.def.spawn.at2; i++) this.spawnMinion(this.def.spawn.type);
+    const S = this.def.spawn, n = Math.min(S.at2, this.minionRoom(pv(S.max, 2), S.cap));
+    for (let i = 0; i < n; i++) this.spawnMinion(S.type);
     this.scene.toast('The hive splits open: more brood!', 'bad', 2.4);
   }
 
-  /** An egg burst round the hive: get out of the ring. Phase 2 hatches Skitters. */
+  /** An egg burst round the hive (it reaches the chop's range): get out of the ring. Then its shell gapes open. */
   burst() {
     const B = this.def.burst;
-    this.playAttack(B.windup + 0.3);
+    this.tell(B.windup);
     sfxAt(this.game, this.x, this.z, 'hive_swell', 'windup');
     this.ringAt(this.x, this.z, B.radius, B.windup, '#ff0044', '#b55088', () => {
       const fx = this.scene.fx;
@@ -533,27 +713,33 @@ class BroodHive extends StationaryBoss {
       this.game.shake(5, 0.25);
       sfxAt(this.game, this.x, this.z, 'egg_burst', 'nest_burst');
       this.hitCircle(this.x, this.z, B.radius, B.damage, B.knock);
-      if (this.phase === 2) for (let i = 0; i < B.hatch2.n; i++) this.spawnMinion(B.hatch2.type, 0.8, 2.6);
+      const n = this.phase === 2 ? Math.min(B.hatch2.n, this.minionRoom(pv(this.def.spawn.max, 2) + B.hatch2.n, this.def.spawn.cap)) : 0;
+      for (let i = 0; i < n; i++) this.spawnMinion(B.hatch2.type, 0.8, 2.6);
     });
+    return B.windup + 0.35;
   }
 
-  /** Egg sacs lobbed at you; each hatches a Skitter where it lands. */
+  /** Egg sacs lobbed at you (`n` per phase); in phase 2 each hatches a Skitter where it lands (within the cap). */
   eggs() {
-    const E = this.def.eggs, p = this.p;
-    this.playAttack(0.4);
+    const E = this.def.eggs, p = this.p, n = pv(E.n, this.phase);
+    this.tell(0.25);
     sfxAt(this.game, this.x, this.z, 'egg_lob');
-    for (let i = 0; i < E.n; i++) {
+    for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2, r = i ? 1 + Math.random() * 1.8 : 0;
       const x = p.pos.x + Math.cos(a) * r, z = p.pos.z + Math.sin(a) * r;
       this.teles.push(this.scene.fx.ringTele({ x, z }, { radius: E.radius, color: '#ff4d8d', color2: '#b55088', time: E.fuse, fade: 0.05 }));
       this.lob('spore_pod', x, z, E.fuse, (lx, lz) => {
         this.hitCircle(lx, lz, E.radius, E.damage, 2);
         this.scene.fx.burst({ x: lx, y: 0.3, z: lz }, { color: '#b55088', color2: '#ead4aa', count: 10, speed: 2, up: 2, life: 0.4, size: 2 / 32 });
-        const e = this.scene.spawnEnemy(E.hatch, lx, lz, { spawnIn: true, alerted: true });
         sfxAt(this.game, lx, lz, 'egg_hatch');
+        if (this.phase < 2 || this.spawned >= this.def.spawn.cap) return;
+        const e = this.scene.spawnEnemy(E.hatch, lx, lz, { spawnIn: true, alerted: true });
+        e.minion = true;
+        this.spawned++;
         this.minions.push(e);
       }, '#e890c0');
     }
+    return 0.6;
   }
 }
 
@@ -562,29 +748,45 @@ class BroodHive extends StationaryBoss {
 class Warden extends StationaryBoss {
   constructor(mgr, L) { super(mgr, L); this.def = { ...this.def, blood: '#8b9bb4' }; this.beams = []; }
 
-  act() {
-    const D = this.def, ph = this.phase;
-    if (this.beams.length) return;   // while the laser sweeps, nothing else
-    if (this.dist() < D.stomp.range && this.ready('stomp', D.stomp.cooldown)) this.stomp();
-    else if (this.dist() < D.laser.length + 3 && this.ready('laser', pv(D.laser.every, ph))) this.laser();
-    if (ph === 2 && this.liveMinions() < D.drones.max && this.ready('drones', D.drones.every)) {
-      for (let i = 0; i < D.drones.n; i++) this.spawnMinion(D.drones.type, 1, 3, D.drones.tint);
-      sfxAt(this.game, this.x, this.z, 'drones_deploy', 'alarm');
-      this.scene.toast('Security drones!', 'bad', 2);
-    }
+  // Moves (pattern in bosses.js): stomp (a shockwave ring that reaches the chop's range), mortar (strikes at and
+  // round you: no safe range), laser (then it overheats: the opening), drones (phase 2, capped).
+  drones() {
+    const D = this.def.drones, n = Math.min(D.n, this.minionRoom(D.max, D.cap));
+    if (!n) return this.mortar();
+    this.tell(0.3);
+    for (let i = 0; i < n; i++) this.spawnMinion(D.type, 1, 3, D.tint);
+    sfxAt(this.game, this.x, this.z, 'drones_deploy', 'alarm');
+    this.scene.toast('Security drones!', 'bad', 2);
+    return 0.6;
   }
 
   stomp() {
     const S = this.def.stomp;
-    this.playAttack(S.windup + 0.2);
     sfxAt(this.game, this.x, this.z, 'stomp_windup', 'windup');
-    this.ringAt(this.x, this.z, S.radius, S.windup, '#ff0044', '#feae34', () => {
-      this.scene.fx.ring({ x: this.x, z: this.z }, { color: '#feae34', radius: S.radius, life: 0.3 });
+    return this._ringSelf(S, ['#ff0044', '#feae34'], () => {
       this.scene.fx.crack?.({ x: this.x, z: this.z });
-      this.game.shake(5, 0.25);
       sfxAt(this.game, this.x, this.z, 'warden_stomp', 'crash');
-      this.hitCircle(this.x, this.z, S.radius, S.damage, S.knock);
     });
+  }
+
+  /** Strike markers: one where you're heading, the rest round you; each blows `fuse` s later (a bolt from the mast). */
+  mortar() {
+    const M = this.def.mortar, n = pv(M.n, this.phase), p = this.p, v = p.vel || { x: 0, z: 0 };
+    this.tell(0.25);
+    sfxAt(this.game, this.x, this.z, 'laser_charge', 'alarm');
+    for (let i = 0; i < n; i++) {
+      let x = p.pos.x + v.x * M.fuse * M.lead, z = p.pos.z + v.z * M.fuse * M.lead;
+      if (i > 0) { const a = Math.random() * Math.PI * 2, r = M.near + Math.random() * (M.spread - M.near); x += Math.cos(a) * r; z += Math.sin(a) * r; }
+      this.later(i * M.stagger, () => this.ringAt(x, z, M.radius, M.fuse, '#ff0044', '#feae34', () => {
+        const fx = this.scene.fx, h = this.vis.userData.vis.height;
+        fx.bolt(new THREE.Vector3(this.x, h * 0.9, this.z), new THREE.Vector3(x, 0.05, z), { color: '#ff2e2e', width: 2 / 32, core: 1 / 32, jag: 0.3, life: 0.12 });
+        fx.burst({ x, y: 0.2, z }, { color: '#feae34', color2: '#ff2e2e', count: 14, speed: 2.6, up: 2.4, life: 0.4, size: 2 / 32 });
+        fx.crack?.({ x, z });
+        sfxAt(this.game, x, z, 'zap', 'crash');
+        this.hitCircle(x, z, M.radius, M.damage, 3);
+      }));
+    }
+    return 0.5 + (n - 1) * M.stagger;
   }
 
   /**
@@ -595,12 +797,13 @@ class Warden extends StationaryBoss {
     const Lz = this.def.laser, n = pv(Lz.beams, this.phase);
     const aim = this.aimAt(), sign = Math.random() < 0.5 ? -1 : 1;
     const half = ((Lz.sweep / 2) * Math.PI) / 180;
-    this.playAttack(Lz.warn);
+    this.tell(Lz.warn, Lz.sweep / Lz.speed);
     sfxAt(this.game, this.x, this.z, 'laser_charge', 'alarm');
     for (let i = 0; i < n; i++) {
       const a0 = aim - sign * half + i * Math.PI;
       this.beams.push({ a: a0, end: a0 + sign * 2 * half, sign, t: -Lz.warn, meshes: this._beamMeshes(), hitT: 0 });
     }
+    return Lz.warn + Lz.sweep / Lz.speed;
   }
 
   _beamMeshes() {
@@ -644,7 +847,8 @@ class Warden extends StationaryBoss {
       const dir = this._placeBeam(b, true);
       if (Math.random() < dt * 30) this.scene.fx.burst({ x: this.x + dir.x * Lz.length, y: 0.1, z: this.z + dir.z * Lz.length }, { color: '#ff6a3d', color2: '#fee761', count: 2, speed: 1.6, up: 1.5, life: 0.3, size: 2 / 32 });
       b.hitT -= dt;
-      if (b.hitT <= 0 && this.hitLane(this.x, this.z, dir, Lz.length + 0.3, Lz.width, Lz.damage, 4)) b.hitT = 0.5;
+      // One hit (or one DODGED) per pass through the beam, not one a frame (critic I2 #12).
+      if (b.hitT <= 0 && this._inLane(this.x, this.z, dir, Lz.length + 0.3, Lz.width)) { b.hitT = 0.5; this.hitLane(this.x, this.z, dir, Lz.length + 0.3, Lz.width, Lz.damage, 4); }
       if (Math.random() < dt * 6) sfxAt(this.game, this.x + dir.x * Lz.length * 0.5, this.z + dir.z * Lz.length * 0.5, 'laser_sweep', 'zap');
       if (done) { for (const m of b.meshes) { m.removeFromParent(); m.geometry.dispose(); m.material.dispose(); } this.beams.splice(i, 1); }
     }
@@ -661,13 +865,8 @@ class Warden extends StationaryBoss {
 class DrownedEngine extends StationaryBoss {
   constructor(mgr, L) { super(mgr, L); this.def = { ...this.def, blood: '#5f9a86' }; this.waves = []; }
 
-  act() {
-    const D = this.def, ph = this.phase, dist = this.dist();
-    if (dist < D.blast.range && this.ready('blast', D.blast.cooldown)) this.blast();
-    else if (dist < D.surge.length && this.ready('surge', pv(D.surge.every, ph))) this.surge();
-    else if (dist < D.vents.range && this.ready('vents', pv(D.vents.every, ph))) this.vents();
-  }
-
+  // Moves (pattern in bosses.js): vents (rings at and round you), blast (a steam ring round itself that reaches the
+  // chop's range), surge (lanes + rolling waves; then its boiler vents: the opening).
   _steam(x, z, n = 10) {
     this.scene.fx.burst({ x, y: 0.1, z }, { color: '#e8f0f4', color2: '#9fb8c8', count: n, speed: 1.4, up: 4, life: 0.8, size: 3 / 32, gravity: -1.5, drag: 1.5 });
   }
@@ -675,7 +874,7 @@ class DrownedEngine extends StationaryBoss {
   /** Steam vents: rings under you (and round you); stand clear before they blow. */
   vents() {
     const V = this.def.vents, n = pv(V.n, this.phase), p = this.p, v = p.vel || { x: 0, z: 0 };
-    this.playAttack(0.4);
+    this.tell(0.25);
     sfxAt(this.game, this.x, this.z, 'steam_build', 'windup');
     for (let i = 0; i < n; i++) {
       let x = p.pos.x + v.x * V.windup * 0.4, z = p.pos.z + v.z * V.windup * 0.4;
@@ -689,12 +888,13 @@ class DrownedEngine extends StationaryBoss {
         });
       });
     }
+    return 0.6;
   }
 
   /** The surge: a water lane toward you, then a wave rolls down it. Phase 2: two lanes. */
   surge() {
     const S = this.def.surge, n = pv(S.lanes, this.phase), aim = this.aimAt();
-    this.playAttack(S.windup);
+    this.tell(S.windup, 0.5);
     sfxAt(this.game, this.x, this.z, 'water_surge', 'boss_roar');
     for (let i = 0; i < n; i++) {
       const a = aim + (n > 1 ? (i - 0.5) * 2 * S.spread : 0);
@@ -704,6 +904,7 @@ class DrownedEngine extends StationaryBoss {
       this.teles.push(lane);
       this.later(S.windup, () => { this.waves.push({ ox, oz, dir, pos: 0, hit: false }); this.game.shake(3, 0.2); });
     }
+    return S.windup + S.length / S.speed;
   }
 
   moves(dt) {
@@ -732,13 +933,10 @@ class DrownedEngine extends StationaryBoss {
 
   blast() {
     const B = this.def.blast;
-    this.playAttack(B.windup + 0.2);
     sfxAt(this.game, this.x, this.z, 'steam_build', 'windup');
-    this.ringAt(this.x, this.z, B.radius, B.windup, '#e8f0f4', '#ff0044', () => {
+    return this._ringSelf(B, ['#e8f0f4', '#ff0044', '#e8f0f4'], () => {
       for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; this._steam(this.x + Math.cos(a) * B.radius * 0.7, this.z + Math.sin(a) * B.radius * 0.7, 4); }
-      this.game.shake(5, 0.25);
       sfxAt(this.game, this.x, this.z, 'steam_blast', 'crash');
-      this.hitCircle(this.x, this.z, B.radius, B.damage, B.knock);
     });
   }
 }
@@ -754,11 +952,16 @@ const KINDS = { thorn_mother: ThornMother, brood_hive: BroodHive, warden: Warden
  */
 class PackLordEnemy extends FeralChief {
   constructor(scene, x, z, L) {
-    super(scene, 'feral_chief', x, z, { elite: true, guard: true });
+    super(scene, 'feral_chief', x, z, { elite: true, guard: true, visScale: BOSS.packLord.scale });
     this.lordOf = L;
+    // Presence (critic H2 §2.3: it read as one more Feral): drawn at a whole ×BOSS.packLord.scale, on a gold ring.
+    const PL = BOSS.packLord;
+    if (this.vis && PL.ring) addGroundRing(this.vis, PL.ring[1], PL.ring[0]);
     const night = this.game.run.night;
-    this.def = { ...this.def, name: L.def.name, drop: 0, thrust2: { ...this.def.thrust2, chance: 0.75, fromNight: 1 } };
-    this.maxHp = Math.round(BOSS.hp * nightTune('eliteHp', night));
+    this.def = { ...this.def, name: L.def.name, drop: 0, thrust2: { ...this.def.thrust2, chance: L.def.thrust2 ?? 0.75, fromNight: 1 } };
+    if (L.def.windup) this.windup = L.def.windup;   // a boss-readable lunge wind-up (s)
+    if (L.def.damageK) this.damage = Math.round(this.damage * L.def.damageK);
+    this.maxHp = Math.round(BOSS.hp * (L.def.hpK ?? 1) * nightTune('eliteHp', night));
     this.hp = this.maxHp;
     this.phase = 1;
     this.cryCd = 3;
@@ -766,10 +969,14 @@ class PackLordEnemy extends FeralChief {
 
   get ctl() { return this.lordOf.boss; }
 
+  /** A deflected lunge stuns it (ExploreEnemy); its rend waits that out — a parry is yours to punish. */
+  deflected(kind) { this.parriedT = 1.2; return super.deflected(kind); }
+
   hit(dmg, dx, dz, kb = 0, src = '', stagger = 0) {
     if (this.dead || this.returning) return;
     if (!this.ctl.engaged) this.ctl.provoked = true;
-    const k = this.roarT > 0 ? BOSS.roarTaken : 1;
+    // Winded after its war cry (the opening): × punish.mult; the phase-2 roar armours it.
+    const k = (this.roarT > 0 ? BOSS.roarTaken : 1) * (this.openT > 0 ? this.lordOf.def.punish?.mult ?? 1 : 1);
     super.hit(dmg * k, dx, dz, kb * 0.4, src, stagger * 0.5);
     if (!this.dead && this.phase === 1 && this.hp <= this.maxHp * BOSS.phase2) this._phase2();
   }
@@ -790,6 +997,7 @@ class PackLordEnemy extends FeralChief {
   update(dt) {
     if (this.dead) return;
     this.roarT = (this.roarT || 0) - dt;
+    if (this.phase === 2 && this.vis) bossAura(this.scene, 'pack_lord', this.x, this.z, this.vis.userData.vis.height, dt);
     if (this.returning) {
       // Walking home to its lair, ignoring you; it recovers when it gets there.
       const hx = this.ctl.homeX - this.x, hz = this.ctl.homeZ - this.z, d = Math.hypot(hx, hz);
@@ -804,15 +1012,28 @@ class PackLordEnemy extends FeralChief {
       return;
     }
     if (this.roarT > 0) { this._syncVisual(dt); return; }
+    this.openT = (this.openT || 0) - dt;
+    // Howling (the cry's wind-up): it stands and roars, which is the moment to close in.
+    if (this.crying > 0) {
+      this.crying -= dt;
+      this.vel.x *= 0.8; this.vel.z *= 0.8;
+      this._syncVisual(dt);
+      return;
+    }
     super.update(dt);
     if (this.dead || !this.ctl.engaged) return;
-    // The war cry.
-    const C = this.lordOf.def.cry;
+    // The war cry: a ring the size of its reach (`radius`), then it's winded (punish.time s, × punish.mult damage).
+    const C = this.lordOf.def.cry, P = this.lordOf.def.punish;
     this.cryCd -= dt;
     if (this.cryCd <= 0 && this.state !== 'windup' && this.state !== 'attack') {
       this.cryCd = pv(C.every, this.phase);
       const sc = this.scene;
-      sc.fx.ringTele({ x: this.x, z: this.z }, { radius: Math.min(C.radius, 6), color: '#feae34', color2: '#f0c040', time: C.windup, fade: 0.1 });
+      this.tele?.cancel?.();
+      this.tele = null;
+      this._dropToken?.();
+      this.state = 'chase';
+      this.crying = C.windup;
+      sc.fx.ringTele({ x: this.x, z: this.z }, { radius: C.radius, color: '#feae34', color2: '#f0c040', time: C.windup, fade: 0.1 });
       sfxAt(this.game, this.x, this.z, 'war_cry', 'boss_cue');
       sc.fx.text({ x: this.x, z: this.z }, 'WAR CRY', { color: '#f0c040', cls: 'big', y: this.vis.userData.vis.height + 0.4, life: 0.9 });
       this.ctl.later(C.windup, () => {
@@ -825,10 +1046,47 @@ class PackLordEnemy extends FeralChief {
         }
         if (this.phase === 2) {
           const live = sc.enemies.filter((e) => !e.dead && e.key === 'feral' && e.packOf === this.lordOf).length;
-          for (let i = 0; i < Math.min(C.summon2, C.max - live); i++) this.ctl.summon();
+          const n = Math.min(C.summon2, C.max - live, C.cap - (this.ctl.summoned || 0));
+          for (let i = 0; i < n; i++) this.ctl.summon();
         }
+        if (P) { this.openT = P.time; this.stun(P.time, P.label.toUpperCase(), '#fee761'); }
       });
+      return;
     }
+    this._rend(dt);
+  }
+
+  /**
+   * The rend (critic I2: a masher out-traded it): stand within `rend.range` and every `rend.every` s it plants its feet
+   * (`windup` s, a red ring of `radius`) and spins its blades round itself: roll out, or eat `damage` and a shove.
+   */
+  _rend(dt) {
+    const Rd = this.lordOf.def.rend, sc = this.scene, p = sc.player;
+    if (!Rd) return;
+    // (Its clock always runs, and it breaks a wind-up or a flinch: a hugging masher can't keep it busy. Never while
+    // winded or mid-lunge.)
+    this.rendCd = (this.rendCd ?? pv(Rd.every, this.phase)) - dt;
+    this.parriedT = (this.parriedT || 0) - dt;
+    if (this.rendCd > 0 || this.openT > 0 || this.parriedT > 0 || this.state === 'attack' || p.dead || Math.hypot(p.pos.x - this.x, p.pos.z - this.z) > Rd.range) return;
+    this.stunT = 0;
+    this.rendCd = pv(Rd.every, this.phase);
+    this.tele?.cancel?.();
+    this.tele = null;
+    this._dropToken?.();
+    this.state = 'chase';
+    this.crying = Rd.windup;   // (stands still, like the howl)
+    sc.fx.ringTele({ x: this.x, z: this.z }, { radius: Rd.radius, color: '#ff0044', color2: '#a22633', time: Rd.windup, fade: 0.08 });
+    sfxAt(this.game, this.x, this.z, 'rend_windup', 'windup');
+    this.ctl.later(Rd.windup, () => {
+      if (this.dead) return;
+      sc.fx.ring({ x: this.x, z: this.z }, { color: '#f0c040', radius: Rd.radius, life: 0.3 });
+      sc.fx.burst({ x: this.x, y: 0.5, z: this.z }, { color: '#a22633', color2: '#f0c040', count: 18, speed: 4, up: 1.5, life: 0.35, size: 2 / 32 });
+      sfxAt(this.game, this.x, this.z, 'rend', 'crack');
+      const dx = p.pos.x - this.x, dz = p.pos.z - this.z, d = Math.hypot(dx, dz) || 1e-4;
+      if (p.dead || d > Rd.radius + p.r * 0.5) return;
+      const dmg = Math.round(Rd.damage * nightTune('enemyDamage', this.game.run.night));
+      if (p.hurt(dmg, dx / d, dz / d, this.def.name)) { p.kb.x += (dx / d) * Rd.knock; p.kb.z += (dz / d) * Rd.knock; }
+    });
   }
 }
 
@@ -865,6 +1123,8 @@ class PackLordCtl {
     if (!p) return null;
     const e = sc.spawnEnemy(this.def.packType, p.x, p.z, atStart ? { guard: true } : { spawnIn: true, alerted: true });
     e.packOf = this.L;
+    e.minion = true;   // no loot, no kill-heals (JungleScene.onEnemyKilled)
+    if (!atStart) this.summoned = (this.summoned || 0) + 1;
     return e;
   }
 
@@ -881,7 +1141,17 @@ class PackLordCtl {
     }
     // Dragged too far from its lair: it walks home and recovers there (AreaBosses._disengage → reset()).
     const e = this.enemy;
-    if (this.engaged && !e.dead && Math.hypot(e.x - this.homeX, e.z - this.homeZ) > BOSS.leash + 6) this.mgr._disengage(this.L, true);
+    const away = Math.hypot(e.x - this.homeX, e.z - this.homeZ);
+    if (this.engaged && !e.dead && away > BOSS.leash + 6) this.mgr._disengage(this.L, true);
+    // Not in a fight (another boss holds the stage, or it only heard you): it never roams past BOSS.tether of its own
+    // lair (critic H2 §5.2: it chased the player into the Warden's fight); it walks back, quietly.
+    else if (!this.engaged && !e.dead && !e.returning && away > BOSS.tether) {
+      e.tele?.cancel?.();
+      e.tele = null;
+      e.returning = true;
+      e.alerted = false;
+      e.state = 'chase';
+    }
   }
 
   reset() {
@@ -896,8 +1166,14 @@ class PackLordCtl {
     e.returning = true;
     e.alerted = false;
     e.state = 'chase';
+    e.openT = 0; e.crying = 0;
+    this.summoned = 0;
     this.sched = [];
   }
+
+  /** The bar's line while it is winded (AreaBosses._updateBar). */
+  barNote() { const e = this.enemy, P = this.def.punish; return e.openT > 0 && P ? `${P.label}: hit it! (×${P.mult} damage)` : ''; }
+  get openT() { return this.enemy.openT || 0; }
 
   dispose() {}   // the creature is disposed with the scene's enemies
 }

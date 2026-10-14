@@ -86,28 +86,34 @@ hold **RMB** charge a heavy chop, release to swing (the first instant of an RMB 
 Every key but Esc can be rebound (Settings → Controls, §8); the mouse buttons are fixed.
 
 **Player:** 100 HP, ~5.6 tiles/s (shallow water ×0.55, mud ×0.82, ferns ×0.5; a roll in ferns ×0.6). Movement is snappy:
-input against your motion turns you round at 110 t/s² (a 180° in ~0.1 s), letting go stops you in ~0.25 tiles, and
+input against your motion turns you round at 110 t/s², kept 0.12 s after (a 180° to full speed in ~0.1 s, measured 85–100 ms), letting go stops you in ~0.25 tiles, and
 walking head-on into a trunk / rock / ruin (or a brush corner) whose edge is within ~0.45 tiles of your centre steers you
 round it (`CONFIG.player.turnAccel / stopAccel / nudge`; critic I).
 **Stamina** 100, paid when the blade lands: a swing that meets a creature, nest or pod costs 9–14 (chop 22), one that
 only meets plants or air costs 2 (finisher 3, chop 6) and keeps you at ×0.75 speed instead of ×0.3 — so cutting is a
 flowing verb, not a stamina tax. Roll 20; regen 40/s after 0.35 s; empty = exhausted (slower, weaker swings, until 35%,
-regen at full rate; spending while exhausted doesn't restart the regen delay, so it always ends). A Space press is buffered for 0.15 s (late in a roll, in its cooldown, before a chop lands).
-- **Machete** (`WEAPONS.machete`): 13 / 13 / 24 damage combo, 120° arcs, range ~1.5; each swing lunges a step.
-  The heavy **chop** (0.42 s charge) hits 40 in a 165° arc, staggers (interrupts wind-ups) and clears brambles.
+regen at full rate; spending while exhausted doesn't restart the regen delay, so it always ends; exhausted swings and
+chops are ×1.35 slower and ×0.7 weaker). A Space press is buffered for 0.15 s (late in a roll, in its cooldown, before a chop lands).
+- **Machete** (`WEAPONS.machete`): 13 / 13 / 28 damage combo (7 / 7 / 12 stamina), 120° arcs, range ~1.5; each swing
+  lunges a step. The heavy **chop** (0.42 s charge) hits 36 in a 165° arc, staggers (interrupts wind-ups), knocks hard
+  and clears brambles; it costs 30 stamina and holds regen 0.45 s. Critic I2: the combo is the damage option (paced
+  ~31–35 DPS against a dummy), the chop the stagger / crowd / brush tool (chop spam ~26 DPS, was 37).
   **Hack-through:** holding LMB while you walk swings on its own every ~0.28 s, along where you walk (unless you aim within
   60° of it), alternating the two light swings — thickets fall at ≥ 3 tiles/s.
 - **Deflect / riposte** (`DEFLECT`): for 0.14 s after an RMB press (at most one window per 0.5 s; a deflect re-arms it),
-  an attack from your front half is turned away — white ring, clang spark, a 0.09 s hit-stop, +15 stamina. A lunge leaves
-  the attacker reeling 1 s (elites 0.4 s) and your next light slash within 1 s is a **riposte** (×2.5 damage, always
-  staggers); a Spitter's glob is batted back for 25; a Razorback's charge: you sidestep and it takes 15 and reels 0.8 s;
-  a spear or bolt is knocked out of the air.
-- **Perfect dodge:** an i-frame save in the first 0.15 s of a roll refunds 15 stamina, slows time ×0.4 for 0.2 s and
-  flashes a cyan rim (once per roll).
+  an attack from your front half is turned away — white ring, clang spark, a 0.09 s hit-stop, +15 stamina, one word
+  ("DEFLECT"). A lunge leaves the attacker reeling 1 s (elites 0.4 s) right where it is (no shove), and your next light
+  slash within 1 s is a **riposte** (×2.5 damage, always staggers, +0.5 reach and a longer lunge; a riposte that hits
+  nothing isn't spent); a Spitter's glob is batted back for 25; a Razorback's charge: you sidestep and it takes 15 and
+  reels 0.8 s; a spear or bolt is knocked out of the air.
+- **Perfect dodge** (once per roll): any attack your roll's i-frames absorb, or a near miss — an attack committing (a
+  lunge, charge, stomp, Stalker eruption, glob or Bloater burst) within 0.2 s of you rolling out of its zone, whichever
+  way you rolled. It refunds 15 stamina, slows time ×0.4 for 0.2 s and flashes a cyan rim. DODGED shows once per roll.
 - **Machete throw** (F, `WEAPONS.*.throw`): 0.25 s wind-up, 25 stamina, 3 s cooldown. It flies 6 tiles at 16 t/s, does 18
   to everything it passes (piercing), cuts ferns and thickets on its line (a bramble, trunk, rock or ruin stops it), then
   flies back within 0.4 s (9 on the way back). While it's out LMB is a **shove** (4 damage, a big push, no cutting); F
-  again calls it back. It answers Spitters behind thickets and sets up wall splats.
+  again calls it back (not in the first 0.35 s, so a double-tap doesn't waste it). It is still the machete: relic damage
+  (Whetstone, Glass Machete, Hunter's Fang) and Serrated Edge apply. It answers Spitters behind thickets and sets up wall splats.
 - **Parang** (unlock): slower, harder, cuts brambles with any swing.
 - Every swing hits all enemies, nests and undergrowth tiles in its arc. **Cutting is loud**: wildlife nearby comes to look.
 - **Status effects** (`STATUS`): a Spitter's sap puddle (2 s) slows you ×0.6 and a roll out of it costs +10 stamina; a
@@ -174,15 +180,20 @@ Feral camps hold 2–4 Feral Scavengers. Walkers never spawn inside brush (an op
 - **Thorn Stalker** (night 3+, in fern-heavy chunks, `POP.stalker`): travels *under* the brush — only rustling leaves
   and a soft chk-chk give it away — and surfaces under you (a 1-tile ring for 0.7 s) for 16 damage and a 0.6 s root
   (a roll breaks it), then stays out 1.5 s (the only time you can hit it) and burrows again. Stay out of the ferns, or
-  listen. (No art of its own yet: a re-tinted Crawler.)
+  listen. Its own sheet (`thorn_stalker`: a red-violet body with a bone-white thorn crest), not a re-tinted Crawler.
 - **Bloater** (day 4+, `DAY_CREATURES.bloater`: a 30% chance per chunk × the area's weight, most in the Greenhouse; about
-  1 in 10 creatures): a slow Crawler-bodied sac (50 HP, 1.7 t/s) that walks at you, swells for 0.9 s (a spore ring) and
-  bursts into a spore cloud (10 damage + the cloud); it bursts when killed too. A heavy chop instead **launches** it 3.5
-  tiles along the swing, where it bursts away from you. Back off from the swell, or chop it from range.
+  1 in 10 creatures): a slow, dark sac-backed beast (`bloater`: its own sheet, a lime spore sac on its back; 50 HP,
+  1.7 t/s) that walks at you, swells for 0.9 s (a spore ring) and
+  bursts into a spore cloud (10 damage + the cloud); it bursts when killed too. Any heavy chop, at any health,
+  **launches** it 3.5 tiles along the swing, where it bursts away from you. Back off from the swell, or chop it away.
 - **Feral Chief** (day 5+, `DAY_CREATURES.chief`): leads every Feral camp (72 HP, gold-tinted Feral); Ferals within 8
   tiles of it move 20% faster. Kill it first.
 - HP breakpoints: one light slash kills a Skitter on nights 1–3, two kill a Crawler through night 3.
-Every big attack is telegraphed. The always-on ring under a creature is a dim dark red, so wind-up rings pop.
+Every big attack is telegraphed. A creature's dim red ground ring shows only while it is a threat (critic H2 §5.8,
+`HUD.ringNear`): winding up or attacking, holding an attack slot, alerted and within 2.6 tiles of you, and always on
+elites and area bosses; the rest keep only their blob shadow, so a calm herd doesn't paint the ground red. Kills leave
+a splat in the creature's colour (sap for Crawlers / Burrowers / Seed Carriers, blood for Ferals / Razorbacks / Stalkers,
+magenta for Skitters, acid for Spitters / Bloaters) stained into the ground under it: never darker than that ground.
 Kills sometimes drop 1–3 Scrap (a top-up, not income).
 **Attack tokens** (`CONFIG.expedition.attackers`): at most 2 melee/charge attackers wind up on you at once (3 from
 night 5), no new wind-up starts for 1 s after a melee hit lands. Anything that can't attack yet (no token, or still on
@@ -190,8 +201,10 @@ cooldown) holds a slot ~2.4 tiles out on your flanks or back (120–180° off yo
 of walking in; after a lunge the attacker hops 0.7 tiles back; bodies keep 1.45× their radii from you (`CROWD`). With
 the 0.6 s post-hit i-frames a pack can't chain hits: a Feral + 2 Crawlers on night 2 deals ~30 HP in 6 s to a player
 standing still.
-**Environmental kills:** a creature knocked back at ≥ 4 t/s into a trunk, rock or ruin takes +10 and reels 0.5 s; into a
-bramble +14 and 0.6 s, and nicks it (`SPLAT`). Spore clouds hurt creatures too (6 per 0.6 s) and choke them (×0.6 speed,
+**Environmental kills:** a creature knocked back at ≥ 2.5 t/s into a trunk, rock or ruin (with 0.3 tiles of slack: a
+knock that ends just short still slams it) takes +10 and reels 0.5 s; into a bramble +14 and 0.6 s, and nicks it; a
+Razorback charging into a trunk, rock or ruin takes +12 and its stun (`SPLAT`). Bark chips, falling leaves, a dust ring,
+a crack, a hit-stop and a shake sell it; a finisher or a chop into nearby cover splats about one fight in two. Spore clouds hurt creatures too (6 per 0.6 s) and choke them (×0.6 speed,
 no new wind-ups); Ferals, Crawlers and Razorbacks set pods off, a charging Razorback pops them, and a heavy chop
 launches a pod 3.5 tiles along your swing, where it bursts.
 
@@ -239,24 +252,52 @@ while you work. **Power Surge**: hold 3 s, towers deal 15% more damage tonight; 
 Cache**: guards (the night's guard cap, 2–4) burst out at 7 tiles; hold 2 s for 30 Scrap, 2 Circuits, 2 Biofiber. The
 summary lists it under Bonus; a flag reward joins tonight's rewards.
 
-**Area bosses** (`src/data/bosses.js`, `src/entities/AreaBoss.js`; critic J M5): from day 3 every area whose boss still
-lives has it in a lair at its lost major site (else its furthest lost site), brush cleared round it, marked ☠ on the
-minimap and big map and on the briefing card ("Boss: ☠ Thorn Mother · Optional"). Nothing roams in a lair, and no goal,
-bonus task or event uses it. Walk within 9 tiles and the fight starts: its name and line as a banner, the boss music,
-a big HP bar top centre (a mark at 50%), and the camera leans 45% toward it. HP 450 × the night's elite multiplier (945
-on day 3). At 50% it roars (1.4 s, taking 30% damage), turns red and switches to phase 2. Walk 20+ tiles from the lair
-for 4 s (or go down) and it recovers to full. Every move has a ground telegraph and every hit can be rolled through.
-- **Thorn Mother** (Canopy Greenhouse): vine whips (1, phase 2: 3 fanned red lanes 5.4 tiles long, 0.65 s, 16 dmg) and a
-  spore barrage (3 / 4 pods lobbed round you: rings, then clouds); phase 2 adds Crawler brood.
-- **Brood Hive** (Overgrown Market): keeps up to 4 / 5 Crawlers; each live one shields it 20% (up to 70%; the bar turns
-  grey, "Brood shield"); a 3.2-tile burst ring every 9 / 6.5 s; phase 2 lobs eggs that hatch Skitters.
-- **Security Warden** (Municipal Data Center): a sweeping laser (a thin aim line for 0.85 s, then a 150° sweep at
-  80°/s, 9.5 tiles, 18 dmg; phase 2: two opposite beams) and a 2.4-tile stomp when you're close; phase 2 calls
-  security drones (steel-tinted Skitters).
-- **Drowned Engine** (Flooded Transit Station): steam vents under and round you (3 / 5 rings), a surge (a 14-tile water
-  lane, then a wave rolls down it; phase 2: two lanes) and a close-range blast.
-- **Pack Lord** (Collapsed Residential Block): the mobile one, a deep-red Feral Chief with boss HP, 4 Ferals and a
-  war cry (a ring: Ferals inside move 30% faster for 5 s; phase 2 it summons 2 more and rages at ×1.2 speed).
+**Area bosses** (`src/data/bosses.js`, `src/entities/AreaBoss.js`; critic J M5, redesigned after critic I2): from day 3
+every area whose boss still lives has it in a lair at its lost major site (else its furthest lost site), brush cleared
+round it, no crate, strongbox or data log within 6.5 tiles (they're moved 7–9.5 tiles out) and no wild spore pods, marked ☠ on the minimap
+and big map and on the briefing card ("Boss: ☠ Thorn Mother · Optional"). Nothing roams in a lair, and no goal, bonus
+task or event uses it. Lairs sit at least aggro + leash + 6 tiles apart, and **only one boss fights at a time**: while
+one is engaged the others stay asleep, so the HP bar never switches mid-fight; the Pack Lord never follows you more than
+9 tiles from its own site unless it's the one fighting (then it walks home quietly), and leaving a boss you never hurt
+says nothing. Walk within 9 tiles and the fight starts with one clean beat: its name and line as a red banner (the
+first time also "Kill it and the <area> sends no danger at night for the rest of the run"), the boss music, the camera leans 45% toward it,
+and the big HP bar top centre (a mark at 50%) once the banner has gone. A kill is a KILLED banner first, its rewards one
+line under it 1.2 s later. Phase 2 swaps the boss to its cracked, glowing `_p2` sheet with a drifting particle aura;
+the Pack Lord is drawn ×2 with a gold ring in a 4-tile clearing. HP 600 × the night's elite multiplier (1260 on
+day 3; the Pack Lord ×0.75). At 50% it roars (1.4 s, taking 30% damage), turns red and switches to phase 2. Walk 20+
+tiles from the lair for 4 s (or go down) and it recovers to full. Every move has a ground telegraph and every hit can be
+rolled through.
+
+A boss fight is a **pattern**, not moves on timers: each phase loops a fixed move order with one or two "wild" slots,
+each move announced by the boss's windup pose (its silhouette rears) and a ground telegraph, then a short recovery. The
+big move of each boss ends in an **opening**: for ~2–2.6 s it is spent (it flashes yellow, the bar turns yellow and
+reads e.g. "Overheated: hit it! (×1.5 damage)"), makes no moves and takes ×1.5 damage. No spot is safe: each
+stationary boss has a ring round itself (3.4–3.7 tiles: past the machete's reach) and a move that reaches you at range.
+Its minions (brood, drones, the pack) drop nothing and feed no kill-heals (Second Wind, Blood Moss), and are capped per
+fight. Aim: a player who reads the telegraphs and rolls wins in ~45–90 s taking 20–60 damage on day 3–4; standing and
+mashing loses to the Thorn Mother and the Warden.
+- **Thorn Mother** (Canopy Greenhouse): whip → (thorns | whip) → whip → spore barrage → *Wilted*. Whips: a red lane
+  (phase 2: 3 fanned) 5.4 tiles long, 0.7 s, 14 dmg, deflectable — a parried whip staggers her for 1.2 s (an opening).
+  Thorns: a 3.5-tile ring round her. Barrage: she rears back, then lobs 3 / 4 pods: a spore-green ring the cloud's own
+  size (1.9) for the cloud pod (one per barrage, at most 1 / 2 of her clouds at once, 3.5 s), red 1-tile rings for the
+  rest. Phase 2 adds Crawler brood (2 at a time, 6 a fight). Spore clouds draw their edge, so you can see where it ends.
+- **Brood Hive** (Overgrown Market): brood → eggs → (eggs | burst) → burst → *Split open*. Brood: 2 Crawlers (at most 3
+  alive, 12 a fight); each live one shields it 15% (up to 60%; the bar turns grey, "Brood shield"). Burst: a 3.7-tile
+  egg ring (phase 2 hatches 2 Skitters); after it the shell gapes open: no shield, ×1.5 damage. Eggs: 2 / 3 sacs lobbed
+  at and round you (phase 2: they hatch Skitters).
+- **Security Warden** (Municipal Data Center): mortar → (stomp | mortar) → stomp → laser → *Overheated*. Mortar: 2 / 3
+  strike rings, the first where you're heading. Stomp: a 3.4-tile shockwave. Laser: a thin aim line for 0.85 s, then a
+  150° sweep at 85°/s, 9.5 tiles, 16 dmg (phase 2: two opposite beams). Phase 2 also calls security drones
+  (steel-tinted Skitters, 6 a fight).
+- **Drowned Engine** (Flooded Transit Station): vents → blast → (vents | blast) → surge → *Venting*. Vents: 3 / 4 steam
+  rings under and round you. Blast: a 3.6-tile steam ring. Surge: a 14-tile water lane, then a wave rolls down it
+  (phase 2: two lanes).
+- **Pack Lord** (Collapsed Residential Block): the mobile one, a deep-red Feral Chief with boss HP ×0.75, 2 Ferals,
+  boss-readable lunges (1.0 s wind-up, ×0.85 damage, 35% double thrust; deflect them) and a war cry: it stands and howls
+  (0.9 s, a 6-tile ring: Ferals inside move 30% faster for 5 s), then it is *Winded* for 1.8 s (×1.5 damage). Stay
+  within 2.2 tiles and every 4 / 3.2 s it plants its feet and **rends** (0.9 s, a 2.7-tile ring, 15 dmg) — even mid
+  wind-up or flinching, so it can't be stun-locked by mashing (a parried lunge still gives you your window). Phase 2:
+  each cry calls 1 more Feral (3 a fight) and it rages at ×1.2 speed.
 
 The kill: a rare relic (`scene.dropRelic`; else 30 Scrap, 2 Circuits, 2 Biofiber), +30 Research, a skill point on top
 of the trip's, and that area's night danger is gone for the rest of the run (`run.bosses`; its card's Danger reads
@@ -366,7 +407,12 @@ on the largest zoom that shows the whole field (×1 at 1280×720 / 1366×768, ×
 on a big screen and ×2 still shows most of it). Mouse wheel or **+ / −** (and the zoom buttons in the top bar) step the
 zoom; **right- or middle-drag** or the **arrow keys** pan (clamped to the field); **Home** re-frames. Built pads carry no
 marker; empty pads glow only when they matter (hover, affordable while building, the first prep); a hostile ring shows only
-under the enemy you point at and the selected tower's target. Moonlit blue with amber lamp pools at the plaza; enemy eyes
+under the enemy you point at and the selected tower's target, and during a push only those, the boss and the big ones
+(Tank / Elite: Razorbacks, Ruin Guards) carry a health bar. Pads are hand-made stone, timber or rubble plinths (varied by
+seed; timber on wood pads); a level 2 / 3 tower shows its rank as a 2- or 3-chevron plate on the plinth's front face.
+Protocols are pixel art: the aim is a 1-px dashed ring in the protocol's colour, Vine Snare wraps each rooted enemy in
+roots that burst up then hold, a Flare is a stepped amber light pool with the burning canister in the middle, Arc
+Discharge is lightning bolts; no translucent discs. Moonlit blue with amber lamp pools at the plaza; enemy eyes
 and the Relay crystal glow. Rewards show on the map: a slowed path looks wet, towers boosted by a reward glint.
 **Leaks:** while enemies come, a "Got through" feed in the side panel lists each leak ("−15 Ruin Guard · South"); the
 survived/fallen banner sums the night ("Got through: 9 Bramble Crawlers −45 · 3 Skitters −9"), and the run keeps the
@@ -441,6 +487,12 @@ good buy (≈ +70% damage per second for ≈ 0.9× the build cost); level 3 cost
 only the ones a tower has (the Mortar has Power 2, the Snare a Slow row).
 
 **Relay Core:** 100 HP. It takes damage when enemies reach it. Show a hit cue, with screen shake that can be turned off in settings.
+**The Relay zaps back** (`RELAY_ZAP` in `src/data/waves.js`): during pushes the crystal fires a cyan energy bolt every 0.7 s
+at the enemy closest to it within 3 tiles, for 13 × that night's health multiplier (so it keeps the same weight every
+night); with nothing that close it returns fire at a planted Spitter. It never hits burrowed enemies. Night prep says so
+once ("Your Relay zaps anything that gets close, and Spitters that spit at it"), and the readiness forecast counts it. A
+flat backstop like this is worth a lot to a 2–4 tower defense and little to a 9-tower one, which is what lets the early
+nights bite a good build without killing a thin one.
 
 **Enemies** (`src/data/enemies.js`):
 
@@ -466,9 +518,9 @@ only the ones a tower has (the Mortar has Power 2, the Snare a Slow row).
   lane facing tonight's area (the board's lane-facing helper).
 - **Long Night** (nights past 6): `waveFor(night, variant)` reuses nights 4–6's patterns in turn without their boss, counts
   +10% per night past 6, health ×1.2 per night, and a Colossus in the last push every 3rd night (night 9, 12, …).
-- Enemy health ×1.0 / 2.4 / 3.3 / 6.0 / 6.2 / 7.0 for N1–N6 (`HEALTH_MULT`; the boss uses its own ×4.5), × the map's
-  `hpMult` (Twin Paths 0.86, Crossing 1.07, Ford 1.18: maps whose pads see both trails get tougher enemies, so the three
-  layouts play alike). Total wave health (variant A, no threat, ×1 map): ~530 / 1510 / 4900 / 8900 / 13900 / 9700 + the
+- Enemy health ×1.25 / 3.5 / 4.7 / 7.4 / 7.3 / 9.2 for N1–N6 (`HEALTH_MULT`; the boss uses its own ×4.5), × the map's
+  `hpMult` (Twin Paths 0.95, Crossing 1.07, Ford 1.18: maps whose pads see both trails get tougher enemies, so the three
+  layouts play alike). Total wave health (variant A, no threat, ×1 map): ~660 / 2200 / 7000 / 11000 / 16300 / 12700 + the
   4590-HP Colossus. District threats (extra groups, added to the second push) are half size on night 1 and 60% on night 2.
 - **Balance** (Stage 7 sim: `.playwright-mcp/nightmech/campaign.mjs` drives the real DefenseScene through full runs:
   days give resources, skill picks from the real offers and crafted tower mods, prep builds through the scene's own
@@ -481,19 +533,19 @@ only the ones a tower has (the Mortar has Power 2, the Snare a Slow row).
 
   | Profile | Wins | Falls | N1 | N2 | N3 | N4 | N5 | N6 | Boss killed |
   |---|---|---|---|---|---|---|---|---|---|
-  | newcomer | 0/36 | N3 ×8, N4 ×28 | −7 | −23 | −58 (28/36 hold, ending ~36) | −63 | — | — | — |
-  | typical | 29/36 (75–81% over repeats) | N5 ×4, N6 ×3 | 0 | −3 | −3 | −37 | −42 | −51 | 27/32 |
-  | strong | 36/36 | — | 0 | −1 | 0 | −14 | −7 | −10 | 36/36 |
+  | newcomer | 0/36 | N3 ×5, N4 ×28, N5 ×3 | −7 | −23 | −58 (31/36 hold, ending ~34) | −58 | −63 | — | — |
+  | typical | 29/36 (78–86% over repeats) | N5 ×5, N6 ×2 | 0 | −8 | −11 | −33 | −46 | −47 | 24/31 |
+  | strong | 36/36 | — | 0 | −5 | −2 | −11 | −11 | −8 | 36/36 |
 
   (Mean Relay HP lost per night among runs that reached it.) Typical wins 11 / 9 / 9 of 12 on Twin Paths / Crossing /
-  Ford. Its nights 2–3 stay light: typical has about twice the newcomer's towers by then and health scaling keeps that
-  ratio, so anything that costs a typical run 8–18 on night 3 kills most newcomers there. The readiness forecast tracks
-  the sim: typical N4 / N5 / N6 predict −36 / −56 / −48, newcomer N3 −53; it over-predicts the strong build because it
-  counts Protocols conservatively. On night 6 a typical run loses ~19 to the Colossus's slams and ~16 to Skitters (its
-  enrage packs and the escort). **Tall vs wide** (night 4, 9 map/variant combos): 11 towers with five at level 2
-  (639 Scrap) lose ~18, six level-3 towers (710 Scrap) ~14. Two pads per map moved to spots that see both trails (pad
-  indices kept), so a wide build's 9th–11th towers aren't wasted. (With level 2 at 0.6× and a 12-Scrap surcharge the gap
-  was 25–35.)
+  Ford. The Relay's zap is what lets typical's nights 2–3 cost something (−8 / −11) while 86% of newcomers get through
+  night 3. Typical's nights 5–6 run ~10 over a 20–35 / 25–40 aim at a ~80% win rate; easing them pushes the win rate
+  toward 90% (this profile repairs between nights, so falls need big single nights). The readiness forecast tracks the
+  sim: typical N4 / N5 / N6 predict −39 / −60 / −51, newcomer N3 −55; it over-predicts the strong build because it
+  counts Protocols conservatively. **Tall vs wide** (night 4, 9 map/variant combos, before the zap pass): 11 towers with
+  five at level 2 (639 Scrap) lose ~18, six level-3 towers (710 Scrap) ~14. Two pads per map moved to spots that see
+  both trails (pad indices kept), so a wide build's 9th–11th towers aren't wasted. (With level 2 at 0.6× and a
+  12-Scrap surcharge the gap was 25–35.)
 - Wave-size boons (and Intel Sabotage) scale the whole wave and remove enemies from the largest groups, so −10% always removes some.
   Together they are capped at −20%.
 - The wave preview lists the district threat and active boons first, then types and counts per lane.
@@ -549,7 +601,7 @@ A line points at night prep's Scrap → component trade when you're short. Keys 
 | Overcharger (tower mod) | 1 Circuit + 1 Intel | +10% attack speed (not the Beacon) |
 | Serrated Edge (machete) | 20 Scrap + 3 Biofiber | Melee hits make creatures bleed 3 a second for 3 s |
 | Balanced Grip (machete) | 15 Scrap + 2 Circuits | Slashes and hack-through 10% faster |
-| Heavy Spine (machete) | 25 Scrap + 1 Circuit | Heavy chop +25% damage (40 → 50) |
+| Heavy Spine (machete) | 25 Scrap + 1 Circuit | Heavy chop +25% damage (36 → 45) |
 | Med kit | 15 Scrap + 1 Biofiber | +1 med kit (carry 2) |
 | Reinforced Plating (Relay) | 30 Scrap + 1 Circuit | +10 Relay max health, repaired now; once per run |
 
@@ -695,6 +747,12 @@ and don't overwrite the real run save (add `&save=1` to test Continue).
   50% with a kit. Beacons: the first dead beacon within 10 m ("Beacons are a way home: hold E"). Sunset: 1:00 of
   daylight left (after the first time it's a toast). The map is a step of the guided day; the clock has a sun icon and
   a "Daylight" label (a moon and "After dark: head home" after sunset).
+- **One text lane** (critic H2 §5.1, `TEXT_LANE`): banners (place names, goal / sunset, boss intro and kill, back home)
+  own the top centre, one at a time — a more important one cuts a lesser one, a waiting place name is dropped after 4 s.
+  Toasts queue under the top-left panel, one on screen at a time (the next one hurries the current one off after 1.6 s,
+  stale ones are dropped after 10 s) and wait while a banner is up. At most one coach / verb tip and one toast show at
+  once (a calm tip waits for a hint to clear). Night prep's hints dock at the top of the side panel, never over the board.
+  A deflected attack prints one word (DEFLECT), not DEFLECT + PARRIED.
 - **HUD legibility** (critic L §3 / H §5): all HUD text sits on the world's texel grid — 12 design px = 16 px at 720p,
   24 px at 1080p, 32 px at 1440p, one font pixel per world texel, never under 12 CSS px (the clock is twice that); the
   HP number has a one-font-pixel dark outline; pixel icons in the HUD scale by whole texels (`--tx`). Health is green →

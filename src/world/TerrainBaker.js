@@ -184,6 +184,7 @@ export class TerrainBaker {
       const name = k.slice(4);
       let w = 1;
       for (const [frag, mul] of Object.entries(DECALS.weight)) if (name.includes(frag)) w *= mul;
+      if (w <= 0) continue;   // weight 0: never scattered (the crossed-twig "X", critic H2 §1)
       const emit = Object.entries(EMISSIVE.decals).find(([frag]) => name.includes(frag));
       const entry = { key, img, name, w, emit: emit ? emit[1] : 0 };
       if (/lily|reed/.test(k)) groups.water.push(entry);

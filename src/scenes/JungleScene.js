@@ -39,8 +39,8 @@ import { ExploreEnemy } from '../entities/ExploreEnemy.js';
 import { Shots } from '../entities/ExploreShots.js';
 import { SporePods } from '../entities/SporePods.js';
 import { JungleMap, MAP_MARKERS, drawMarker } from '../ui/JungleMap.js';
-import { MAP_VIEW, HUD } from '../data/hud.js';
-import { el, button, bar, toast, modal, fmtTime, resChip, resIcon, resIconHtml, setToastsPaused } from '../ui/ui.js';
+import { MAP_VIEW, HUD, TEXT_LANE } from '../data/hud.js';
+import { el, button, bar, toast, modal, fmtTime, resChip, resIcon, resIconHtml, setToastsPaused, showBanner } from '../ui/ui.js';
 import { showHint } from '../ui/hints.js';
 import { GUIDE, FIRST_DAY, RETURN_PROMPT, HOME_HINT, WORDS, TIPS } from '../data/guide.js';
 import { openSettingsOverlay } from './SettingsScene.js';
@@ -110,6 +110,8 @@ export class JungleScene {
     this.ambience = new Ambience(this.three, this.world);
     this.wading = new Wading(this);   // waterline clip + ripple / splash in shallow water
     this.fx = new Fx(game, this.three, this.camera);
+    // Splats are stained into the baked ground (Fx.decal); the jungle ground is unlit (its light is PostFx's).
+    this.fx.ground = { patch: (tx, tz, w, h) => this.world.groundPatch(tx, tz, w, h), unlit: true };
     this.shots = new Shots(this);
     const c = this.data.center;
     this.relayPos = { x: c.x, z: c.z };
@@ -232,7 +234,8 @@ export class JungleScene {
 
   _hint(id, html, pos = 'bottom-left', time = 10) { this._hintQueue.push({ id, html, pos, time }); }
   _pumpHints() {
-    if (!this._hintQueue.length || this.game.ui.querySelector('.hint')) return;
+    // One coach hint at a time (critic H2 §5.1): a hint waits while a verb tip is on the coach line.
+    if (!this._hintQueue.length || this.game.ui.querySelector('.hint') || this._tips?.cur) return;
     const h = this._hintQueue.shift();
     showHint(this.game, h.id, h.html, { pos: h.pos, time: h.time });
   }
@@ -465,7 +468,8 @@ export class JungleScene {
     if (!opts.boss && this.spEarned - (this.spBoss || 0) >= X().maxSkillPoints) return false;
     if (opts.boss) this.spBoss = (this.spBoss || 0) + 1;
     this.spEarned += 1;
-    this.later(0.6, () => this.toast('+1 skill point', 'good'));
+    // opts.quiet: the caller says it (an area boss kill prints it on its banner's reward line).
+    if (!opts.quiet) this.later(0.6, () => this.toast('+1 skill point', 'good'));
     return true;
   }
 
@@ -934,13 +938,14 @@ export class JungleScene {
   onEnemyKilled(e) {
     this.kills += 1;
     if (e.id) { this.killed.add(e.id); this.spawned.delete(e.id); }
-    this.player?.onKill?.(e);   // the machete kit: Second Wind heals
-    this.relicsCtl?.onKill(e);   // relic: Blood Moss heals
+    // A boss's minion (brood, drones, the pack: e.minion) feeds no kill-heals and drops nothing (critic I2 #4).
+    if (!e.minion) this.player?.onKill?.(e);   // the machete kit: Second Wind heals
+    if (!e.minion) this.relicsCtl?.onKill(e);   // relic: Blood Moss heals
     this.goals?.onEnemyKilled(e);    // the Alpha's relic
     this.bosses?.onEnemyKilled(e);   // the Pack Lord
     if (e.objective) this._advanceStep(e.objStep ?? this.objStep);
     const D = X().enemyDrop;
-    if (Math.random() < (e.def.drop || 0)) {
+    if (!e.minion && Math.random() < (e.def.drop || 0)) {
       const loot = { scrap: D.scrap[0] + Math.floor(Math.random() * (D.scrap[1] - D.scrap[0] + 1)) };
       if (Math.random() < D.componentChance) loot[Math.random() < 0.5 ? 'circuits' : 'biofiber'] = 1;
       if (Math.random() < D.medChance) loot.med = 1;
@@ -1328,7 +1333,7 @@ export class JungleScene {
     this.fx.burst(p, { color: '#2ce8f5', color2: '#ffffff', count: 40, speed: 2, up: 6, life: 1, gravity: -2 });
     this.fx.ring(p, { color: '#2ce8f5', radius: 3, life: 0.6 });
     this.game.flash('#2ce8f5', 0.3);
-    this._banner('BACK HOME SAFE', this.objectiveDone ? 'Loot stored, goal done' : 'Loot stored');
+    this._banner('BACK HOME SAFE', this.objectiveDone ? 'Loot stored, goal done' : 'Loot stored', { prio: 3 });
     this.later(1.4, () => this._finish('extracted'));
   }
 
@@ -1542,11 +1547,16 @@ export class JungleScene {
     this.map.drawBig(this.hud.big, v, this._markers(), this.game.time, this.relicsCtl?.labels());   // + place names
   }
 
-  _banner(title, sub) {
-    const b = el('div.x-banner', {}, el('div.x-banner-t', title), el('div.x-banner-s', sub));
-    this.game.ui.append(b);
-    setTimeout(() => b.classList.add('out'), 2600);
-    setTimeout(() => b.remove(), 3200);
+  /**
+   * A banner in the top-centre band (critic H2 §5.1: one text lane, ui.showBanner): one at a time, toasts held while it
+   * shows. opts.prio (place names 0 < default 1 < area boss 2 < going home 3: a higher one cuts a lower one),
+   * opts.extra (HTML: a follow-up line that fades in TEXT_LANE.banner.extraDelay s later, e.g. a boss kill's rewards),
+   * opts.time (s on screen), opts.cls (an extra class: 'boss'). Before the HUD exists it goes to the UI root.
+   */
+  _banner(title, sub, opts = {}) {
+    const extra = opts.extra ? el('div.x-banner-x', { html: opts.extra, style: { animationDelay: `${TEXT_LANE.banner.extraDelay}s` } }) : null;
+    const b = el(`div.x-banner${opts.cls ? '.' + opts.cls : ''}`, {}, el('div.x-banner-t', title), sub ? el('div.x-banner-s', sub) : null, extra);
+    return showBanner(this.hud?.root || this.game.ui, b, { prio: opts.prio ?? 1, time: opts.time, toasts: this.game.ui });
   }
 
   // ================================================================== update
@@ -1647,7 +1657,17 @@ export class JungleScene {
     this.world.setPlayer(body.x, this.game.height - body.y, this.player.pos.z, this.player.pos.x, this.player.vis);
     // Occlusion silhouettes (Assets.js): enemies show bright once alerted, dim while unaware.
     for (const e of this.enemies) {
-      if (e.vis) e.vis.userData.alert = !!e.alerted;
+      if (e.vis) {
+        e.vis.userData.alert = !!e.alerted;
+        // One colour language, quieter (critic H2 §5.8, like the night): the hostile ground ring shows only on a
+        // creature that is coming for you — winding up, attacking, holding an attack slot, or right on you — and on
+        // elites / area bosses (their mark). The rest keep just their shadow; wind-up telegraphs are separate.
+        const ring = e.vis.userData.ringNode ??= e.vis.children.find((c) => c.name === 'ring') || false;
+        if (ring) {
+          const near = e.alerted && Math.hypot(e.x - this.player.pos.x, e.z - this.player.pos.z) < HUD.ringNear;
+          ring.visible = !!(e.elite || e.lordOf || e.token || near || e.state === 'windup' || e.state === 'attack');
+        }
+      }
       // A red "!" over a creature winding up an attack (on top of its ground telegraph): plain "it's about to hit".
       if (e.state === 'windup' && !e._bang && !e.dead) {
         e._bang = true;
@@ -1823,6 +1843,11 @@ export class JungleScene {
     h.strip = el('div.j-strip', { title: this.objDef.name }, el('span.j-objk', 'GOAL'), h.steps, h.objDir, h.ford, h.extract, h.optList);
     h.coach = el('div.j-coach', { style: { display: 'none' } });
     h.tlcol.append(h.coach);
+    // Toasts queue under the coach line, one at a time (critic H2 §5.1: the top centre belongs to banners and the
+    // boss bar). ui.toast() finds this host first; a stray one made before the HUD existed goes.
+    ui.querySelector(':scope > .toasts')?.remove();
+    h.toasts = el('div.toasts.j-toasts');
+    h.tlcol.append(h.toasts);
     h.promptKey = el('span.key', keyLabel(this.game.input.keyFor('interact')));
     h.promptRing = el('span.x-ring', {}, h.promptKey);
     h.promptText = el('span.x-plabel');
@@ -1940,7 +1965,7 @@ export class JungleScene {
   _hudRects() {
     const st = this.game.stage.getBoundingClientRect();
     const out = [];
-    for (const n of [this.hud.tl, this.hud.tr, this.hud.strip, this.hud.prompt, this.hud.coach]) {
+    for (const n of [this.hud.tl, this.hud.tr, this.hud.strip, this.hud.prompt, this.hud.coach, this.hud.toasts]) {
       if (n.style.display === 'none') continue;
       const r = n.getBoundingClientRect();
       if (r.width > 0) out.push({ n, l: r.left - st.left, t: r.top - st.top, r: r.right - st.left, b: r.bottom - st.top });
@@ -2426,7 +2451,8 @@ export class JungleScene {
       if (T.cur.left > 1.5) { T.cur.at = this.time; T.q.splice(1, 0, T.cur); }
       T.cur = null;
     }
-    if (!T.cur && T.q.length && !this.ending && (T.gapT <= 0 || T.q[0].urgent)) {
+    // (A calm tip also waits while a one-time hint is up: one coach hint on screen at a time.)
+    if (!T.cur && T.q.length && !this.ending && (T.gapT <= 0 || T.q[0].urgent) && (T.q[0].urgent || !this.game.ui.querySelector('.hint'))) {
       const t = T.q.shift();
       t.left = t.left ?? t.time;
       T.cur = t;

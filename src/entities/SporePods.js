@@ -15,6 +15,40 @@ import { podVisual, swellPod, SporeCloud } from '../world/SporeLook.js';
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 const LEVELS = [0.3, 0.55, 0.8, 1];   // cloud density frames (burst grows through them, fade goes back down)
 
+/**
+ * The cloud's edge (critic I2 #1): a 3-texel dithered ring drawn on the ground at the cloud's true damage radius.
+ * The cloud thins out in steps (SPORES.edgeSteps: share of the radius from each share of its life), the ring with it.
+ */
+function edgeTexture(R) {
+  const rp = R * 32, n = 2 * Math.ceil(rp) + 2;
+  const c = document.createElement('canvas');
+  c.width = c.height = n;
+  const g = c.getContext('2d');
+  const img = g.createImageData(n, n);
+  const light = new THREE.Color(SPORES.color), dark = new THREE.Color(SPORES.color2);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const d = Math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2);
+    // (A light texel outside, a dark one inside it, then a 50% checker: it reads on any ground.)
+    const outer = d < rp && d >= rp - 1, inner = (d < rp - 1 && d >= rp - 2) || (d < rp - 2 && d >= rp - 3 && ((x + y) & 1) === 0);
+    if (!outer && !inner) continue;
+    const col = outer ? light : dark, o = (y * n + x) * 4;
+    img.data[o] = col.r * 255; img.data[o + 1] = col.g * 255; img.data[o + 2] = col.b * 255; img.data[o + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = t.minFilter = THREE.NearestFilter;
+  t.generateMipmaps = false;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return { mat: new THREE.MeshBasicMaterial({ map: t, transparent: true, alphaTest: 0.5, depthWrite: false }), geom: new THREE.PlaneGeometry(n / 32, n / 32) };
+}
+
+/** The radius share a cloud has at life share k (SPORES.edgeSteps [[from k, share], ...]). */
+function edgeStep(k) {
+  let s = 0;
+  SPORES.edgeSteps.forEach(([from], i) => { if (k >= from) s = i; });
+  return s;
+}
+
 /** Dithered cloud textures, one per density level (texel = 1/32 tile, like every sprite). */
 function cloudTextures() {
   const R = SPORES.radius, n = Math.ceil(R * 2 * 32);
@@ -83,7 +117,7 @@ export class SporePods {
     p.tele?.cancel();
     p.armed = false;
     p.fly = { x0: p.x, z0: p.z, x1: p.x + ux * d, z1: p.z + uz * d, t: 0 };
-    p.tele = this.scene.fx.telegraph({ x: p.fly.x1, z: p.fly.z1 }, { radius: SPORES.radius, color: SPORES.color, time: SPORES.launchTime });
+    p.tele = this.scene.fx.telegraph({ x: p.fly.x1, z: p.fly.z1 }, { radius: SPORES.radius, color: SPORES.color, time: SPORES.launchTime, fade: 0 });
     this.scene.fx.burst({ x: p.x, y: 0.3, z: p.z }, { color: SPORES.color, color2: SPORES.color2, count: 8, speed: 2, up: 2, life: 0.4, size: 2 / 32 });
   }
 
@@ -92,7 +126,7 @@ export class SporePods {
     p.armed = true;
     p.fuse = fuse;
     p.tele?.cancel();
-    p.tele = this.scene.fx.telegraph({ x: p.x, z: p.z }, { radius: SPORES.radius, color: SPORES.color, time: fuse });
+    p.tele = this.scene.fx.telegraph({ x: p.x, z: p.z }, { radius: SPORES.radius, color: SPORES.color, time: fuse, fade: 0 });
     swellPod(p.vis);
     if (!this.warned) {
       this.warned = true;
@@ -100,10 +134,29 @@ export class SporePods {
     }
   }
 
-  /** A spore cloud at (x, z) with no pod (a Bloater, a popped spore nest, the Thorn Mother's barrage). */
-  cloudAt(x, z) { this._burst({ x, z, vis: null }); }
+  /**
+   * A spore cloud at (x, z) with no pod (a Bloater, a popped spore nest, the Thorn Mother's barrage).
+   * opts: life (s, default SPORES.life), src (the name its damage gives, default 'Spores').
+   */
+  cloudAt(x, z, opts = {}) { this._burst({ x, z, vis: null }, opts); }
 
-  _burst(p) {
+  /** The cloud's edge ring at step s (shared meshes per step). */
+  _edge(c, s) {
+    if (!this.edges) this.edges = SPORES.edgeSteps.map(([, share]) => edgeTexture(SPORES.radius * share));
+    if (c.step === s) return;
+    c.step = s;
+    if (!c.edge) {
+      c.edge = new THREE.Mesh(this.edges[s].geom, this.edges[s].mat);
+      c.edge.rotation.x = -Math.PI / 2;
+      c.edge.position.set(c.x, 0.035, c.z);
+      c.edge.userData.pxSnap = true;
+      this.scene.three.add(c.edge);
+    }
+    c.edge.geometry = this.edges[s].geom;
+    c.edge.material = this.edges[s].mat;
+  }
+
+  _burst(p, opts = {}) {
     p.popped = true;
     p.tele = null;
     this.game.assets.disposeVisual(p.vis);
@@ -111,9 +164,13 @@ export class SporePods {
     const fx = this.scene.fx;
     fx.burst({ x: p.x, y: 0.3, z: p.z }, { color: SPORES.color, color2: SPORES.color2, count: 26, speed: 2.4, up: 2.2, life: 0.8, size: 2 / 32, gravity: -0.6 });
     this.game.sfx.playAt('spore_burst', p.x, p.z);
+    // The burst itself (critic H2 §12): the fx_spore_ring frames (a ring of puffs blowing out, 1.9-tile radius at 1x)
+    // instead of the telegraph's full lime disc flashing white (its fade is 0, so it is gone as this lands).
+    fx.sprite?.({ x: p.x, z: p.z }, 'fx_spore_ring', { life: 0.34 });
     // Puff-sprite cloud when the art exists (SporeLook); else the dithered disc below.
+    const life = opts.life || SPORES.life, src = opts.src || 'Spores';
     const look = SporeCloud.make(this.scene, p.x, p.z);
-    if (look) { this.clouds.push({ x: p.x, z: p.z, t: 0, look, puffT: Infinity }); return; }
+    if (look) { this.clouds.push({ x: p.x, z: p.z, t: 0, look, puffT: Infinity, life, src }); return; }
     if (!this.mats) this.mats = cloudTextures().map((map) => new THREE.MeshBasicMaterial({ map, transparent: true, alphaTest: 0.5, depthWrite: false }));
     if (!this.geom) this.geom = new THREE.PlaneGeometry(SPORES.radius * 2, SPORES.radius * 2);
     const m = new THREE.Mesh(this.geom, this.mats[0]);
@@ -121,7 +178,12 @@ export class SporePods {
     m.position.set(p.x, 0.03, p.z);
     m.userData.pxSnap = true;
     this.scene.three.add(m);
-    this.clouds.push({ x: p.x, z: p.z, t: 0, mesh: m, puffT: 0 });
+    this.clouds.push({ x: p.x, z: p.z, t: 0, mesh: m, puffT: 0, life, src });
+  }
+
+  _dropCloud(c) {
+    if (c.look) c.look.dispose(); else c.mesh.removeFromParent();
+    c.edge?.removeFromParent();
   }
 
   update(dt) {
@@ -158,11 +220,11 @@ export class SporePods {
       }
     }
     // Clouds: grow, linger, thin out; hurt and sap whoever stands in one.
-    let inside = false;
+    let inside = null;
     for (let i = this.clouds.length - 1; i >= 0; i--) {
       const c = this.clouds[i];
       c.t += dt;
-      const k = c.t / SPORES.life;
+      const k = c.t / (c.life || SPORES.life);
       const lv = c.t < 0.3 ? Math.floor((c.t / 0.3) * LEVELS.length) : k > 0.6 ? Math.floor((1 - (k - 0.6) / 0.4) * LEVELS.length) : LEVELS.length - 1;
       if (c.look) c.look.update(dt, k);
       else c.mesh.material = this.mats[Math.max(0, Math.min(LEVELS.length - 1, lv))];
@@ -172,8 +234,11 @@ export class SporePods {
         const a = Math.random() * Math.PI * 2, r = Math.random() * SPORES.radius * 0.8;
         sc.fx.burst({ x: c.x + Math.cos(a) * r, y: 0.2, z: c.z + Math.sin(a) * r }, { color: SPORES.color, count: 2, speed: 0.4, up: 0.9, life: 0.9, size: 2 / 32, gravity: -0.3 });
       }
-      const R = SPORES.radius * (k > 0.6 ? 1 - (k - 0.6) : 1);
-      if (Math.hypot(pl.pos.x - c.x, pl.pos.z - c.z) < R) inside = true;
+      // Its damage radius is the drawn edge's (it thins in steps, the edge with it).
+      const st = edgeStep(k);
+      this._edge(c, st);
+      const R = SPORES.radius * SPORES.edgeSteps[st][1];
+      if (Math.hypot(pl.pos.x - c.x, pl.pos.z - c.z) < R) inside = c;
       // Creatures choke in it too (critic I §9B): hurt every tick, slowed, no new wind-ups (ExploreEnemy chokeT).
       const CR = SPORES.creature;
       for (const e of sc.enemies) {
@@ -182,7 +247,7 @@ export class SporePods {
         e.sporeT = (e.sporeT || 0) - dt;
         if (e.sporeT <= 0) { e.sporeT = CR.tick; e.hit(CR.damage * (sc.relicMod?.('sporeFoe') ?? 1), 0, 0, 0, 'spore'); }   // (relic: Spore Sac ×2)
       }
-      if (k >= 1) { if (c.look) c.look.dispose(); else c.mesh.removeFromParent(); this.clouds.splice(i, 1); }
+      if (k >= 1) { this._dropCloud(c); this.clouds.splice(i, 1); }
     }
     if (!inside || pl.dead) { this.tickT = 0; return; }
     const safe = this.game.run.hasSkill('safe_hands');
@@ -194,13 +259,20 @@ export class SporePods {
     this.tickT -= dt;
     if (this.tickT <= 0) {
       this.tickT = SPORES.tick;
-      pl.hurt(SPORES.damage * (safe ? SPORES.safeHands : 1) * (this.scene.relicMod?.('sporeSelf') ?? 1), 0, 0);   // (relic: Spore Sac ×0.5)
+      // From the cloud's centre (a shove toward its edge), named (critic I2 #1); a roll through it is just safe (no
+      // "perfect dodge" off a cloud). A tick only grants SPORES.tickIframes of hurt immunity, not the full 0.6 s
+      // (critic I2: standing in a cloud made you near-immune to a boss's big hits).
+      const dx = pl.pos.x - inside.x, dz = pl.pos.z - inside.z;
+      if (!pl.dodging && pl.hurt(SPORES.damage * (safe ? SPORES.safeHands : 1) * (this.scene.relicMod?.('sporeSelf') ?? 1), dx, dz, inside.src || 'Spores')) {   // (relic: Spore Sac ×0.5)
+        pl.iframes = Math.min(pl.iframes, SPORES.tickIframes ?? pl.iframes);
+      }
     }
   }
 
   dispose() {
     for (const p of this.pods) { if (p.vis) this.game.assets.disposeVisual(p.vis); p.tele?.cancel(); }
-    for (const c of this.clouds) { if (c.look) c.look.dispose(); else c.mesh.removeFromParent(); }
+    for (const c of this.clouds) this._dropCloud(c);
+    for (const e of this.edges || []) { e.mat.map.dispose(); e.mat.dispose(); e.geom.dispose(); }
     for (const m of this.mats || []) { m.map.dispose(); m.dispose(); }
     this.geom?.dispose();
   }

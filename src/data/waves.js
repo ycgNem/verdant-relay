@@ -11,25 +11,26 @@
 //
 // Scaling: enemy health × healthMult(night) (HEALTH_MULT; past night 6 it grows ×1.2 a night), counts are
 // authored. Fewer, tougher enemies from night 2 (a leak costs its own Relay damage however weak the defense,
-// so a thin build's worst case stays bounded while a good one still feels the tanks). Total wave HP (no
-// district threat), variant A: N1 ≈ 530, N2 ≈ 1510, N3 ≈ 4900 (tank-heavy: Razorbacks), N4 ≈ 8900,
-// N5 ≈ 13900 (Ruin Guards, now 1 per group), N6 ≈ 9700 support + the 4590-HP Colossus (1020 × BOSS_HP 4.5),
-// then × the map's hpMult (defenseMap.js: Twin Paths 0.86, Crossing 1.07, Ford 1.18).
+// so a thin build's worst case stays bounded while a good one still feels the tanks), and the Relay's own zap
+// (RELAY_ZAP, below) gives every defense the same flat backstop. Total wave HP (no district threat), variant A:
+// N1 ≈ 660, N2 ≈ 2200, N3 ≈ 7000 (tank-heavy: Razorbacks), N4 ≈ 11000, N5 ≈ 16300 (Ruin Guards, 1 per group),
+// N6 ≈ 12700 support + the 4590-HP Colossus (1020 × BOSS_HP 4.5), then × the map's hpMult (defenseMap.js:
+// Twin Paths 0.95, Crossing 1.07, Ford 1.18).
 // Relay damage per leak: Crawler 5, Skitter 3, Razorback 9, Spitter 4 (+ up to 8 × 2 sap), Burrower 6,
 // Seed Carrier 6, Seedling 1, Ruin Guard 10. The Colossus never "leaks": it besieges the Relay from the plaza
 // (5 per slam every 3 s, at most 8 slams) until it is killed.
 //
 // Balance (Stage 7 sim of the real DefenseScene, .playwright-mcp/nightmech/campaign.mjs, 36 full runs per
 // profile over the three maps; table in DESIGN §5), mean Relay HP lost per night:
-//   newcomer (≈45 Scrap/day, 2 picks, L1 only near the Relay)   N1 −7, N2 −23, N3 −58 (28/36 hold, ending ~36) · falls N3 (8), N4 (28)
-//   typical  (≈85/day, ~3 night skills + a lens, wide L1, Snare)  29/36 wins (75–81% over repeats) · 0 / −3 / −3 / −37 / −42 / −51
-//                                                                 · falls N5 4, N6 3 · boss killed 27/32 · maps 11 / 9 / 9 of 12
-//   strong   (typical + 5 skills, 2 mods, branches, all Protocols) 36/36 wins · N4 −14, N5 −7, N6 −10
-// Typical's nights 2–3 stay light (−3 / −3): more pressure there kills the newcomer on night 3 (typical has
-// ~2× the newcomer's towers by then, and HP scaling keeps that ratio).
+//   newcomer (≈45 Scrap/day, 2 picks, L1 only near the Relay)   N1 −7, N2 −23, N3 −58 (31/36 hold, ending ~34) · falls N3 5, N4 28, N5 3
+//   typical  (≈85/day, ~3 night skills + a lens, wide L1, Snare)  29/36 wins (78–86% over repeats) · 0 / −8 / −11 / −33 / −46 / −47
+//                                                                 · falls N5 5, N6 2 · boss killed 24/31 · maps 11 / 9 / 9 of 12
+//   strong   (typical + 5 skills, 2 mods, branches, all Protocols) 36/36 wins · 0 / −5 / −2 / −11 / −11 / −8
+// With the zap, typical's early nights bite (−8 / −11) while 86% of newcomers still get through night 3.
+// Typical's nights 5–6 run ~10 over the 20–35 / 25–40 aim at a ~80% win rate: lower them and it wins ~90%.
 // The brief's first curve [1.0, 1.4, 1.8, 2.1, 2.35, 2.5] left a typical run untouched (0 Relay HP lost on every night).
 
-export const HEALTH_MULT = [1.0, 2.4, 3.3, 6.0, 6.2, 7.0];
+export const HEALTH_MULT = [1.25, 3.5, 4.7, 7.4, 7.3, 9.2];
 
 /** Enemy health multiplier for a night (past night 6: ×1.2 per extra night, for the Long Night). */
 export function healthMult(night) {
@@ -81,6 +82,21 @@ export const DEFENSE = {
   laneTagDrop: 0.78,                       // lane tags sit this many tiles below the lane centre (clear of enemy rings and the path)
 };
 
+// The Relay defends itself (Stage 7 balance pass 3): during pushes the crystal zaps the enemy closest to it
+// within `range` tiles, every `cooldown` s, for `damage` × healthMult(night) energy damage (so it keeps the
+// same weight every night); with nothing that close it returns fire at a planted Spitter (one lobbing sap at
+// it from farther out; `spitters`). It never hits burrowed enemies. A flat defense like this matters a lot to a
+// 2–4 tower build and little to a 9-tower one, which lets the early nights bite a good build without
+// crushing a thin one. `hint` shows once in night prep (meta.hints.relay_zap).
+export const RELAY_ZAP = {
+  range: 3, cooldown: 0.7, damage: 13, damageType: 'energy', spitters: true,
+  color: '#2ce8f5', originY: 3.4,
+  hint: 'Your Relay zaps anything that gets close, and Spitters that spit at it.',
+};
+
+/** The zap's damage per hit on a night (DefenseScene._relayZap, DefenseForecast). */
+export function relayZapDamage(night) { return RELAY_ZAP.damage * healthMult(night); }
+
 // Post-night salvage pick (critic K §9): the "Night survived" banner offers a choice of rewards, more of
 // them the less the Relay lost tonight. tiers: Relay HP lost ≤ `lost` → `picks` options.
 // Option effects (Run.applySalvage): give (resources now), relayHp (repair now, capped), freeUpgrades
@@ -99,7 +115,7 @@ export const SALVAGE = {
 
 // Shorthand for authoring: g(push, at, lane, type, count, gap, extra).
 const g = (push, at, lane, type, count, gap, extra = {}) => ({ push, at, lane, type, count, gap, ...extra });
-const BOSS_HP = { hpMult: 4.5 };   // N6 Colossus: 1020 × 4.5 = 4590 (instead of the night's ×7.0); = DEFENSE.longNight.bossHp
+const BOSS_HP = { hpMult: 4.5 };   // N6 Colossus: 1020 × 4.5 = 4590 (instead of the night's ×9.2); = DEFENSE.longNight.bossHp
 
 // WAVE_VARIANTS[night − 1] = [A, B, C]: { key, name, groups }. Lane 0 = the first map lane (North on the
 // default map), lane 1 the second; a 3-lane map takes them % 3.

@@ -108,7 +108,8 @@ export const DEFENSE_ENEMIES = {
 // Thorn Stalker (critic I §9D, 'ambush', night 3+ in fern-heavy chunks, POP.stalker): travels *under* the brush
 // (only rustling shows), surfaces under you — a `ring`-tile ring for `windup` s — for `damage` plus a `root` s grip
 // (a roll breaks it), then stays out `exposed` s (the only time you can hit it) and burrows back in `burrow` s.
-// It borrows a re-tinted Crawler sprite (`sprite`, `tint`) — no art of its own yet.
+// Art: its own derived sheet `thorn_stalker` (batch 4: a red-violet Crawler with a bone-white thorn crest); without
+// it, `fallback` = the old re-tinted Crawler. (`fallback` = { sprite, tint, pod… } used when `sprite` isn't loaded.)
 export const EXPLORE_ENEMIES = {
   feral: {
     name: 'Feral Scavenger', hp: 42, speed: 2.7, detect: 8, attack: 'melee', damage: 12, windup: 0.6, cooldown: 1.3, reach: 1.7, lunge: 2.8, lungeTime: 0.24,
@@ -133,16 +134,19 @@ export const EXPLORE_ENEMIES = {
   },
   stalker: {
     name: 'Thorn Stalker', brush: 'under', hp: 40, speed: 3.2, detect: 8, attack: 'ambush', damage: 16, windup: 0.7, cooldown: 2.6, reach: 1.6,
-    ring: 1.0, root: 0.6, exposed: 1.5, burrow: 0.35, size: 0.7, drop: 0.45, sprite: 'crawler', tint: '#e0906c', burst: ['#8c4026', '#c23a3a'],
+    ring: 1.0, root: 0.6, exposed: 1.5, burrow: 0.35, size: 0.7, drop: 0.45, sprite: 'thorn_stalker', fallback: { sprite: 'crawler', tint: '#e0906c' },
+    burst: ['#8c4026', '#c23a3a'],
   },
   // Later-day creatures (critic J M5, src/entities/DayCreatures.js; gating in src/data/bosses.js DAY_CREATURES).
   // Bloater (night 4+): a swollen, spore-yellow Crawler with a pod on its back. It walks at you and, `reach` away,
   // swells (a ring as wide as the spore cloud, `windup` s) and bursts: `damage` in the ring plus a spore cloud.
   // It bursts when it dies too: a heavy chop launches it `launch` tiles along your swing first, the thrown machete
-  // pops it where it stands — so kill it from range. (No art of its own: crawler + spore_pod × `podScale`.)
+  // pops it where it stands — so kill it from range. Art: the derived `bloater` sheet (the spore sac is part of it —
+// critic H2 §2.5: the overlaid pod drew as an occlusion silhouette); fallback a tinted Crawler + spore_pod × podScale.
   bloater: {
     name: 'Bloater', brush: 'through', hp: 50, speed: 1.7, detect: 7, attack: 'burst', damage: 10, windup: 0.9, cooldown: 1, reach: 1.6,
-    launch: 3.5, launchTime: 0.45, size: 0.85, drop: 0.35, sprite: 'crawler', tint: '#d0dc68', pod: 'spore_pod', podScale: 2, podY: 0.55,
+    launch: 3.5, launchTime: 0.45, size: 0.85, drop: 0.35, sprite: 'bloater',
+    fallback: { sprite: 'crawler', tint: '#d0dc68', pod: 'spore_pod', podScale: 2, podY: 0.55 },
     burst: ['#c9d65a', '#7f9a3c'],
   },
 };

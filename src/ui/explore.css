@@ -88,7 +88,20 @@
 .x-banner.out { opacity: 0; }
 .x-banner-t { font-size: max(var(--fq), round(calc(var(--u) * 36 - 0.01px), var(--fq))); font-weight: bold; letter-spacing: round(0.04em, var(--fpx)); color: var(--amber); animation: x-in 0.35s ease-out; }   /* critic H §5: no wide tracking */
 .x-banner-s { font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: var(--text); text-shadow: calc(var(--u) * 1.5) calc(var(--u) * 1.5) 0 #181425; }
+/* The small lines keep a one-font-pixel ink outline, so they read over pale paving too (critic H2 §5.1). */
+.x-banner-s, .x-banner-x {
+  --fp: max(1px, round(calc(var(--u) * 12 / 8), 1px));
+  text-shadow: var(--fp) 0 0 #181425, calc(var(--fp) * -1) 0 0 #181425, 0 var(--fp) 0 #181425, 0 calc(var(--fp) * -1) 0 #181425,
+    var(--fp) var(--fp) 0 #181425, calc(var(--fp) * -1) var(--fp) 0 #181425, var(--fp) calc(var(--fp) * -1) 0 #181425, calc(var(--fp) * -1) calc(var(--fp) * -1) 0 #181425,
+    0 calc(var(--fp) * 2) 0 #0b0a12;
+}
 @keyframes x-in { from { transform: scale(1.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+/* A banner's follow-up line (a boss kill's rewards): fades in after TEXT_LANE.banner.extraDelay (inline delay). */
+.x-banner-x {
+  margin-top: calc(var(--u) * 5); font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: #8ce06a;
+  opacity: 0; animation: x-late 0.3s steps(3) forwards;
+}
+@keyframes x-late { to { opacity: 1; } }
 
 .explore-ui .overlay { cursor: default; }
 

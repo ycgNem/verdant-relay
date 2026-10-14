@@ -10,15 +10,17 @@ export const LEVEL_NAMES = ['water', 'mud', 'dirt', 'floor', 'moss'];
 export const TERRAIN_ART = ['floor', 'moss', 'paving'];
 // Value structure (critic H #2, TerrainBaker): the walkable surfaces baked this much brighter than their art, so
 // paths read as the lightest ground (jungle only; the night map's stand-in ground is untouched).
-export const TERRAIN_VALUE = { dirt: 1.2, paving: 1.1 };
+// critic H2 §1: dirt +20% (1.2 → 1.44) so trails reach the clearings' value band (deep trail median ≥ 65).
+export const TERRAIN_VALUE = { dirt: 1.44, paving: 1.1 };
 
 // Ground decal scatter (TerrainBaker._scatter): tries per 16 × 16-tile chunk, share of tries skipped, and the same
 // decal never twice within `spacing` tiles (critic H #12: at most one per 8 × 8 tiles, across chunk borders too).
 // weight: base pick weight × these (name fragments) — the crossed-twig "X" and bone piles read as UI markers when
-// common. Districts add their own multipliers (REGION_LOOK.decals).
+// common. Districts add their own multipliers (REGION_LOOK.decals). Weight 0 = never scattered: the crossed-twig "X"
+// still read as a map marker at 0.25 (critic H2 §1), so only the Track-the-Alpha clues use it now.
 export const DECALS = {
   perChunk: 70, skip: 0.35, spacing: 8,
-  weight: { twigs_crossed: 0.25, bones: 0.5, footprints: 0.4, burrow: 0.5, web: 0.6 },
+  weight: { twigs_crossed: 0, bones: 0.5, footprints: 0.4, burrow: 0.5, web: 0.6 },
 };
 
 // Emissives (critic H #4): texels that keep glowing in the shade and at night (PostFx light code). keys: sprite
@@ -43,6 +45,14 @@ export const EMISSIVE = {
     prop_intel_terminal: [[25, 65]], prop_cell_cache: [[140, 190]], prop_rare_cache: [[260, 310]],
     prop_fuse: [[10, 50]], prop_campfire: [[5, 60]], prop_data_drive: [[10, 40]], prop_nest: [[10, 50]],
     crawler: [[340, 20]], skitter: [[35, 65]], spitter: [[340, 20]],
+    // Area bosses glow at night too (critic H2 §2.6): the Thorn Mother's maw, the Brood Hive's fire mouth and egg
+    // lamps, the Warden's red core, the Drowned Engine's lamp eye — phase-2 sheets (_p2) alike.
+    ...Object.fromEntries([['boss_thorn_mother', [[350, 15]]], ['boss_brood_hive', [[20, 55]]], ['boss_warden', [[345, 15]]], ['boss_drowned_engine', [[20, 50]]]]
+      .flatMap(([k, b]) => [[k, b], [`${k}_p2`, b]])),
+    // The repainted night creatures' eyes / seeds / shield, and the derived day creatures' eyes (batch 4).
+    seed_carrier: [[25, 40]], ruin_guard: [[185, 200]], seedling: [[25, 45]],
+    thorn_stalker: [[40, 60]], bloater: [[40, 60]],
+    fx_flare_ember: [[20, 50]],
   },
   decals: { fungus_glow: 0.5, mushrooms_blue: 0.42 },
   groundAlpha: 200,
@@ -232,6 +242,9 @@ export const SPORES = {
   life: 5,                   // seconds the cloud lingers (it thins out over the last 40%)
   tick: 0.6,                 // damage interval inside a cloud
   damage: 5,
+  tickIframes: 0.15,         // a tick's hurt immunity (not the full hurtIframes: a cloud is no shield, critic I2)
+  // The cloud thins out in steps, its drawn edge ring with it (critic I2 #1): [from life share, radius share].
+  edgeSteps: [[0, 1], [0.6, 0.8], [0.8, 0.6]],
   staminaDrain: 30,          // stamina per second inside a cloud
   safeHands: 0.5,            // Safe Hands: damage × this, no stamina drain
   // Environmental kills (critic I §9B): clouds hurt creatures too (`damage` every `tick` s) and choke them (× `slow`
@@ -325,8 +338,15 @@ export const ATMOS = {
   // Value structure (critic H #2): the canopy shade spares walkable trail / clearing tiles (× trailShade in
   // JungleWorld._buildShade → tShade.g; cards keep the full density, tShade.r), and upright cards are a touch
   // darker than the ground they stand on (cardShade), so path > brush > canopy in value at a glance.
-  trailShade: 0.4,
+  trailShade: 0.12,          // critic H2 §1: 0.4 left deep trails at a median of 45–57
   cardShade: 0.95,
+  // Trails show through the brush in front of them (critic H2 §1: upright cards on the row south of an east–west
+  // trail overhung it at the 55° pitch and buried half its tiles). Brush texels over open trail ground (JungleWorld
+  // trail mask: trail tiles with no undergrowth) dither away: `strength` (0 = off) × the bilinear mask × `boost`
+  // (> 1: fully clear over the trail, a dithered fringe about half a tile beside it); a plant keeps texels within
+  // `foot` tiles of its own base. coveredAt (the player's outline) skips those texels too. Tree crowns over a trail
+  // only thin out (`tree` share of their texels; the trunk keeps `treeFoot` tiles of screen height whole).
+  trailXray: { strength: 1, boost: 1.7, foot: 0.25, tree: 0.7, treeFoot: 1.4 },
   // Upright brush cards darken toward their base (card shader): over the bottom `baseH` of the card (share of its
   // height) per texel row down to × baseDark, fully in the card's own shadows, about half on its lit leaves (no
   // flat band across the card) — the brush sinks, the path lifts.

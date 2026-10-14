@@ -108,8 +108,12 @@
 .jungle-ui .x-edge { width: calc(var(--u) * 34); height: calc(var(--u) * 34); }
 .x-edge.crate { color: var(--amber); }
 
-/* Banners stay in the upper band (~22% of the height), off the player and clear of the corner HUD. */
-.jungle-ui .x-banner { max-width: calc(var(--u) * 600); }
+/* Banners stay in the upper band (~22% of the height), off the player and clear of the corner HUD: at most 410 units
+   wide, so they never reach the top-left column (panel, coach line, toasts: 8 + 260 units) — critic H2 §5.1. */
+.jungle-ui .x-banner { max-width: calc(var(--u) * 410); }
+.jungle-ui .x-banner-t { font-size: max(var(--fq), round(calc(var(--u) * 30 - 0.01px), var(--fq))); line-height: 1.05; }
+/* An area boss's name: one beat (its HUD bar waits for it, AreaBosses._updateBar), in the bar's red. */
+.jungle-ui .x-banner.boss .x-banner-t { color: #ff6a5a; }
 
 /* In-world ◆ over the coached crate / the guided route's crates: a 13-texel canvas (9-texel diamond), whole texels. */
 .j-mark {
@@ -165,6 +169,18 @@
   pointer-events: none;
 }
 .j-coach-t { min-width: 0; }
+/* Toasts (critic H2 §5.1: one text lane): one at a time, queued under the coach line in the top-left column, on the
+   HUD text grid; the top centre is the banners' and the boss bar's. */
+.jungle-ui .toasts.j-toasts {
+  --max-toasts: 1;
+  position: static; display: flex; flex-direction: column; align-items: flex-start; gap: calc(var(--u) * 4);
+}
+.jungle-ui .j-toasts .toast {
+  width: max-content; max-width: calc(var(--u) * 260); box-sizing: border-box;
+  padding: calc(var(--u) * 4) calc(var(--u) * 9); font-size: var(--hud-f); line-height: 1.3;
+  background: rgba(24, 20, 37, 0.9); transition: opacity 0.4s steps(3), transform 0.4s steps(3);
+}
+.jungle-ui .j-toasts .toast.out { transform: translateX(calc(var(--u) * -8)); }
 .j-coach .x-dirarrow { font-size: inherit; color: var(--amber); }
 .j-coach b { color: var(--amber); }
 .j-coach .accent { color: var(--accent); }

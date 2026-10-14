@@ -33,6 +33,7 @@ export const CONFIG = {
     speed: 5.6,          // tiles/sec (~180 px/s at 32 px tiles)
     accel: 48,           // tiles/sec² toward the input direction (snappy, slight weight)
     turnAccel: 110,      // …when the input opposes your velocity (a 180° turn in ~0.1 s: dodging must be instant)
+    turnHold: 0.12,      // …and for this long after, until you're up to speed the new way (critic I2 #12)
     stopAccel: 64,       // …when you let go (a ~0.25-tile stop instead of a slide)
     // Move-speed multipliers while acting: charging a chop · a swing at a creature · a swing that only meets
     // plants (cutting keeps you moving, critic I #4) · winding up a machete throw.
@@ -193,32 +194,35 @@ export const CONFIG = {
 // STAMINA.plantSwing / plantFinisher instead (critic I #4). hackEvery: holding LMB while you walk swings on its own
 // this often ("hack-through"). throw (F, critic I §9E): wind-up, flight range / speed, piercing damage out and back,
 // return time, stamina, cooldown, hit radius; it cuts thickets and ferns (not brambles) along its line.
-// shove: what LMB does while the blade is out (no cutting).
+// shove: what LMB does while the blade is out (no cutting). recallLock: F can't call the blade back this soon after
+// the throw (a double-tap doesn't waste it).
+// Critic I2 #6: the light combo is the damage option (cheaper, a harder finisher); the heavy chop is the stagger /
+// crowd / brush tool — it costs more, holds stamina regen for STAMINA.chopDelay s, and is weak when exhausted.
 export const WEAPONS = {
   machete: {
     name: 'Machete',
     combo: [
-      { damage: 13, arc: 2.1, range: 1.5, time: 0.30, hitAt: 0.08, lunge: 2.4, knockback: 4.5, stamina: 9, cut: 1 },
-      { damage: 13, arc: 2.1, range: 1.5, time: 0.30, hitAt: 0.08, lunge: 2.4, knockback: 4.5, stamina: 9, cut: 1 },
-      { damage: 24, arc: 2.5, range: 1.65, time: 0.44, hitAt: 0.13, lunge: 4.5, knockback: 9, stamina: 14, cut: 1, stagger: 0.35 },
+      { damage: 13, arc: 2.1, range: 1.5, time: 0.30, hitAt: 0.08, lunge: 2.4, knockback: 4.5, stamina: 7, cut: 1 },
+      { damage: 13, arc: 2.1, range: 1.5, time: 0.30, hitAt: 0.08, lunge: 2.4, knockback: 4.5, stamina: 7, cut: 1 },
+      { damage: 28, arc: 2.5, range: 1.65, time: 0.44, hitAt: 0.13, lunge: 4.5, knockback: 10, stamina: 12, cut: 1, stagger: 0.35 },
     ],
     comboWindow: 0.38,
     hackEvery: 0.28,
-    chop: { charge: 0.42, damage: 40, arc: 2.9, range: 1.9, time: 0.5, hitAt: 0.15, lunge: 5, knockback: 13, stamina: 22, cut: 2, stagger: 0.9 },
-    throw: { windup: 0.25, range: 6, speed: 16, damage: 18, returnTime: 0.4, returnDamage: 9, knockback: 3, stamina: 25, cooldown: 3, radius: 0.35 },
+    chop: { charge: 0.42, damage: 36, arc: 2.9, range: 1.9, time: 0.55, hitAt: 0.15, lunge: 5, knockback: 14, stamina: 30, cut: 2, stagger: 0.9 },
+    throw: { windup: 0.25, range: 6, speed: 16, damage: 18, returnTime: 0.4, returnDamage: 9, knockback: 3, stamina: 25, cooldown: 3, radius: 0.35, recallLock: 0.35 },
     shove: { damage: 4, arc: 2.2, range: 1.25, time: 0.26, hitAt: 0.07, lunge: 1.5, knockback: 6, stamina: 4, noCut: true },
   },
   parang: {
     name: 'Parang',
     combo: [
-      { damage: 17, arc: 2.0, range: 1.6, time: 0.36, hitAt: 0.1, lunge: 2.2, knockback: 6, stamina: 11, cut: 2 },
-      { damage: 17, arc: 2.0, range: 1.6, time: 0.36, hitAt: 0.1, lunge: 2.2, knockback: 6, stamina: 11, cut: 2 },
-      { damage: 30, arc: 2.6, range: 1.75, time: 0.5, hitAt: 0.15, lunge: 4, knockback: 11, stamina: 16, cut: 2, stagger: 0.5 },
+      { damage: 17, arc: 2.0, range: 1.6, time: 0.36, hitAt: 0.1, lunge: 2.2, knockback: 6, stamina: 9, cut: 2 },
+      { damage: 17, arc: 2.0, range: 1.6, time: 0.36, hitAt: 0.1, lunge: 2.2, knockback: 6, stamina: 9, cut: 2 },
+      { damage: 34, arc: 2.6, range: 1.75, time: 0.5, hitAt: 0.15, lunge: 4, knockback: 12, stamina: 14, cut: 2, stagger: 0.5 },
     ],
     comboWindow: 0.38,
     hackEvery: 0.32,
-    chop: { charge: 0.5, damage: 50, arc: 3.0, range: 2.0, time: 0.56, hitAt: 0.17, lunge: 5, knockback: 15, stamina: 24, cut: 2, stagger: 1.1 },
-    throw: { windup: 0.3, range: 5.5, speed: 14, damage: 22, returnTime: 0.45, returnDamage: 11, knockback: 4, stamina: 27, cooldown: 3.2, radius: 0.38 },
+    chop: { charge: 0.5, damage: 46, arc: 3.0, range: 2.0, time: 0.62, hitAt: 0.17, lunge: 5, knockback: 16, stamina: 32, cut: 2, stagger: 1.1 },
+    throw: { windup: 0.3, range: 5.5, speed: 14, damage: 22, returnTime: 0.45, returnDamage: 11, knockback: 4, stamina: 27, cooldown: 3.2, radius: 0.38, recallLock: 0.4 },
     shove: { damage: 5, arc: 2.2, range: 1.3, time: 0.28, hitAt: 0.08, lunge: 1.5, knockback: 7, stamina: 4, noCut: true },
   },
 };
@@ -228,20 +232,29 @@ export const WEAPON_ALIAS = { carbine: 'machete', scattergun: 'parang' };
 // Stamina and the dodge roll (critic I #4: cutting and short fights shouldn't leave you waiting on an empty bar).
 //   plantSwing / plantFinisher / plantChop: a swing that meets only plants or air · deflect / perfectDodge: refunds.
 //   Empty = exhausted until `max` × 0.35, regen × exhaustedRegen; spending while exhausted doesn't restart `delay`.
-export const STAMINA = { max: 100, regen: 40, delay: 0.35, roll: 20, exhaustedRegen: 1.0, plantSwing: 2, plantFinisher: 3, plantChop: 6, deflect: 15, perfectDodge: 15 };
+//   Exhausted swings and chops take × exhaustedSwing.time and deal × exhaustedSwing.damage. chopDelay: a heavy chop
+//   holds regen this long (critic I2 #6).
+export const STAMINA = {
+  max: 100, regen: 40, delay: 0.35, roll: 20, exhaustedRegen: 1.0, plantSwing: 2, plantFinisher: 3, plantChop: 6, deflect: 15, perfectDodge: 15,
+  chopDelay: 0.45, exhaustedSwing: { time: 1.35, damage: 0.7 },
+};
 //   buffer: a Space press in the last `buffer` s of a roll, during its cooldown or before a chop lands waits and
-//   rolls as soon as it can (critic I #7) · perfect: an i-frame save this early in a roll is a perfect dodge
-//   (stamina back, `slowMo` [s, × speed], a cyan rim `rim` s; once per roll).
-export const ROLL = { time: 0.34, speed: 12, iframes: 0.28, cooldown: 0.12, buffer: 0.15, perfect: 0.15, slowMo: [0.2, 0.4], rim: 0.28, rimColor: '#2ce8f5' };
+//   rolls as soon as it can (critic I #7) · perfect dodge (stamina back, `slowMo` [s, × speed], a cyan rim `rim` s;
+//   once per roll): any hit the roll's i-frames absorb, or a near miss — an attack committing within `near` s of
+//   the roll starting, from inside its hit zone, even if the roll carried you out (critic I2 #8; `nearPad` tiles of
+//   slack on the zone). dodgedText: the DODGED word shows at most once per roll.
+export const ROLL = { time: 0.34, speed: 12, iframes: 0.28, cooldown: 0.12, buffer: 0.15, near: 0.2, nearPad: 0.25, slowMo: [0.2, 0.4], rim: 0.28, rimColor: '#2ce8f5' };
 
 // Deflect / riposte (critic I §9A): the first `window` s after pressing RMB (charging a chop, or the light swing a
 // tap gives) turns an attack from the front half away. A new window opens at most every `lockout` s (a deflect
 // resets it), so tap-spam doesn't work. Melee: the attacker reels `stun` s (elites `eliteStun`) and your next light
-// slash within `riposte.time` s does × `riposte.mult` and always staggers. A Spitter glob is batted back for `glob`
-// damage; a Razorback charge: you sidestep `sidestep` tiles and it takes `chargeDamage` and a `chargeStun` s stun.
+// slash within `riposte.time` s does × `riposte.mult` and always staggers; it reaches `riposte.range` tiles further
+// and lunges `riposte.lunge` harder, and a riposte that hits nothing isn't spent (critic I2 #7). The attacker is
+// shoved `shove` tiles/s (0: it stays in reach). A Spitter glob is batted back for `glob` damage; a Razorback
+// charge: you sidestep `sidestep` tiles and it takes `chargeDamage` and a `chargeStun` s stun.
 export const DEFLECT = {
-  window: 0.14, lockout: 0.5, hitStop: 0.09, stun: 1.0, eliteStun: 0.4,
-  riposte: { time: 1.0, mult: 2.5, stagger: 0.5 },
+  window: 0.14, lockout: 0.5, hitStop: 0.09, stun: 1.0, eliteStun: 0.4, shove: 0,
+  riposte: { time: 1.0, mult: 2.5, stagger: 0.5, range: 0.5, lunge: 1.5 },
   glob: 25, sidestep: 0.6, chargeDamage: 15, chargeStun: 0.8,
   ring: '#ffffff', spark: '#fee761', ringRadius: 1.2,
 };
@@ -256,8 +269,14 @@ export const STATUS = {
 };
 
 // Wall splat (critic I §9B): a creature knocked back at ≥ `speed` tiles/s into a trunk / rock / ruin, or into a
-// bramble (which it nicks), takes the extra damage and reels.
-export const SPLAT = { speed: 4, object: { damage: 10, stun: 0.5 }, bramble: { damage: 14, stun: 0.6 } };
+// bramble (which it nicks), takes the extra damage and reels. Critic I2 #11: `reach` tiles of slack (a knock that
+// ends just short of a trunk still slams it); a Razorback charging into a trunk / rock / ruin splats too (`charge`).
+// impact: hit-stop s, shake, the cracked-bark ring radius.
+export const SPLAT = {
+  speed: 2.5, reach: 0.3,
+  object: { damage: 10, stun: 0.5 }, bramble: { damage: 14, stun: 0.6 }, charge: { damage: 12 },
+  impact: { hitStop: 0.08, shake: 5, ring: 0.9 },
+};
 
 // Game feel ("juice"): hit-stop, death beats, shot VFX, floating numbers, readability helpers.
 // Times in seconds, sizes in tiles (1 tile = 32 texels, so 1/32 = one sprite pixel).
@@ -287,6 +306,23 @@ export const JUICE = {
     splatDesat: 0.55,     // death splats pulled this far toward the ground colour (3-tone, not saturated paint)
     splatGround: '#3b3122',
     maxDecals: 28,
+    // Per-creature splats (critic H2 §3: kills left navy-black blots from the burst's dark colour). `kind` per creature
+    // key (day and night) → the artist's flat decals splat_<kind>_1|2 (24 × 16, already ~55% toward the dirt, no
+    // texel darker than dark dirt; ×2 for creatures of size ≥ `bigFrom`), else a procedural 3-tone splat in `color`
+    // (the same mid tone; its ramp is clamped at `minLum` so it never goes darker than the ground).
+    splat: {
+      kind: {
+        feral: 'blood', feral_chief: 'blood', scav: 'blood', razorback: 'blood', stalker: 'blood', ruin_guard: 'blood',
+        crawler: 'sap', burrower: 'sap', seedling: 'sap', seed_carrier: 'sap', colossus: 'sap',
+        skitter: 'magenta', spitter: 'acid', bloater: 'acid',
+      },
+      color: { blood: '#6c2c22', sap: '#5a5a2e', magenta: '#6c324a', acid: '#5c6c28' },
+      bigFrom: 1, minLum: 0.16,
+      // Art splats are stained into the ground under them (Fx.decal, when the scene gives Fx its baked ground):
+      // each texel pulled `toGround` toward the ground texel beneath, then lifted so none is darker than the darkest
+      // ground texel under the splat (critic H2 §7 target). Without a ground (or as fallback) the art is used as drawn.
+      toGround: 0.3,
+    },
   },
   // Hit flash (Fx.hitFlash, critic H #7): `white` frames of flat white, then `tint` frames of the sprite pushed
   // `mix` of the way toward `color` (red-orange), only on the sprite hit; edge texels stay `ink`.

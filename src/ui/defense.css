@@ -131,7 +131,7 @@
 }
 .df-banner.good { border-color: var(--good); }
 .df-banner.bad { border-color: var(--danger); }
-.df-bannertitle { font-size: max(var(--fq), round(calc(var(--u) * 34 - 0.01px), var(--fq))); letter-spacing: round(0.14em, var(--fpx)); font-weight: bold; text-shadow: calc(var(--u) * 3) calc(var(--u) * 3) 0 var(--ink); }
+.df-bannertitle { font-size: max(var(--fq), round(calc(var(--u) * 34 - 0.01px), var(--fq))); letter-spacing: round(0.04em, var(--fpx)); font-weight: bold; text-shadow: calc(var(--u) * 3) calc(var(--u) * 3) 0 var(--ink); }
 .df-banner.good .df-bannertitle { color: var(--good); }
 .df-banner.bad .df-bannertitle { color: var(--danger); }
 .df-bannersub { font-size: max(var(--fq), round(calc(var(--u) * 14 - 0.01px), var(--fq))); margin: calc(var(--u) * 6) 0; }
@@ -263,6 +263,9 @@
 .df-rd-dots.d3 { color: var(--good); } .df-rd-dots.d2 { color: var(--amber); }
 .df-rd-dots.d1, .df-rd-dots.d0 { color: var(--danger); }
 .btn.df-callnext .good { margin-left: calc(var(--u) * 4); }
+/* The Relay's zap, said once in night prep (RELAY_ZAP.hint). */
+.df-zapline { color: #8ff8ff; margin-bottom: calc(var(--u) * 3); }
+.df-zapglyph { color: #2ce8f5; }
 /* Post-night salvage pick on the "Night survived" banner. */
 .df-salvage { margin: calc(var(--u) * 4) auto calc(var(--u) * 8); max-width: calc(var(--u) * 560); }
 .df-salvage-row { display: flex; gap: calc(var(--u) * 8); justify-content: center; margin-top: calc(var(--u) * 5); }
@@ -329,6 +332,13 @@
   font-size: max(var(--fq), round(calc(var(--u) * 14 - 0.01px), var(--fq)));
 }
 .df-hint-x:hover { color: #fff; }
+/* Coach hints dock in the side panel under its title (critic H2 §5.1): never over the board. */
+.df-hintdock { flex: none; display: flex; flex-direction: column; }
+.df-hintdock:empty { display: none; }
+.df-hintdock .hint.docked {
+  margin: calc(var(--u) * 4) 0 calc(var(--u) * 2); padding: calc(var(--u) * 5) calc(var(--u) * 20) calc(var(--u) * 5) calc(var(--u) * 7);
+  font-size: max(var(--fq), round(calc(var(--u) * 11 - 0.01px), var(--fq))); line-height: 1.25; z-index: auto;
+}
 
 /* Leak feed (pushes and lulls): what got through, newest first. */
 .df-leaks {

@@ -3,6 +3,7 @@
 // so layouts scale with the window and always fit a 960 × 540 UI box.
 
 import { RESOURCES, RESOURCE_KEYS } from '../data/config.js';
+import { TEXT_LANE } from '../data/hud.js';
 
 /** el('div.panel.wide', { onclick, style, title }, ...children) */
 export function el(spec, attrs = {}, ...children) {
@@ -140,45 +141,143 @@ export function bar(cls = '', color = 'var(--good)') {
   };
 }
 
-/** Transient message near the top-centre of the stage. */
-export function toast(ui, text, cls = '', time = 2.4) {
+/** The toast host: the first `.toasts` under `ui` (a scene may place its own, e.g. under the jungle HUD panel). */
+function toastHost(ui) {
   let host = ui.querySelector('.toasts');
-  if (!host) { host = el('div.toasts'); ui.append(host); host._queue = []; }
-  // Hosts can cap how many toasts show at once (the night map: 2). Extra ones wait their turn
-  // instead of stacking over the play area; a toast identical to one on screen is dropped.
+  if (!host) { host = el('div.toasts'); ui.append(host); }
+  host._queue ||= [];
+  return host;
+}
+
+// One text lane (critic H2 §5.1): toasts never pile up. A host shows at most `--max-toasts` at once (CSS; the jungle
+// 1, the night map 2, else 3); the rest wait in a short queue (the stalest dropped from a long backlog, entries
+// older than TOAST_QUEUE.stale s dropped) while a toast on screen with a queue behind it is cut to TOAST_QUEUE.hurry s.
+// setToastsHeld() holds new ones back while a banner owns the screen, each for at most TOAST_QUEUE.hold s.
+const TOAST_QUEUE = TEXT_LANE.toast;
+
+/** Transient message (where the host sits: top centre by default, under the HUD panel in the jungle). */
+export function toast(ui, text, cls = '', time = 2.4) {
+  const host = toastHost(ui);
   const max = Number(getComputedStyle(host).getPropertyValue('--max-toasts')) || 3;
   const live = () => [...host.children].filter((c) => !c.classList.contains('out'));
-  if (live().some((c) => c.textContent === String(text))) return null;
+  // A toast identical to one on screen or waiting is dropped.
+  if (live().some((c) => c.textContent === String(text)) || host._queue.some((q) => q.text === String(text))) return null;
   const t = el(`div.toast${cls ? '.' + cls : ''}`, text);
   const show = () => {
     if (!host.isConnected) return;
     host.append(t);
     // Game-time lifetime: the clock stops while the host is paused (setToastsPaused).
-    let left = time * 1000, last = performance.now();
+    let left = time * 1000, last = performance.now(), shown = 0;
     const tick = setInterval(() => {
       const now = performance.now();
-      if (!host._paused) left -= now - last;
+      if (!host._paused) { left -= now - last; shown += now - last; }
       last = now;
       if (!host.isConnected) { clearInterval(tick); return; }
+      // Others are waiting: let this one go sooner (it has been read by now).
+      if (host._queue.length && left > TOAST_QUEUE.hurry * 1000 - shown) left = Math.max(0, TOAST_QUEUE.hurry * 1000 - shown);
       if (left > 0) return;
       clearInterval(tick);
       t.classList.add('out');
-      setTimeout(() => { t.remove(); const next = host._queue.shift(); if (next) next(); }, 400);
+      setTimeout(() => { t.remove(); pumpToasts(host); }, 400);
     }, 100);
   };
-  if (live().length >= max) {
-    if (host._queue.length >= 4) host._queue.shift();   // a long backlog: drop the stalest message
-    host._queue.push(show);
+  if (host._queue.length || live().length >= max || toastsHeld(host)) {
+    if (host._queue.length >= TOAST_QUEUE.max) host._queue.shift();   // a long backlog: drop the stalest message
+    host._queue.push({ show, text: String(text), at: performance.now() });
+    watchQueue(host);
   } else show();
   return t;
 }
 
+function toastsHeld(host) { return performance.now() < (host._heldUntil || 0); }
+
+/** Show waiting toasts while there is room (and no banner holds them, or they've waited long enough). */
+function pumpToasts(host) {
+  if (!host.isConnected) return;
+  const max = Number(getComputedStyle(host).getPropertyValue('--max-toasts')) || 3;
+  const now = performance.now();
+  host._queue = host._queue.filter((q) => now - q.at < TOAST_QUEUE.stale * 1000);
+  for (;;) {
+    const live = [...host.children].filter((c) => !c.classList.contains('out')).length;
+    const q = host._queue[0];
+    if (!q || live >= max || (toastsHeld(host) && now - q.at < TOAST_QUEUE.hold * 1000)) break;
+    host._queue.shift();
+    q.show();
+  }
+}
+
+/** While the queue has entries, re-check it a few times a second (holds expire on their own). */
+function watchQueue(host) {
+  if (host._watch) return;
+  host._watch = setInterval(() => {
+    if (!host.isConnected || !host._queue.length) { clearInterval(host._watch); host._watch = null; return; }
+    if (!host._paused) pumpToasts(host);
+  }, 120);
+}
+
 /** Freeze (or resume) toast timers, e.g. while the game is paused. */
 export function setToastsPaused(ui, paused) {
-  let host = ui.querySelector('.toasts');
-  if (!host) { host = el('div.toasts'); ui.append(host); host._queue = []; }
-  host._paused = !!paused;
+  toastHost(ui)._paused = !!paused;
 }
+
+/** Hold new toasts back for `seconds` (a banner owns the screen); 0 releases them. */
+export function setToastsHeld(ui, seconds) {
+  const host = toastHost(ui);
+  host._heldUntil = seconds > 0 ? performance.now() + seconds * 1000 : 0;
+  if (!(seconds > 0)) pumpToasts(host);
+}
+
+/**
+ * A banner in the top-centre band (critic H2 §5.1, TEXT_LANE.banner): one at a time per `parent` (the lane lives on
+ * it, so it goes with the scene's HUD). The node is appended to `parent`, gets class `out` for its last `fade` s and
+ * is removed. opts:
+ *   prio   a higher one cuts a lower one on screen; an equal or lower one waits its turn (default 1)
+ *   time   seconds on screen before the fade (default TEXT_LANE.banner.time)
+ *   wait   drop it if it has waited this long (s) for its turn (place names)
+ *   toasts the UI root whose toasts are held while it shows (setToastsHeld)
+ *   onShow called when it actually shows (its sound)
+ * Returns the node.
+ */
+export function showBanner(parent, node, opts = {}) {
+  const B = TEXT_LANE.banner;
+  const L = parent._lane ||= { cur: null, q: [] };
+  const item = { node, prio: opts.prio ?? 1, time: opts.time ?? B.time, wait: opts.wait ?? Infinity, at: performance.now(), toasts: opts.toasts || null, onShow: opts.onShow };
+  if (L.cur && item.prio > L.cur.prio) endBanner(parent, L.cur, true);
+  L.q.push(item);
+  L.q.sort((a, b) => b.prio - a.prio);   // stable: equal priorities keep their order
+  nextBanner(parent);
+  return node;
+}
+
+function nextBanner(parent) {
+  const L = parent._lane;
+  if (!L || L.cur || !parent.isConnected) return;
+  const now = performance.now();
+  L.q = L.q.filter((it) => now - it.at < it.wait * 1000);
+  const it = L.q.shift();
+  if (!it) return;
+  const B = TEXT_LANE.banner;
+  L.cur = it;
+  parent.append(it.node);
+  it.onShow?.();
+  if (it.toasts) setToastsHeld(it.toasts, it.time + B.fade);
+  it.timers = [
+    setTimeout(() => it.node.classList.add('out'), it.time * 1000),
+    setTimeout(() => endBanner(parent, it), (it.time + B.fade) * 1000),
+  ];
+}
+
+function endBanner(parent, it, cut = false) {
+  const L = parent._lane;
+  for (const t of it.timers || []) clearTimeout(t);
+  it.node.remove();
+  if (L.cur === it) L.cur = null;
+  if (it.toasts && !cut) setToastsHeld(it.toasts, 0);
+  if (!cut) nextBanner(parent);
+}
+
+/** True while a banner is up (or waiting) in this parent's lane. */
+export function bannerBusy(parent) { const L = parent?._lane; return !!(L && (L.cur || L.q.length)); }
 
 /**
  * A modal dialog with a title, body and buttons. Returns the overlay node (remove() to close).

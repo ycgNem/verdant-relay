@@ -3,7 +3,8 @@
 //                           it dies too — a heavy chop launches it away first, the thrown machete pops it from range.
 //   Feral Chief (night 5+)  one per feral camp: a tougher Feral whose aura speeds up the Ferals round it.
 // Gating per night: DAY_CREATURES (src/data/bosses.js), read by JungleScene._chunkPop. Stats: EXPLORE_ENEMIES
-// (src/data/enemies.js). Both reuse existing art (a tinted Crawler + a spore pod; a palette-swapped Feral).
+// (src/data/enemies.js). Art: the derived `bloater` sheet (sac painted on; else a tinted Crawler + a spore pod) and
+// a palette-swapped Feral.
 //
 // makeEnemy(scene, key, x, z, opts) is the scene's spawn factory: these keys get their subclass, everything else a
 // plain ExploreEnemy. Speed buffs (aura, war cry) go through setSpeedBuff / tickSpeedBuffs → enemy.speedMult.
@@ -43,9 +44,10 @@ export function tickSpeedBuffs(enemies, now) {
 export class Bloater extends ExploreEnemy {
   constructor(scene, key, x, z, opts = {}) {
     super(scene, key, x, z, opts);
-    const d = this.def;
-    // The spore sac on its back: a spore pod drawn ×podScale (a whole number), a hair in front of the body. Its own
-    // root in the scene (it bursts with the Bloater; the body's corpse fades without it).
+    const d = this.look || this.def;
+    // Its own sheet has the sac painted on (critic H2 §2.5: an overlaid pod drew as an occlusion silhouette). Only the
+    // fallback look (a tinted Crawler) gets the spore sac: a spore pod drawn ×podScale (a whole number), a hair in
+    // front of the body, its own root in the scene (it bursts with the Bloater; the body's corpse fades without it).
     if (d.pod && this.game.assets.hasSprite(d.pod)) {
       this.pod = this.game.assets.makeVisual(d.pod, { scale: d.podScale || 1, shadow: false, emissive: false });
       setAnim(this.pod, 'idle');
@@ -58,7 +60,7 @@ export class Bloater extends ExploreEnemy {
   _placePod() {
     if (!this.pod) return;
     const v = this.vis?.position;
-    this.pod.position.set(v ? v.x : this.x, (v ? v.y : 0) + (this.def.podY || 0.5), (v ? v.z : this.z) + 0.04);
+    this.pod.position.set(v ? v.x : this.x, (v ? v.y : 0) + ((this.look || this.def).podY || 0.5), (v ? v.z : this.z) + 0.04);
     this.pod.visible = !!this.vis?.visible;
   }
 
@@ -72,27 +74,30 @@ export class Bloater extends ExploreEnemy {
     if (this.flying || this.popped) return;
     this.lastSrc = src;
     super.hit(dmg, dx, dz, kb, src, stagger);
+    // Any heavy chop launches it, at any health (critic I2 #10) — it bursts where it lands, not on you.
+    if (src === 'chop' && !this.dead && !this.flying && !this.popped) this._launch();
   }
 
   /** Killed: it bursts. A heavy chop sends it flying `launch` tiles along the swing first (short of trunks / ruins). */
   die() {
     if (this.dead || this.flying) return;
-    const d = this.def;
-    if (this.lastSrc === 'chop' && !this.popped) {
-      const w = this.scene.world;
-      const kd = this.lastHit || { x: 1, z: 0 }, l = Math.hypot(kd.x, kd.z) || 1, ux = kd.x / l, uz = kd.z / l;
-      let dist = d.launch;
-      for (let s = 0.25; s <= d.launch; s += 0.25) if (w.blockedAt(Math.floor(this.x + ux * s), Math.floor(this.z + uz * s), true)) { dist = Math.max(0.5, s - 0.4); break; }
-      this.tele?.cancel();
-      this.tele = null;
-      this._dropToken();
-      this.flying = { x0: this.x, z0: this.z, x1: this.x + ux * dist, z1: this.z + uz * dist, t: 0 };
-      this.scene.fx.telegraph({ x: this.flying.x1, z: this.flying.z1 }, { radius: SPORES.radius, color: SPORES.color, time: d.launchTime });
-      for (const s of [this.barBg, this.barFill]) s.visible = false;
-      return;
-    }
+    if (this.lastSrc === 'chop' && !this.popped) { this._launch(); return; }
     this._pop();
     super.die();
+  }
+
+  /** Fly `launch` tiles along the last blow (short of trunks / ruins), then burst there (update). */
+  _launch() {
+    const d = this.def, w = this.scene.world;
+    const kd = this.lastHit || { x: 1, z: 0 }, l = Math.hypot(kd.x, kd.z) || 1, ux = kd.x / l, uz = kd.z / l;
+    let dist = d.launch;
+    for (let s = 0.25; s <= d.launch; s += 0.25) if (w.blockedAt(Math.floor(this.x + ux * s), Math.floor(this.z + uz * s), true)) { dist = Math.max(0.5, s - 0.4); break; }
+    this.tele?.cancel();
+    this.tele = null;
+    this._dropToken();
+    this.flying = { x0: this.x, z0: this.z, x1: this.x + ux * dist, z1: this.z + uz * dist, t: 0 };
+    this.scene.fx.telegraph({ x: this.flying.x1, z: this.flying.z1 }, { radius: SPORES.radius, color: SPORES.color, time: d.launchTime });
+    for (const s of [this.barBg, this.barFill]) s.visible = false;
   }
 
   /** The burst: damage in the ring, a spore cloud (it chokes creatures too). */
@@ -104,6 +109,7 @@ export class Bloater extends ExploreEnemy {
     this._dropPod();
     const sc = this.scene, p = sc.player, fx = sc.fx;
     const dx = p.pos.x - this.x, dz = p.pos.z - this.z, d = Math.hypot(dx, dz) || 1e-4;
+    p.nearMiss?.((px, pz) => Math.hypot(px - this.x, pz - this.z) < SPORES.radius + p.r * 0.5);   // rolled out of the burst: perfect
     if (!p.dead && d < SPORES.radius + p.r * 0.5) p.hurt(this.burstDamage, dx / d, dz / d, this.def.name);
     sc.spores?.cloudAt?.(this.x, this.z);
     fx.burst({ x: this.x, y: 0.4, z: this.z }, { color: SPORES.color, color2: '#ffffff', count: 22, speed: 3.2, up: 2.6, life: 0.6, size: 2 / 32, gravity: 2 });
@@ -166,7 +172,7 @@ export class Bloater extends ExploreEnemy {
       }
       case 'windup': {
         // Swelling: the sac flashes faster and faster, then it bursts (dies).
-        if (this.pod && Math.floor(this.stateT * (this.stateT < 0.35 ? 16 : 8)) % 2 === 0) flashVisual(this.pod, '#ffffff', 0.04);
+        if (Math.floor(this.stateT * (this.stateT < 0.35 ? 16 : 8)) % 2 === 0) flashVisual(this.pod || this.vis, this.pod ? '#ffffff' : '#e8f4a0', 0.04);
         if (this.stateT <= 0) { this.hp = 0; this.lastSrc = 'burst'; this.die(); return; }
         break;
       }

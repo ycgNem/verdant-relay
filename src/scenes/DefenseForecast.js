@@ -14,7 +14,7 @@
 // lost, dots 0–3 }], ratio (share of the wave's Relay threat stopped) }.
 
 import { DEFENSE_ENEMIES } from '../data/enemies.js';
-import { DEFENSE, healthMult } from '../data/waves.js';
+import { DEFENSE, RELAY_ZAP, relayZapDamage, healthMult } from '../data/waves.js';
 import { READINESS } from '../data/guide.js';
 import { BIG_SIZE } from '../data/towers.js';
 
@@ -57,6 +57,17 @@ export function forecastNight(scene) {
       : s.slowOnHit ? 1 - (1 - s.slowOnHit) * R.thornSlowShare : 1;
     if (slowMult < 1) lanes.forEach((L, li) => { for (let i = 0; i < L.n; i++) if (cov[li][i]) L.slow[i] = Math.min(L.slow[i], slowMult); });
     towers.push({ s, rate, cov, cd: 0, kind: s.kind, rule: t.rec.target, dmg: s.damage * (s.kind === 'snare' ? 1 : R.efficiency) });
+  }
+  // The Relay's own zap (RELAY_ZAP): a single-target 'bullet' (never hits burrowed) at the core. Its coverage
+  // doesn't count toward a path's dots (a path no tower reaches still reads ○○○).
+  {
+    const r2 = RELAY_ZAP.range * RELAY_ZAP.range;
+    const cov = lanes.map((L) => {
+      const c = new Uint8Array(L.n);
+      for (let i = 0; i < L.n; i++) if (L.on[i] && (L.xs[i] - scene.corePos.x) ** 2 + (L.zs[i] - scene.corePos.z) ** 2 <= r2) c[i] = 1;
+      return c;
+    });
+    towers.push({ s: { kind: 'bullet', damageType: RELAY_ZAP.damageType }, rate: 1 / RELAY_ZAP.cooldown, cov, cd: 0, kind: 'bullet', zap: true, dmg: relayZapDamage(scene.night) * R.efficiency });
   }
   // Relay Protocols as a damage-equivalent over the last stretch of every lane (split between lanes).
   let protoDps = 0;
@@ -143,10 +154,12 @@ export function forecastNight(scene) {
         for (const e of alive) {
           if (e.dead) continue;
           const i = Math.min(e.L.n - 1, Math.floor(e.d / ds));
-          if (!tw.cov[e.L.li][i]) continue;
+          // The Relay's zap also returns fire at a planted Spitter (after anything in its range).
+          const zapSpit = tw.zap && RELAY_ZAP.spitters && e.def.spit && i >= e.L.stopI && !tw.cov[e.L.li][i];
+          if (!tw.cov[e.L.li][i] && !zapSpit) continue;
           const f = e.d / e.L.lane.total;
           if (tw.kind === 'bullet' && e.def.burrow && f >= e.def.burrow[0] && f < e.def.burrow[1]) continue;
-          const score = tw.rule === 'strongest' ? e.hp : e.d;
+          const score = (tw.rule === 'strongest' ? e.hp : e.d) - (zapSpit ? 1e6 : 0);
           if (score > best) { best = score; target = e; }
         }
         if (!target) { tw.cd = 0; continue; }

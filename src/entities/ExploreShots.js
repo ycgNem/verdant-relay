@@ -3,7 +3,7 @@
 // small enemy at high speed.
 
 import * as THREE from 'three';
-import { CONFIG, JUICE, DEFLECT } from '../data/config.js';
+import { CONFIG, JUICE, DEFLECT, ROLL } from '../data/config.js';
 import { BRUSH } from '../data/jungle.js';
 import { canvasTex, lobShadowTexture } from '../core/Fx.js';
 import { inFootprint } from '../world/Solid.js';
@@ -284,7 +284,8 @@ export class Shots {
           if (e.dead || e.hidden || Math.hypot(e.x - L.tx, e.z - L.tz) > L.radius + e.radius) continue;
           e.hit(L.damage, dx / dl, dz / dl, 3, 'glob');
         }
-      } else if (p && !p.dead && Math.hypot(p.pos.x - L.tx, p.pos.z - L.tz) < L.radius + p.r * 0.5) {
+      } else if (p && !p.dead) p.nearMiss?.((px, pz) => Math.hypot(px - L.tx, pz - L.tz) < L.radius + p.r * 0.5 + ROLL.nearPad);   // (critic I2 #8)
+      if (L.team !== 'player' && p && !p.dead && Math.hypot(p.pos.x - L.tx, p.pos.z - L.tz) < L.radius + p.r * 0.5) {
         if (p.tryDeflect?.(L.owner || null, 'glob', L.x, L.z)) {
           const o = L.owner && !L.owner.dead ? L.owner : null;
           const bx = o ? o.x : L.x, bz = o ? o.z : L.z;
@@ -402,6 +403,10 @@ export class Shots {
   _bladeHits(b, set, damage, dx, dz) {
     const sc = this.scene;
     let n = 0;
+    // The thrown blade is still the machete (critic I2 #12): relic damage (Whetstone, Glass Machete, an armed
+    // Hunter's Fang) and the kit's Serrated Edge bleed apply to it too.
+    const dm = sc.relicsCtl?.meleeMult?.() ?? 1;
+    const onHit = sc.player?.bleeds?.onHit;
     for (const t of sc.hittables()) {
       if (t.dead) continue;
       const key = t.def ? t : `${t.x.toFixed(2)},${t.z.toFixed(2)}`;
@@ -409,12 +414,14 @@ export class Shots {
       const r = b.spec.radius + (t.radius || 0.3);
       if ((t.x - b.x) ** 2 + (t.z - b.z) ** 2 >= r * r) continue;
       set.add(key);
-      t.hit(damage, dx, dz, b.spec.knockback, 'blade');
+      t.hit(damage * dm, dx, dz, b.spec.knockback, 'blade');
+      onHit?.(t);
       sc.fx.flash({ x: t.x - dx * 0.2, y: 0.6, z: t.z - dz * 0.2 }, { color: '#ffffff', size: 0.4, life: 0.05 });
       sc.fx.hitStop(JUICE.melee.stop[0]);
       this.scene.game.sfx.playAt('blade_hit', b.x, b.z);
       n++;
     }
+    if (n) sc.relicsCtl?.landed?.();
     return n;
   }
 

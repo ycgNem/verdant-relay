@@ -22,7 +22,7 @@
 
 import * as THREE from 'three';
 import { JUICE } from '../data/config.js';
-import { flashVisual, setOpacity, updateVisual } from './Assets.js';
+import { flashVisual, setOpacity, updateVisual, setAnim } from './Assets.js';
 
 const MAX_PARTICLES = 700;
 const LIGHTS = 3;
@@ -117,7 +117,14 @@ function splatTexture(color, variant, N = 16, ground = 0) {
     // critic H #7: a stain on the ground, not paint. `ground` (0..1) pulls the colour that far toward the
     // ground colour (JUICE.death.splatGround) before the 3-tone ramp (wet core, base, lit rim) is built.
     const tone = new THREE.Color(color).lerp(new THREE.Color(JUICE.death.splatGround || '#3b3122'), ground);
-    const hexOf = (k) => `#${tone.clone().multiplyScalar(k).getHexString()}`;
+    // (critic H2 §3) no step darker than the ground under it: each tone is lifted to at least splat.minLum (sRGB luma).
+    const minLum = JUICE.death.splat?.minLum ?? 0;
+    const hexOf = (k) => {
+      const c = tone.clone().multiplyScalar(k);
+      const hex = c.getHex(), l = (0.299 * ((hex >> 16) & 255) + 0.587 * ((hex >> 8) & 255) + 0.114 * (hex & 255)) / 255;
+      if (l > 0 && l < minLum) c.multiplyScalar(Math.min(6, Math.pow(minLum / l, 2.2)));   // (linear)
+      return `#${c.getHexString()}`;
+    };
     const base = new THREE.Color(hexOf(1)), dark = new THREE.Color(hexOf(0.74)), lite = new THREE.Color(hexOf(1.22));
     const k = N / 16, h = N / 2;
     const blobs = [[h, h, (3.6 + rnd() * 0.8) * k]];
@@ -143,6 +150,71 @@ function splatTexture(color, variant, N = 16, ground = 0) {
     g.putImageData(img, 0, 0);
     return canvasTex(c);
   });
+}
+
+/**
+ * A splat decal from the artist's flat sprite (splat_<kind>_<n>): the same texels, with per-texel alpha noise
+ * (128–255 on opaque texels) so it dissolves texel by texel like the procedural ones (alphaTest rises).
+ */
+function splatArtTexture(img, key) {
+  return cached(`splatart:${key}`, () => {
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0);
+    const d = g.getImageData(0, 0, c.width, c.height);
+    const rnd = seeded(key.length * 977 + key.charCodeAt(key.length - 1));
+    for (let i = 3; i < d.data.length; i += 4) d.data[i] = d.data[i] > 127 ? 128 + Math.floor(rnd() * 127) : 0;
+    g.putImageData(d, 0, 0);
+    return canvasTex(c);
+  });
+}
+
+/**
+ * A splat stained into the ground under it (critic H2 §7): the artist's splat at a whole k×, flipped as given, every
+ * texel pulled `toGround` toward the ground texel beneath (patch: RGBA bytes k·w × k·h from the scene's baked ground),
+ * then lifted so none is darker than the darkest ground texel the splat covers. Alpha = the dissolve noise (128–255).
+ * One texture per splat (the decal item disposes it).
+ */
+function splatStainTexture(img, k, flipU, flipV, patch, toGround) {
+  const w = img.width, h = img.height, W = w * k, H = h * k;
+  const src = cached(`splatpx:${img.src}`, () => {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0);
+    return g.getImageData(0, 0, w, h).data;
+  });
+  const lum = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const at = (x, y) => {
+    const sx = Math.floor(x / k), sy = Math.floor(y / k);
+    return (((flipV ? h - 1 - sy : sy) * w) + (flipU ? w - 1 - sx : sx)) * 4;
+  };
+  let gmin = 255;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (src[at(x, y) + 3] < 128) continue;
+    const o = (y * W + x) * 4;
+    gmin = Math.min(gmin, lum(patch[o], patch[o + 1], patch[o + 2]));
+  }
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const out = g.createImageData(W, H), D = out.data;
+  const rnd = seeded(Math.floor(Math.random() * 1e9));
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const si = at(x, y);
+    if (src[si + 3] < 128) continue;
+    const o = (y * W + x) * 4;
+    let r = src[si] + (patch[o] - src[si]) * toGround;
+    let gg = src[si + 1] + (patch[o + 1] - src[si + 1]) * toGround;
+    let b = src[si + 2] + (patch[o + 2] - src[si + 2]) * toGround;
+    const l = lum(r, gg, b);
+    if (l > 0 && l < gmin) { const s = gmin / l; r *= s; gg *= s; b *= s; }
+    D[o] = r; D[o + 1] = gg; D[o + 2] = b;
+    D[o + 3] = 128 + Math.floor(rnd() * 127);
+  }
+  g.putImageData(out, 0, 0);
+  return canvasTex(c);
 }
 
 /** 20×10 dithered ellipse (ground glow under pickups). Additive, so black = nothing. */
@@ -664,14 +736,33 @@ export class Fx {
 
   ring(pos, o = {}) {
     const radius = o.radius ?? 1;
-    const geom = new THREE.RingGeometry(0.86, 1, 32);
+    // o.px: a line that many texels thick at full size (night Protocols), else 14% of the radius.
+    const geom = new THREE.RingGeometry(o.px ? Math.max(0.5, 1 - (o.px * TEXEL) / radius) : 0.86, 1, o.px ? 48 : 32);
     const mat = new THREE.MeshBasicMaterial({ color: o.color ?? '#ead4aa', transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide });
     const m = new THREE.Mesh(geom, mat);
     m.rotation.x = -Math.PI / 2;
     m.position.set(pos.x, (pos.y ?? 0) + 0.05, pos.z);
     m.scale.setScalar(o.from ?? radius * 0.2);
     this.scene.add(m);
-    this.items.push({ obj: m, t: 0, life: o.life ?? 0.35, kind: 'ring', r0: o.from ?? radius * 0.2, r1: radius });
+    // o.hard: full, then half, then gone (frames, not a smooth tween: night Protocols, critic H2 §8).
+    this.items.push({ obj: m, t: 0, life: o.life ?? 0.35, kind: 'ring', r0: o.from ?? radius * 0.2, r1: radius, hard: !!o.hard });
+  }
+
+  /**
+   * A one-shot hand-drawn effect from the sprite manifest (fx_spore_ring, …): `o.anim` (default idle) plays for
+   * `o.life` s at whole-number `o.scale`, at height `o.y`, then it is removed — hard alpha, no fades. Null when the
+   * art is missing (the caller keeps its code fallback).
+   */
+  sprite(pos, key, o = {}) {
+    const A = this.game?.assets;
+    if (!A?.hasSprite?.(key)) return null;
+    const v = A.makeVisual(key, { shadow: false, scale: o.scale ?? 1, emissive: o.emissive });
+    v.position.set(pos.x, o.y ?? 0, pos.z);
+    setAnim(v, o.anim || 'idle', true);
+    this.scene.add(v);
+    const item = { obj: v, t: 0, life: o.life ?? 0.35, kind: 'sprite' };
+    this.items.push(item);
+    return item;
   }
 
   // ---------------------------------------------------------------- flashes, sparks, lights
@@ -1103,23 +1194,62 @@ export class Fx {
    * the ground (JUICE.death.splatDesat) and fade over JUICE.death.decalFade of their decalLife; splats with an
    * explicit life (sap puddles, hazards) keep their colour and dissolve over their last second.
    */
+  /**
+   * A creature's death splat (critic H2 §3): its kind (JUICE.death.splat.kind[key]: blood / sap / magenta / acid) as
+   * the artist's decal splat_<kind>_1|2 when loaded (×2 for big creatures), else the procedural splat in that kind's
+   * colour. `size` = the creature's size (def.size × scale).
+   */
+  splat(pos, key, size = 0.7) {
+    const S = JUICE.death.splat, kind = S?.kind?.[key] || 'sap';
+    const A = this.game?.assets;
+    const art = `splat_${kind}_${1 + Math.floor(Math.random() * 2)}`;
+    if (A?.hasSprite?.(art)) return this.decal(pos, { art, scale: size >= (S.bigFrom ?? 1) ? 2 : 1 });
+    return this.decal(pos, { color: S?.color?.[kind] || '#5a5a2e', radius: (0.3 + size * 0.5) * JUICE.death.decalSize, ground: 0 });
+  }
+
   decal(pos, o = {}) {
     const D = JUICE.death;
     // Opaque pass + alphaTest: texels are either drawn solid or discarded (no blending), and the
     // per-texel alpha noise only decides *when* each texel disappears.
     // Lambert so the splat is lit like the floor it lies on (dark at night).
-    const size = this._snap((o.radius ?? 0.5) * 2, 4);
     const death = o.life == null;
-    const mat = new THREE.MeshLambertMaterial({ map: splatTexture(o.color ?? '#733e39', Math.floor(Math.random() * 3), Math.round(size * 32), death ? (D.splatDesat ?? 0) : 0), transparent: false, alphaTest: 0.45, depthWrite: false });
+    let map, sx, sz, own = null, rot = null, at = null;
+    const img = o.art ? this.game?.assets?.spriteInfo?.(o.art)?.tex?.image : null;
+    const k = Math.max(1, Math.round(o.scale || 1));
+    // this.ground (set by the scene): { patch(tx, tz, w, h) → RGBA bytes of its baked ground at world texels, or null;
+    // unlit: the ground is unlit (jungle: MeshBasic, light in PostFx) so the splat is too }.
+    const patch = img && this.ground?.patch ? (() => {
+      const W = img.width * k, H = img.height * k;
+      const tx = Math.round(pos.x * 32 - W / 2), tz = Math.round(pos.z * 32 - H / 2);
+      const p = this.ground.patch(tx, tz, W, H);
+      return p ? { p, tx, tz, W, H } : null;
+    })() : null;
+    if (img && patch) {
+      // The artist's splat stained into the ground beneath it (orientation baked in, texels on the ground's grid).
+      map = own = splatStainTexture(img, k, Math.random() < 0.5, Math.random() < 0.5, patch.p, D.splat?.toGround ?? 0.3);
+      sx = patch.W / 32; sz = patch.H / 32;
+      rot = 0;
+      at = { x: (patch.tx + patch.W / 2) / 32, z: (patch.tz + patch.H / 2) / 32 };
+    } else if (img) {
+      // The artist's splat (o.art): 1:1 texels × a whole o.scale, turned by half-turns / mirrored only.
+      map = splatArtTexture(img, o.art);
+      sx = (img.width / 32) * k * (Math.random() < 0.5 ? -1 : 1); sz = (img.height / 32) * k;
+    } else {
+      const size = this._snap((o.radius ?? 0.5) * 2, 4);
+      map = splatTexture(o.color ?? '#733e39', Math.floor(Math.random() * 3), Math.round(size * 32), death ? (o.ground ?? D.splatDesat ?? 0) : 0);
+      sx = sz = size;
+    }
+    const Mat = this.ground?.unlit ? THREE.MeshBasicMaterial : THREE.MeshLambertMaterial;
+    const mat = new Mat({ map, transparent: false, alphaTest: 0.45, depthWrite: false, side: THREE.DoubleSide });
     const m = new THREE.Mesh(this.quad, mat);
     m.rotation.x = -Math.PI / 2;
-    m.rotation.z = Math.floor(Math.random() * 4) * Math.PI / 2;
-    m.scale.set(size, size, 1);
-    m.position.set(pos.x, 0.012 + (this.decals.length % 8) * 0.0005, pos.z);
+    m.rotation.z = rot ?? (img ? Math.floor(Math.random() * 2) * 2 : Math.floor(Math.random() * 4)) * Math.PI / 2;
+    m.scale.set(sx, sz, 1);
+    m.position.set(at ? at.x : pos.x, 0.012 + (this.decals.length % 8) * 0.0005, at ? at.z : pos.z);
     m.renderOrder = 0;
     m.userData.pxSnap = true;   // texels on the pixel grid (the texture is size × 32 texels: 1:1)
     this.scene.add(m);
-    const it = { obj: m, t: 0, life: o.life ?? D.decalLife, kind: 'decal', mat, shared: true, fade: death ? (D.decalFade ?? 1) : 1 };
+    const it = { obj: m, t: 0, life: o.life ?? D.decalLife, kind: 'decal', mat, shared: true, fade: death ? (D.decalFade ?? 1) : 1, tex: own };
     this.items.push(it);
     this.decals.push(it);
     if (this.decals.length > D.maxDecals) { const old = this.decals.shift(); old.t = Math.max(old.t, old.life - 0.4); }
@@ -1239,7 +1369,9 @@ export class Fx {
       const k = Math.min(1, it.t / it.life);
       if (it.kind === 'ring') {
         it.obj.scale.setScalar(it.r0 + (it.r1 - it.r0) * Math.sqrt(k));
-        it.obj.material.opacity = 0.9 * (1 - k);
+        it.obj.material.opacity = it.hard ? (k < 0.6 ? 0.9 : 0.45) : 0.9 * (1 - k);
+      } else if (it.kind === 'sprite') {
+        updateVisual(it.obj, dt);
       } else if (it.kind === 'fade') {
         it.obj.material.opacity = 1 - k;
       } else if (it.kind === 'fadeHard') {
@@ -1309,7 +1441,8 @@ export class Fx {
         }
       }
       if (it.t >= it.life) {
-        this._disposeObj(it.obj, it.shared);
+        if (it.kind === 'sprite') this.game.assets.disposeVisual(it.obj);
+        else this._disposeObj(it.obj, it.shared);
         it.tex?.dispose();
         it.chevTex?.dispose();
         this.items.splice(i, 1);

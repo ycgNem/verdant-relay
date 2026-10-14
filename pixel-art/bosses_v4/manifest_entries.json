@@ -1,0 +1,330 @@
+{
+  "boss_thorn_mother": {
+    "file": "boss_thorn_mother.png",
+    "ppu": 32,
+    "frames": 10,
+    "fw": 98,
+    "fh": 103,
+    "anchor": [
+      49,
+      95
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "attack": [
+        4,
+        5
+      ],
+      "hurt": [
+        6
+      ],
+      "dead": [
+        7
+      ],
+      "windup": [
+        8,
+        9
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "attack": 7,
+      "hurt": 8,
+      "dead": 1,
+      "windup": 6
+    }
+  },
+  "boss_thorn_mother_p2": {
+    "file": "boss_thorn_mother_p2.png",
+    "ppu": 32,
+    "frames": 10,
+    "fw": 98,
+    "fh": 103,
+    "anchor": [
+      49,
+      95
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "attack": [
+        4,
+        5
+      ],
+      "hurt": [
+        6
+      ],
+      "dead": [
+        7
+      ],
+      "windup": [
+        8,
+        9
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "attack": 7,
+      "hurt": 8,
+      "dead": 1,
+      "windup": 6
+    }
+  },
+  "boss_brood_hive": {
+    "file": "boss_brood_hive.png",
+    "ppu": 32,
+    "frames": 10,
+    "fw": 104,
+    "fh": 90,
+    "anchor": [
+      54,
+      81
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "attack": [
+        4,
+        5
+      ],
+      "hurt": [
+        6
+      ],
+      "dead": [
+        7
+      ],
+      "windup": [
+        8,
+        9
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "attack": 7,
+      "hurt": 8,
+      "dead": 1,
+      "windup": 6
+    }
+  },
+  "boss_brood_hive_p2": {
+    "file": "boss_brood_hive_p2.png",
+    "ppu": 32,
+    "frames": 10,
+    "fw": 104,
+    "fh": 90,
+    "anchor": [
+      54,
+      81
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "attack": [
+        4,
+        5
+      ],
+      "hurt": [
+        6
+      ],
+      "dead": [
+        7
+      ],
+      "windup": [
+        8,
+        9
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "attack": 7,
+      "hurt": 8,
+      "dead": 1,
+      "windup": 6
+    }
+  },
+  "boss_warden": {
+    "file": "boss_warden.png",
+    "ppu": 32,
+    "frames": 10,
+    "fw": 84,
+    "fh": 104,
+    "anchor": [
+      42,
+      96
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "attack": [
+        4,
+        5
+      ],
+      "hurt": [
+        6
+      ],
+      "dead": [
+        7
+      ],
+      "windup": [
+        8,
+        9
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "attack": 7,
+      "hurt": 8,
+      "dead": 1,
+      "windup": 6
+    }
+  },
+  "boss_warden_p2": {
+    "file": "boss_warden_p2.png",
+    "ppu": 32,
+    "frames": 10,
+    "fw": 84,
+    "fh": 104,
+    "anchor": [
+      42,
+      96
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "attack": [
+        4,
+        5
+      ],
+      "hurt": [
+        6
+      ],
+      "dead": [
+        7
+      ],
+      "windup": [
+        8,
+        9
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "attack": 7,
+      "hurt": 8,
+      "dead": 1,
+      "windup": 6
+    }
+  },
+  "boss_drowned_engine": {
+    "file": "boss_drowned_engine.png",
+    "ppu": 32,
+    "frames": 10,
+    "fw": 102,
+    "fh": 98,
+    "anchor": [
+      51,
+      95
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "attack": [
+        4,
+        5
+      ],
+      "hurt": [
+        6
+      ],
+      "dead": [
+        7
+      ],
+      "windup": [
+        8,
+        9
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "attack": 7,
+      "hurt": 8,
+      "dead": 1,
+      "windup": 6
+    }
+  },
+  "boss_drowned_engine_p2": {
+    "file": "boss_drowned_engine_p2.png",
+    "ppu": 32,
+    "frames": 10,
+    "fw": 102,
+    "fh": 98,
+    "anchor": [
+      51,
+      95
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "attack": [
+        4,
+        5
+      ],
+      "hurt": [
+        6
+      ],
+      "dead": [
+        7
+      ],
+      "windup": [
+        8,
+        9
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "attack": 7,
+      "hurt": 8,
+      "dead": 1,
+      "windup": 6
+    }
+  }
+}

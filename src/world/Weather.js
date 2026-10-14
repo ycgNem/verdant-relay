@@ -64,6 +64,9 @@ export class Weather {
       U.uFog.value = d?.fog || 0;
       if (d?.fogColor) U.uFogCol.value.set(...d.fogColor);
       if (d?.fogRange && U.uFogR) U.uFogR.value.set(...d.fogRange);
+      if (U.uFogNight) { const fn = d?.fogNight ?? 0.3; U.uFogNight.value.set(...(Array.isArray(fn) ? fn : [fn, fn, fn])); }
+      if (U.uHeat) U.uHeat.value = d?.shimmer || 0;
+      if (d?.shimmerK && U.uHeatK) U.uHeatK.value.set(...d.shimmerK);
       U.uRain.value = d?.rain || 0;
       const R = RAIN_LOOK;
       U.uRainK.value.set(R.gap, R.len, R.speed, R.slant);

@@ -56,7 +56,9 @@ Two generations of art live side by side:
   undithered. The screen frame is whole foreground leaf sprites (`fg_leaf_1..5`, `ATMOS.leafFrame`) with a few pixels of
   lagging parallax and whole-texel sway — never a per-pixel band or a mirrored copy.
 - **Effects**: a hit is 1 frame white + 2 frames red-orange tint on the hit sprite only (`JUICE.hitFlash`). Death splats are
-  3-tone, desaturated ~55 % toward the ground (`JUICE.death.splatGround`) and fade out in whole steps over ~30 s. The
+  the creature's kind (`splat_<blood|sap|magenta|acid>_1|2`, 24 × 16, ×2 for big creatures) **stained into the ground under
+  them** (each texel 30 % further toward the ground texel beneath, none darker than the darkest ground texel it covers,
+  critic H2 §7) and fade out in whole steps over ~30 s. The
   Razorback charge lane is a dust-dither capsule with rounded ends and moving chevrons — no hard rectangle.
 - **Palette swaps at load** (`PALETTE_SWAP`): the feral's olive cloak is remapped by brightness rank to bone/rust
   (`#7a4a3a` / `#a08060`) so it never reads as the player.
@@ -73,7 +75,8 @@ Two generations of art live side by side:
   worn, not painted: a lighter trodden centre band (dithered rim) that evens the dirt's mottling, two broken wobbly
   wheel ruts with a lit lip, a few puddles and pebbles (no square or blob decals on the trail). No foliage card covers a
   lane, a pad or the Relay (tested per texel). Board furniture stays quiet: no marker on built pads, empty pads light up only
-  when they matter, a single hostile ring (hovered / targeted enemy), rank chevrons instead of plinth pips. Rewards read
+  when they matter, a single hostile ring (hovered / targeted enemy), a rank plate on the plinth's front face (floating
+  chevrons only without the `rank_badge_*` art) instead of plinth pips. Rewards read
   in-world: a slowed path is a cool multiply-tinted wet band with darker ripple dashes; boosted towers glint.
   Draw layers (sprites write no depth at night, so order is everything): ground lights and the wet band −3, plinths −2,
   ground marks −1 (blob shadows, hostile rings, pad markers, range circle, lane chevrons), sprites 0, badges 40, bars 50.
@@ -166,6 +169,13 @@ Build scripts there regenerate every PNG from `raw/` (log + costs: `LOG.md`); fr
   the sprite `BOSS.tint2` (warm red). Their moves use the shared telegraph language: red rings / lanes for hits
   (`fx.ringTele`, `fx.telegraph`, `fx.chargeLane`), spore-green rings for spore clouds, steam-white rings for vents, the
   Warden's laser a 1-px blinking aim line, then a 0.45-tile red beam with a pale core.
+  Fight read (critic I2): every move starts with the `windup` pose (strip frames 8–9) for its whole anticipation, then
+  `attack` on release, so the silhouette telegraphs before the ground does. A punish window ("opening") is gold:
+  the sprite flashes `#fee761` every 0.22 s with the boss's own puffs (`punish.fx`: wilting leaves, egg slime, heat
+  shimmer, steam) and a one-off gold ring; the words ("Overheated: hit it! (×1.5 damage)") are only on the bar,
+  whose fill and note turn `#fee761`. A telegraph is always the hazard's true size: a spore-cloud pod's ring is the
+  cloud's radius in spore green, and a live spore cloud draws its edge on the ground (a 1-texel `SPORES.color` ring,
+  a solid 1-texel `color2` ring inside it, then a 50% `color2` checker) that steps in as the cloud thins.
 
 ### Stage 7 days: derived sprites, goal props, weather (`src/data/bosses.js`, `objectives.js`, `weather.js`)
 - **Derived sprites** (no new art; `DERIVED_SPRITES`, made by `PaletteSwap` at load): `npc_engineer` = the player's
@@ -175,8 +185,9 @@ Build scripts there regenerate every PNG from `raw/` (log + costs: `LOG.md`); fr
 - Goal props reuse world art at 1×: the uplink = today's beacon (else `terminal`) with a 2-px cyan ground ring (7 tiles;
   it blinks when you're outside; an x-ray copy shows faintly through foliage); tracks = `dec_footprints` /
   `dec_bones_skull` / `dec_twigs_crossed` / `dec_burrow` with an amber glint every 0.7 s; the generator core =
-  `cell_cache` (carried over the head); spore nests = `prop_nest` tinted `#d8f070`; the Bloater = a Crawler body tinted
-  `#d0dc68` with a `spore_pod` sac ×2 on its back.
+  `cell_cache` (carried over the head); spore nests = `prop_nest` tinted `#d8f070`; the Bloater and the Thorn Stalker
+  have their own directional sheets (`bloater`: a dark body with a lime spore sac; `thorn_stalker`: red-violet with a
+  bone-white thorn crest; the tinted Crawler + `spore_pod` sac is only the fallback, `def.fallback`).
 - **Weather** looks are all in the PostFx pass, pixel-exact: Rain = 1-px streaks on world-pixel lanes every 6 px, 7 px
   long, leaning 1 px left per 3 down, 42% toward pale blue-grey (lit by the scene's light, so they dim at dusk), plus
   thin ground ripple rings (`#a8c4dc`) and a cool grade `[0.8, 0.86, 0.96]`. Fog = a grey-green veil in 5 world-anchored
@@ -184,7 +195,28 @@ Build scripts there regenerate every PNG from `raw/` (log + costs: `LOG.md`); fr
   warm grade `[1.08, 1.0, 0.85]`, a thin ochre haze far out and ×1.5 light shafts. HUD tag colours: rain `#a8c4dc`,
   fog `#c4d0cc`, heat `#ffc36a`.
 - HUD: the area boss bar (top centre, 300 × 8 units, red fill over an amber "lag", a pale tick at 50%, grey while the
-  Brood Hive is shielded; name 16 units, note 12), the ☠ boss marker on the maps (a 5 × 5 skull with ink eyes, red `#ff4a4a`).
+  Brood Hive is shielded, gold `#fee761` during an opening; name 16 units, note 12), the ☠ boss marker on the maps (a 5 × 5 skull with ink eyes, red `#ff4a4a`).
+
+### Presentation polish (critic H2)
+- **Trails read**: brush cards just south of a trail dither out their lower part over it (world-anchored, wobbly edge;
+  `ATMOS.trailXray`), canopy shade spares trails more (`trailShade` 0.12) and dirt is baked lighter (`TERRAIN_VALUE.dirt`
+  1.44). Measured (seed 4242, 720p, H2's method): trail median 37–52 → 62–82, unoccluded trail tiles 11–80 % → 70–100 %.
+- **Fog after dark** is the veil × the night light (navy, median ≤ 35, hue ~205) with glows above it; Heat is warmer
+  (`[1.12, 1.0, 0.8]`) with an ochre haze and a 1-px row-band shimmer far out.
+- **Day rings**: no always-on red ring; only threats (wind-up / attack / attack slot / alerted close / elites / bosses).
+- **Bosses**: phase 2 swaps to the `_p2` sheet (cracks, emissive veins / maws) with a particle aura; maws, lamps and eyes
+  glow at night (`EMISSIVE.keys`); the Pack Lord ×2 with a gold ring.
+- **Night Protocols** are pixel art: 1-px dashed aim ring (no fill), `fx_vine_snare` roots on each rooted enemy,
+  `fx_flare_pool` stepped amber pool + `fx_flare_ember` canister, code bolts for Arc; landing rings 2 texels, hard
+  steps. The spore burst is `fx_spore_ring` (2 frames), not the telegraph's full lime disc.
+- **Night board**: hand-made `plinth_stone / timber / rubble` per pad (seeded, timber on wood pads), the rank as a
+  `rank_badge_2 / 3` plate on the plinth's front face; health bars only on the hovered / targeted enemy, the boss and
+  Tanks / Elites.
+- **UI**: `.panel` is the hand-made 9-slice `ui_panel_frame` at the world's texel size (×2 at 720p, ×3 at 1080p); titles
+  ≤ 0.04 em letter-spacing; relic HUD icons at the world's texel size (48 px at 720p, 72 at 1080p); unseen Codex relics
+  are the object's own silhouette (ink fill, 1-texel slate edge), not the plaque; Workbench cards use `icon_craft_<id>`.
+- **Text**: one banner at a time in the top centre; one toast at a time under the top-left panel (queued, held while a
+  banner is up); night hints dock in the side panel.
 
 ## V1 look (night-mode sprites)
 

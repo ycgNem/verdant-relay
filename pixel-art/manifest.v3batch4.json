@@ -1,0 +1,566 @@
+{
+  "seed_carrier": {
+    "file": "seed_carrier.png",
+    "ppu": 32,
+    "frames": 6,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "walk": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "animFps": {
+      "idle": 3,
+      "walk": 8
+    }
+  },
+  "ruin_guard": {
+    "file": "ruin_guard.png",
+    "ppu": 32,
+    "frames": 8,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "walk": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "attack": [
+        6,
+        7
+      ]
+    },
+    "animFps": {
+      "idle": 3,
+      "walk": 7,
+      "attack": 6
+    }
+  },
+  "burrower": {
+    "file": "burrower.png",
+    "ppu": 32,
+    "frames": 8,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "walk": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "burrowed": [
+        6,
+        7
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "walk": 9,
+      "burrowed": 10
+    }
+  },
+  "seedling": {
+    "file": "seedling.png",
+    "ppu": 32,
+    "frames": 6,
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ],
+      "walk": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "animFps": {
+      "idle": 4,
+      "walk": 10
+    }
+  },
+  "boss_thorn_mother_p2": {
+    "file": "boss_thorn_mother_p2.png",
+    "ppu": 32,
+    "frames": 10,
+    "fw": 98,
+    "fh": 103,
+    "anchor": [
+      49,
+      95
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "attack": [
+        4,
+        5
+      ],
+      "hurt": [
+        6
+      ],
+      "dead": [
+        7
+      ],
+      "windup": [
+        8,
+        9
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "attack": 7,
+      "hurt": 8,
+      "dead": 1,
+      "windup": 6
+    }
+  },
+  "boss_brood_hive_p2": {
+    "file": "boss_brood_hive_p2.png",
+    "ppu": 32,
+    "frames": 10,
+    "fw": 104,
+    "fh": 90,
+    "anchor": [
+      54,
+      81
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "attack": [
+        4,
+        5
+      ],
+      "hurt": [
+        6
+      ],
+      "dead": [
+        7
+      ],
+      "windup": [
+        8,
+        9
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "attack": 7,
+      "hurt": 8,
+      "dead": 1,
+      "windup": 6
+    }
+  },
+  "boss_warden_p2": {
+    "file": "boss_warden_p2.png",
+    "ppu": 32,
+    "frames": 10,
+    "fw": 84,
+    "fh": 104,
+    "anchor": [
+      42,
+      96
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "attack": [
+        4,
+        5
+      ],
+      "hurt": [
+        6
+      ],
+      "dead": [
+        7
+      ],
+      "windup": [
+        8,
+        9
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "attack": 7,
+      "hurt": 8,
+      "dead": 1,
+      "windup": 6
+    }
+  },
+  "boss_drowned_engine_p2": {
+    "file": "boss_drowned_engine_p2.png",
+    "ppu": 32,
+    "frames": 10,
+    "fw": 102,
+    "fh": 98,
+    "anchor": [
+      51,
+      95
+    ],
+    "fps": 8,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "attack": [
+        4,
+        5
+      ],
+      "hurt": [
+        6
+      ],
+      "dead": [
+        7
+      ],
+      "windup": [
+        8,
+        9
+      ]
+    },
+    "animFps": {
+      "idle": 5,
+      "attack": 7,
+      "hurt": 8,
+      "dead": 1,
+      "windup": 6
+    }
+  },
+  "thorn_stalker": {
+    "file": "thorn_stalker.png",
+    "ppu": 32,
+    "fw": 64,
+    "fh": 53,
+    "anchor": [
+      34,
+      49
+    ],
+    "dirs": [
+      "s",
+      "se",
+      "e",
+      "ne",
+      "n"
+    ],
+    "anims": {
+      "idle": {
+        "row": 0,
+        "frames": 4,
+        "fps": 4
+      },
+      "walk": {
+        "row": 5,
+        "frames": 6,
+        "fps": 10
+      },
+      "windup": {
+        "row": 10,
+        "frames": 3,
+        "fps": 6,
+        "loop": false
+      },
+      "attack": {
+        "row": 15,
+        "frames": 4,
+        "fps": 12,
+        "loop": false,
+        "hit": 1
+      }
+    },
+    "shadow": 0.42
+  },
+  "bloater": {
+    "file": "bloater.png",
+    "ppu": 32,
+    "fw": 64,
+    "fh": 53,
+    "anchor": [
+      34,
+      49
+    ],
+    "dirs": [
+      "s",
+      "se",
+      "e",
+      "ne",
+      "n"
+    ],
+    "anims": {
+      "idle": {
+        "row": 0,
+        "frames": 4,
+        "fps": 4
+      },
+      "walk": {
+        "row": 5,
+        "frames": 6,
+        "fps": 10
+      },
+      "windup": {
+        "row": 10,
+        "frames": 3,
+        "fps": 6,
+        "loop": false
+      },
+      "attack": {
+        "row": 15,
+        "frames": 4,
+        "fps": 12,
+        "loop": false,
+        "hit": 1
+      }
+    },
+    "shadow": 0.42
+  },
+  "fx_vine_snare": {
+    "file": "fx_vine_snare.png",
+    "ppu": 32,
+    "frames": 3,
+    "fps": 10,
+    "anchor": [
+      12,
+      22
+    ],
+    "shadow": 0,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2
+      ],
+      "burst": [
+        0,
+        1
+      ],
+      "hold": [
+        1,
+        2
+      ]
+    },
+    "animFps": {
+      "hold": 3
+    }
+  },
+  "fx_flare_pool": {
+    "file": "fx_flare_pool.png",
+    "ppu": 32,
+    "frames": 3,
+    "fps": 6,
+    "flat": true,
+    "shadow": 0,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2,
+        1
+      ]
+    }
+  },
+  "fx_flare_ember": {
+    "file": "fx_flare_ember.png",
+    "ppu": 32,
+    "frames": 3,
+    "fps": 10,
+    "anchor": [
+      6,
+      17
+    ],
+    "shadow": 0,
+    "anims": {
+      "idle": [
+        0,
+        1,
+        2
+      ]
+    }
+  },
+  "fx_spore_ring": {
+    "file": "fx_spore_ring.png",
+    "ppu": 32,
+    "frames": 2,
+    "fps": 6,
+    "flat": true,
+    "shadow": 0,
+    "anims": {
+      "idle": [
+        0,
+        1
+      ]
+    }
+  },
+  "icon_craft_med_kit": {
+    "file": "icon_craft_med_kit.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_craft_focusing_lens": {
+    "file": "icon_craft_focusing_lens.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_craft_thorn_coating": {
+    "file": "icon_craft_thorn_coating.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_craft_uplink": {
+    "file": "icon_craft_uplink.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_craft_overcharger": {
+    "file": "icon_craft_overcharger.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_craft_serrated_edge": {
+    "file": "icon_craft_serrated_edge.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_craft_balanced_grip": {
+    "file": "icon_craft_balanced_grip.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_craft_heavy_spine": {
+    "file": "icon_craft_heavy_spine.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "icon_craft_reinforced_plating": {
+    "file": "icon_craft_reinforced_plating.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "plinth_stone": {
+    "file": "plinth_stone.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0,
+    "top": [
+      1,
+      1,
+      35,
+      26
+    ]
+  },
+  "plinth_timber": {
+    "file": "plinth_timber.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0,
+    "top": [
+      2,
+      2,
+      35,
+      26
+    ]
+  },
+  "plinth_rubble": {
+    "file": "plinth_rubble.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0,
+    "top": [
+      4,
+      1,
+      36,
+      28
+    ]
+  },
+  "rank_badge_2": {
+    "file": "rank_badge_2.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "rank_badge_3": {
+    "file": "rank_badge_3.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "splat_sap_1": {
+    "file": "splat_sap_1.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "splat_sap_2": {
+    "file": "splat_sap_2.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "splat_blood_1": {
+    "file": "splat_blood_1.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "splat_blood_2": {
+    "file": "splat_blood_2.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "splat_magenta_1": {
+    "file": "splat_magenta_1.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "splat_magenta_2": {
+    "file": "splat_magenta_2.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "splat_acid_1": {
+    "file": "splat_acid_1.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  },
+  "splat_acid_2": {
+    "file": "splat_acid_2.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0
+  }
+}

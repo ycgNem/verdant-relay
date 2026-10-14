@@ -29,6 +29,13 @@ const C = JUNGLE.chunk;
 // 8 × 8 ordered dither (recursive Bayer): 64 levels, so a fade over a few pixels shows no steps.
 const BAYER_GLSL = 'float bayer2(vec2 a){ a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }\nfloat bayer8(vec2 a){ return (bayer2(0.25 * a) * 0.25 + bayer2(0.5 * a)) * 0.25 + bayer2(a); }\n';
 
+// The trail mask's stand-in (no trail see-through): the night map and anything else that reuses the card material.
+let NO_TRAIL = null;
+const noTrail = () => {
+  if (!NO_TRAIL) { NO_TRAIL = new THREE.DataTexture(new Uint8Array(4), 1, 1); NO_TRAIL.needsUpdate = true; }
+  return NO_TRAIL;
+};
+
 export function makeCardMaterial(tex) {
   return new THREE.ShaderMaterial({
     // Never over the player's own texels + outline: its card mask (Assets.js addOutline) wrote stencil
@@ -50,6 +57,11 @@ export function makeCardMaterial(tex) {
       uAtlas: { value: tex.image?.width || 2048 },
       uBase: { value: new THREE.Vector3(ATMOS.brushBase.baseH, ATMOS.brushBase.baseDark, 0) },
       uCot: { value: 1 / CARD_SCALE },
+      // Trails show through the brush in front of them (critic H2 §1, ATMOS.trailXray): uTrail = per-tile mask of
+      // open trail ground (JungleWorld._buildTrailMask), uTrailK = [strength, boost, foot, world size]; 0 = off.
+      uTrail: { value: noTrail() },
+      uTrailK: { value: new THREE.Vector4(0, 1, 0.25, 1) },
+      uTrailT: { value: new THREE.Vector2(0, 1.4) },   // trees: [strength, foot]
     },
     vertexShader: `
       attribute vec4 aCard;   // baseZ, sway weight, phase, upright (1) / flat (0)
@@ -74,6 +86,9 @@ export function makeCardMaterial(tex) {
       }`,
     fragmentShader: `
       uniform sampler2D map;
+      uniform sampler2D uTrail;
+      uniform vec4 uTrailK;
+      uniform vec2 uTrailT;
       uniform vec2 uPlayerPx;
       uniform float uPlayerZ;
       uniform float uXray, uXrayMax, uXrayInner, uAtlas, uCot;
@@ -84,9 +99,35 @@ export function makeCardMaterial(tex) {
       varying vec3 vShade;
       varying vec3 vWorld;
       ${BAYER_GLSL}
+      float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float vnoise(vec2 p) {
+        vec2 i = floor(p), f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
+      }
       void main() {
         vec4 c = texture2D(map, vUv);
         if (c.a < 0.5) discard;
+        bool isBrush = vShade.x > 0.5 && vShade.x < 1.5, isTree = vShade.x > 1.5 && vShade.x < 2.5;
+        if (uTrailK.x > 0.0 && vUpright > 0.5 && (isBrush || isTree)) {
+          // Brush (and tree crowns) standing south of a trail overhang it at the 55° pitch: texels over open trail
+          // ground (the ground point behind this texel: x, z − cot·y) dither away — fully over the trail, a
+          // dithered fringe beside it (the bilinear mask × boost) — so the path a player follows is never buried
+          // (critic H2 §1). Each plant keeps its own foot: nothing goes within foot tiles of its base (a tree's
+          // trunk: uTrailT.y), then the see-through ramps in over the next 0.4 tile (a dithered fade, not a hard
+          // cut across the stems). Tree crowns only thin out (uTrailT.x).
+          vec2 g = vec2(vWorld.x, vWorld.z - vWorld.y * uCot);
+          float up = vBaseZ - g.y;
+          float foot = isTree ? uTrailT.y : uTrailK.z;
+          if (up > foot) {
+            // The tile mask is read through a slow world-anchored wobble, so the see-through edge follows no grid.
+            vec2 wob = vec2(vnoise(g * 1.7), vnoise(g * 1.7 + 17.3)) - 0.5;
+            float m = clamp(texture2D(uTrail, (g + wob * 0.7) / uTrailK.w).r * uTrailK.y, 0.0, 1.0) * (isTree ? uTrailT.x : uTrailK.x);
+            m *= smoothstep(foot, foot + 0.4, up);
+            vec2 tp = floor(vec2(g.x, g.y) * 32.0 + 0.5);
+            if (bayer8(tp) < m) discard;
+          }
+        }
         if (vUpright > 0.5 && vBaseZ > uPlayerZ + 0.06) {
           // See-through window: a round dithered hole that fades smoothly to nothing at its rim
           // (no hard edge, so no visible box or ring). The player's silhouette shows through the rest.
@@ -141,7 +182,33 @@ export class JungleWorld {
     this._buildColliders();
     this.shadeTex = this._buildShade();
     this.gradeTex = this._buildGrade();
+    this.trailTex = this._buildTrailMask();
+    const TX = ATMOS.trailXray;
+    this.cardMat.uniforms.uTrail.value = this.trailTex;
+    this.cardMat.uniforms.uTrailK.value.set(TX.strength, TX.boost, TX.foot, this.size);
+    this.cardMat.uniforms.uTrailT.value.set(TX.tree, TX.treeFoot);
     this.time = 0;
+  }
+
+  /**
+   * Open trail ground per tile (critic H2 §1): trail tiles with no undergrowth. R8, linear-filtered, so the card
+   * shader's see-through fades over about a tile at the trail's edge. this.trailMask keeps the bytes (coveredAt).
+   */
+  _buildTrailMask() {
+    const W = this.size, m = new Uint8Array(W * W);
+    for (let i = 0; i < W * W; i++) m[i] = this.w.trail[i] && !this.w.brush[i] && !this.deep[i] ? 255 : 0;
+    this.trailMask = m;
+    const tex = new THREE.DataTexture(m, W, W, THREE.RedFormat, THREE.UnsignedByteType);
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
+    return tex;
+  }
+
+  /** Would the card shader drop a brush texel over ground point (x, z)? (the trail see-through, for coveredAt) */
+  _trailClear(x, z) {
+    const tx = Math.floor(x), tz = Math.floor(z);
+    return this.inBounds(tx, tz) && ATMOS.trailXray.strength > 0 && this.trailMask[tz * this.size + tx] > 0;
   }
 
   // ================================================================== queries
@@ -547,6 +614,26 @@ export class JungleWorld {
     this.update(0, x, z);
   }
 
+  /**
+   * The baked ground under a rectangle of world texels (32 per tile; x east, z south) as RGBA bytes, w × h, or null
+   * when a chunk under it isn't baked (Fx.decal stains splats into it, critic H2 §7).
+   */
+  groundPatch(tx, tz, w, h) {
+    const CP = C * 32, out = new Uint8ClampedArray(w * h * 4);
+    for (let cz = Math.floor(tz / CP); cz <= Math.floor((tz + h - 1) / CP); cz++) {
+      for (let cx = Math.floor(tx / CP); cx <= Math.floor((tx + w - 1) / CP); cx++) {
+        const cv = this.bakeCache.get(this._key(cx, cz));
+        if (!cv) return null;
+        const x0 = Math.max(tx, cx * CP), x1 = Math.min(tx + w, (cx + 1) * CP);
+        const z0 = Math.max(tz, cz * CP), z1 = Math.min(tz + h, (cz + 1) * CP);
+        const d = cv.getContext('2d', { willReadFrequently: true }).getImageData(x0 - cx * CP, z0 - cz * CP, x1 - x0, z1 - z0).data;
+        const rw = (x1 - x0) * 4;
+        for (let y = 0; y < z1 - z0; y++) out.set(d.subarray(y * rw, (y + 1) * rw), ((z0 - tz + y) * w + (x0 - tx)) * 4);
+      }
+    }
+    return out;
+  }
+
   _bake(cx, cz) {
     const k = this._key(cx, cz);
     let canvas = this.bakeCache.get(k);
@@ -660,6 +747,8 @@ export class JungleWorld {
             if (r < 0 || r >= e.ay) continue;
             let u = Math.floor((X - (c.x - e.ax / 32)) * 32);
             if (u < 0 || u >= e.w) continue;
+            // Brush over open trail ground is see-through there (card shader): it covers nothing.
+            if (c.kind === 1 && (c.z - (z - hy / 32)) > ATMOS.trailXray.foot && this._trailClear(X, z - hy / 32)) continue;
             if (c.flip) u = e.w - 1 - u;
             if (AD[((e.y + r) * AW + e.x + u) * 4 + 3] > 127) { hits++; break; }
           }
@@ -719,6 +808,7 @@ export class JungleWorld {
     this.atlas.texture.dispose();
     this.shadeTex.dispose();
     this.gradeTex.dispose();
+    this.trailTex.dispose();
     this.w.brushNow = null;
   }
 }

@@ -128,6 +128,15 @@ function makeRing(r, color) {
   return m;
 }
 
+/** A second ground ring under a visual (the Pack Lord's gold mark, critic H2 §2.3): radius r tiles, in `color`. */
+export function addGroundRing(root, r, color) {
+  const m = makeRing(r, color);
+  m.name = 'ring2';
+  m.position.y = 0.017;
+  root.add(m);
+  return m;
+}
+
 // Occlusion silhouette (critic F #1): a second draw of a creature's sprite that only lands where
 // something in FRONT of it already wrote depth (depthFunc GREATER) — foliage cards, trunks, ruins,
 // props. It paints the sprite's edge texels solid in a flat colour (a 1-texel outline) and fills the

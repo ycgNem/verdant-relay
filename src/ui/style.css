@@ -84,6 +84,16 @@ body { display: flex; align-items: center; justify-content: center; }
   padding: calc(var(--u) * 10) calc(var(--u) * 12);
   border-radius: calc(var(--u) * 3);
 }
+/* The hand-made 9-slice frame (critic H2 §7; pixel-art/ui_panel_frame: 24 × 24, 8-texel slices) at the world's texel
+   size (--tx, Game.fit: ×2 at 720p, ×3 at 1080p), its interior the fill. The layout border stays the old 2 units (so
+   nothing reflows); the image's 8-texel slices paint over the padding's outer edge. */
+.panel {
+  border: calc(var(--u) * 2) solid transparent;
+  border-image: var(--frame) 8 fill / calc(var(--tx, 2px) * 8) / 0 stretch;
+  image-rendering: pixelated;
+  box-shadow: none;
+  border-radius: 0;
+}
 .panel h2 { margin: 0 0 calc(var(--u) * 8); font-size: max(var(--fq), round(calc(var(--u) * 18 - 0.01px), var(--fq))); color: var(--good); letter-spacing: round(0.06em, var(--fpx)); }
 .panel h3 { margin: calc(var(--u) * 6) 0 calc(var(--u) * 4); font-size: max(var(--fq), round(calc(var(--u) * 14 - 0.01px), var(--fq))); color: var(--amber); }
 .panel p { margin: calc(var(--u) * 4) 0; line-height: 1.35; }
@@ -183,6 +193,8 @@ body { display: flex; align-items: center; justify-content: center; }
   max-width: calc(var(--u) * 300); font-size: max(var(--fq), round(calc(var(--u) * 12 - 0.01px), var(--fq))); line-height: 1.35; z-index: 20;
 }
 .hint b { color: var(--amber); }
+/* Docked in a panel (showHint opts.parent): flows with the panel's content, never over the play area. */
+.hint.docked { position: relative; max-width: none; box-sizing: border-box; }
 
 .key {
   display: inline-block; border: 1px solid var(--muted); border-bottom-width: calc(var(--u) * 2); padding: 0 calc(var(--u) * 4);

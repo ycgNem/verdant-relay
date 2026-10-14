@@ -42,3 +42,6 @@
 .dc-line.dc-boss .dc-k { color: #ff6a5a; }
 .dc-line.dc-cleared .dc-k { color: var(--good); }
 .dc-line.dc-threat.dc-cleared > span:last-child { color: var(--good); }
+/* an opening (punish window): the fill turns hot yellow and the note reads "Overheated: hit it! (×1.5 damage)" */
+.j-bossbar.open .bb-fill { background: #fee761; }
+.j-bossbar.open .bb-sub { color: #fee761; }

@@ -23,6 +23,7 @@ How the engine pieces fit together. `DESIGN.md` says what the game is; `PLAN.md`
   Night board: `&map=twin|crossing|ford` (else picked from the seed), `&beacons=N` (pylons p0…p(N−1) count as switched on → forward pads).
   Relics: `&relics=whetstone,pylon_coil` (already brought home), with `debug=summary` `&found=a,b` (carried home on the
   debug trip). In the jungle `vr.game.scene.relicsCtl.debug` has `carry(id)`, `drop({ rarity })`, `goto('cache'|'shrine'|'lore', n)`, `info()`.
+  `&seed=N` fixes the run seed (the same jungle every load: before/after captures, e.g. the trail and fog measurements).
 
 ## Game (`src/core/Game.js`)
 
@@ -37,6 +38,7 @@ How the engine pieces fit together. `DESIGN.md` says what the game is; `PLAN.md`
 | `game.setInternalRes(w, h)` | render at a fixed internal size until the next scene switch (night: `NightCamera` sets floor(window / k), even, per zoom k) |
 | `game.fit()` | size the stage: always a whole-number CSS scale (device px). Fixed field of view `CONFIG.ui.view` = 640×360 (20 × 11.25 tiles): ×2 at 1280×720, ×3 at 1920×1080, ×4 at 2560×1440; other windows take the scale filling the most of the window with each side inside `CONFIG.ui.viewBand` (1366×768 → 682×384 ×2, 1920×950 → 640×316 ×3, 1600×900 → 704×396 ×2 letterboxed; small windows `viewBand.small`: 1024×600 → 512×300 ×2). No resolution setting. A fixed `setInternalRes` is integer-scaled when that fills ≥ `CONFIG.ui.minIntegerFill`, else stretched |
 | `game.u` | CSS px per UI unit (`--u`) = min(stage width / 960, height / 540) — the stage aspect varies a little, so use this, not `clientWidth / 960` |
+| `--tx`, `--frame` (on the stage) | `fit()` also sets `--tx` = the world's texel in CSS px (layout k / dpr: 2 px at 720p, 3 at 1080p) and `--frame` = the 9-slice panel frame (`ui_panel_frame.png`) as an absolute URL; `.panel` draws it with `border-image: var(--frame) 8 fill / calc(var(--tx) * 8)` |
 | `game.width/height` | current internal resolution — changes with the window, so size per frame (PostFx) or rely on `_applyRes` re-sizing the scene's PixelCamera |
 | `game.shake(amp, time)` | screen shake (respects the settings toggle) |
 | `game.flash(color, opacity)` | full-screen flash |
@@ -166,9 +168,11 @@ Module functions (import from `../core/Assets.js`):
 - `JungleMap.drawBig(canvas, view, markers, time, labels)`: `labels` `[{x, z, text}]` drawn in Tiny5 (whole-pixel
   scale); markers `relic` (gold star), `cache` (gold dot), `lore` (cyan dot).
 - `SporePods(scene, world.spores)` (`src/entities/`): the spore-pod hazard — `update(dt)`, `hittables(out)` (a hit with
-  src `'chop'` launches the pod instead of popping it), `cloudAt(x, z)` (a cloud with no pod: Bloaters, spore nests,
-  the Thorn Mother), `dispose()`. Clouds also hurt / choke creatures (`enemy.chokeT`),
-  and creatures with `podTrigger` set pods off.
+  src `'chop'` launches the pod instead of popping it), `cloudAt(x, z, {life, src})` (a cloud with no pod: Bloaters,
+  spore nests, the Thorn Mother), `dispose()`. Clouds also hurt / choke creatures (`enemy.chokeT`),
+  and creatures with `podTrigger` set pods off. Each cloud draws a dithered edge ring at its true damage radius
+  (`SPORES.edgeSteps`: it thins in steps); a tick hurts from the cloud's centre (`hurt(dmg, dx, dz, src)`, no tick while
+  rolling) and leaves only `SPORES.tickIframes` of immunity.
 - `JungleWorld(game, scene3d, data, cutMask)`: chunk streaming (`update(dt, focusX, focusZ)`, `warm(x, z)`), queries
   (`brushAt solidAt deepAt wetAt opaqueAt blockedAt(x, z, throughBrush) levelAt speedAt(x, z, brushFree) inFern shadeAt
   lineOfSight`), movement
@@ -188,14 +192,25 @@ Module functions (import from `../core/Assets.js`):
   SporePods falls back to its dithered disc). Gameplay stays in SporePods.
 - Combat (critic I): `scene.meleeHit(x, z, angle, spec, power)` returns how many creatures / nests / pods it struck
   (`spec.noCut` skips undergrowth, `spec.shove` draws no blade arc). `Player`: `tryDeflect(attacker, kind, ax, az)`
-  (enemy contact / shots / lob landings call it first; true = deflected), `bleed(t)`, `root(t)`, the thrown `blade`.
+  (enemy contact / shots / lob landings call it first; true = deflected), `nearMiss(inZone)` (an attack committing calls
+  it with a point-in-hit-zone test: a roll started inside it ≤ `ROLL.near` s ago is a perfect dodge), `bleed(t)`, `root(t)`, the thrown `blade`.
   `ExploreEnemy`: `hidden` (a Thorn Stalker under the brush: not hittable, no separation), `deflected(kind)`,
-  `stun(t)`, `stepBack(x, z, dist)` (the death beat), `chokeT`, the move in progress `mv`. `scene.shots`
+  `stun(t)`, `stepBack(x, z, dist)` (the death beat), `chokeT`, the move in progress `mv`. Its look: `def.sprite` (e.g.
+  `thorn_stalker`, `bloater`: own sheets), else `def.fallback` (`{ sprite, tint, pod… }`: the old tinted Crawler) →
+  `e.look`; `opts.visScale` draws it at a whole-number scale. Its hostile ring (`vis` child `ring`) is shown by the
+  scene's occlusion loop only for elites, area bosses, attack-token holders, a wind-up / attack, or alerted within
+  `HUD.ringNear` tiles. A deflect stuns with no label (the player's "DEFLECT" is the one word). `scene.shots`
   (`ExploreShots`): `throwBlade({x, z, dir, spec, onCatch})` / `recallBlade(b)`, `sapAt(x, z, pad)` (sap puddles),
   enemy shots / lobs carry `owner` (deflects bat globs back). Leading: lunges and the Feral spear aim ahead of the
   player by `def.lead` / `spear.lead` × the time from the lock to impact (velocity capped at walking speed), and a
   melee wind-up also starts when the player *will be* in reach after it (`CONFIG.expedition.attackers.predict`).
   Exports `makeCardMaterial`, `chunkCards(world, atlas, cut, x0, z0, w, h)`, `cardMesh(cards, atlas, mat)` (the night map reuses them).
+  **Trail x-ray** (critic H2 §3): `JungleWorld._buildTrailMask()` → `trailTex` (1 texel per tile: open trail, not brush,
+  not deep water); the card shader (`uTrail`, `uTrailK` = [strength, boost, foot, world size], `uTrailT` = [tree strength,
+  tree foot]) dithers out the lower part of a brush card (and, weaker, a tree card's foot) wherever the ground just behind
+  that card texel (x, z − cot·y) is trail, with a wobbly world-anchored edge; `coveredAt` ignores brush texels over clear
+  trail. Tuning `ATMOS.trailXray`, with `ATMOS.trailShade` (canopy shade spared on trails) and `TERRAIN_VALUE.dirt`.
+  `groundPatch(tx, tz, w, h)` → the baked ground's RGBA bytes under a rectangle of world texels (null if a chunk isn't baked).
 - `TerrainBaker(world, assets, terrainArt).bake(cx, cz)` → a 512 × 512 canvas for chunk (cx, cz). `world.blendAmp` tightens edges.
   Jungle dirt / paving are baked lighter (`TERRAIN_VALUE`). Decals come from deterministic per-chunk candidates
   (`_decalCands`, districts favour `REGION_LOOK[key].decals`); a decal yields to a same-key candidate of higher priority
@@ -218,8 +233,12 @@ Module functions (import from `../core/Assets.js`):
   `weather.apply()` + `weather.hud(hud)`. Per frame: `tickSpeedBuffs`, enemies, `goals.update` (before interaction),
   `bosses.update`, `weather.update`. `hittables()` adds `bosses.hittables` / `goals.hittables`; `_markers()` adds
   `bosses.markers` (type `boss`, a ☠ in `MAP_MARKERS`) and seen events; `_finish` adds `objectiveFailed`,
-  `bossesKilled`, `weather` to the result. `JungleGen.generateWorld` sets `world.lairs[regionIdx]` (`bossLair(world,
-  ri)`: lost major → furthest lost → major → furthest site; a post-pass, no RNG), and `_sitesIn` never hands out a lair.
+  `bossesKilled`, `weather` to the result. `JungleGen.generateWorld` sets `world.lairs[regionIdx]` (`bossLairs(world, n)`:
+  per area the candidates of `lairCandidates` — lost major → furthest lost → major → furthest site — picked greedily so
+  every pair is ≥ `BOSS.aggro + BOSS.leash + BOSS.lairGap` apart, else the furthest; no RNG), and `_sitesIn` never hands out a lair. Right after
+  the site features (before reachability), `clearLairProps` moves every container, relic strongbox and data log within
+  `BOSS.clearProps.radius` of a lair to `clearProps.to` tiles from it (own seeded stream, ids kept; shrines stay; wild
+  spore pods there are dropped), every night.
   - `Goals(scene)` (`src/scenes/JungleGoals.js`; data `PRIMARY` / `GOALS` in objectives.js): step types `escort`
     (`phase` find / lead), `defend` (start / hold), `track` (+ the closing `kill`), `carry` (pickup / deliver), `purge`.
     `claims(step)` → `_setupObjective` hands it `setupStep(step, si, used)`; `update(dt)`, `hittables(out)` (nests),
@@ -233,13 +252,31 @@ Module functions (import from `../core/Assets.js`):
     `scene.events`, results in `eventsDone` (`{key, name, flag?}`). Announce at `EVENT_RULES.announce` (`_updateDiscovery`).
   - `AreaBosses(scene)` (`src/entities/AreaBoss.js`; data `BOSS` / `BOSSES` in bosses.js): `lairs[]` `{area, ri, site,
     def, boss, dead}` for `run.bossAlive(area)`, `lairSites()`, `inLair(x, z, pad)` (no wildlife there), `build()`,
-    `update(dt)` (engage within `BOSS.aggro`, leash, HUD bar `.j-bossbar` in `hud.root`), `hittables(out)`,
+    `update(dt)` (engage within `BOSS.aggro`, leash, HUD bar `.j-bossbar` in `hud.root`; **one engaged lair at a time**:
+    while one is busy no other engages, so the bar never switches; the intro banner (prio 2, `BOSS.introTime`) goes
+    first and the bar waits for it (`barWait`); "You left…" only for a boss you hurt; the Pack Lord silently walks home
+    past `BOSS.tether` from its site unless engaged), `hittables(out)`,
     `markers(out)`, `focus()` (`_placeCamera` leans toward it, `BOSS.camPull`), `onEnemyKilled(e)` (`e.lordOf`),
-    `onKilled(L)` (Run.clearBoss, `_grantSkillPoint({boss: true})`, `scene.dropRelic(x, z, {rarity: 'R'})`), `killed[]`.
+    `onKilled(L)` (Run.clearBoss, `_grantSkillPoint({boss: true, quiet: true})`, a quiet `scene.dropRelic(x, z, {rarity:
+    'R'})`, then the KILLED banner with the rewards as its `extra` line), `killed[]`. Phase 2 looks (`_look(phase)`):
+    the `<sprite>_p2` sheet when it exists (same 10-frame layout: idle 0–3, attack 4–5, hurt 6, dead 7, windup 8–9),
+    else the old tint, plus `bossAura` particles (`BOSS.aura2[kind]`); boss sheets are in `EMISSIVE.keys`. The Pack Lord
+    is drawn ×`BOSS.packLord.scale` with a gold `addGroundRing` and its lair cleared `packLord.clear` tiles.
     `StationaryBoss` (sprite strip idle 0–3 / attack 4–5 / hurt 6 / dead 7, collider, `hurt(dmg, dx, dz, src)`,
-    `damageTaken()`, phase 2 + `onPhase2`, `ready(name, every)`, `later(t, fn)`, `ringAt`, `hitCircle`, `hitLane`,
-    `lob`, `spawnMinion`) → `ThornMother`, `BroodHive`, `Warden`, `DrownedEngine`; `PackLordEnemy` (a `FeralChief` in
+    `damageTaken()`, phase 2 + `onPhase2`, `later(t, fn)`, `ringAt`, `hitCircle`, `hitLane`, `_inLane`, `_ringSelf(M,
+    colors, onHit)` (the anti-hug ring), `lob`, `spawnMinion` (sets `e.minion`, counts `spawned`), `minionRoom(max,
+    cap)`) → `ThornMother`, `BroodHive`, `Warden`, `DrownedEngine`; `PackLordEnemy` (a `FeralChief` in
     `scene.enemies`) + `PackLordCtl`.
+    **The pattern engine** (`act(dt)`, critic I2): each phase loops `def.pattern[phase]` (a `'?'` slot draws from
+    `def.wild[phase]`); the slot's move is the subclass method of that name, which starts its tell / telegraphs and
+    returns its duration (`busyT`); then `def.gap[phase]` s of recovery. A move in `def.punish.after` ends in an opening
+    (`_open(time, parry)`: `openT` s with no moves, damage × `punish.mult` in `hurt`, a flashing tell, `barNote()` and the
+    bar's `.open` class); `deflected()` opens it for `punish.parry` s if set. `tick(dt)` is a per-frame hook (the Hive's
+    shield pulse); `moves(dt)` runs live hazards (beams, waves). A new boss = data (`pattern`, `wild`, `gap`, `punish`,
+    move tuning) + one method per move. The Pack Lord keeps its creature AI; its war cry stands it still (`crying`),
+    then `openT` = `punish.time` and `stun()`.
+    **Minions**: `e.minion = true` (boss brood, drones, the pack) → `JungleScene.onEnemyKilled` gives no kill-heals
+    (`player.onKill`, `relicsCtl.onKill`) and no drop.
   - `src/entities/DayCreatures.js`: `makeEnemy(scene, key, x, z, opts)` (`scene.spawnEnemy` uses it: `bloater` →
     `Bloater`, `feral_chief` → `FeralChief`, else `ExploreEnemy`), `setSpeedBuff(e, kind, mult, until)` /
     `tickSpeedBuffs(enemies, now)` (`e.speedMult`, read by ExploreEnemy; clock = `scene.dayT`). `_chunkPop` adds
@@ -278,7 +315,11 @@ Module functions (import from `../core/Assets.js`):
   centre band that flattens the dirt's mottling, two broken wobbly ruts, puddle/pebble decals — `DEFENSE_VIEW.wear`), a
   dithered darker margin, plaza hazard stripes; cards from `chunkCards` **minus any whose opaque texels cover a lane, a pad
   or the Relay** (`keepZones` + `coversKeep`, per-texel against the sprite's alpha). `GROUND` = `{ size, x0, z0 }`.
-  `makePlinth(seed, wood, grow)` → texel-drawn plinth (`userData.topW/topH` for markers). `laneTint(tiles, color, alpha)`
+  `makePlinth(seed, wood, grow, assets)` → the hand-made `plinth_stone|timber|rubble` (`DEFENSE_VIEW.plinthArt`: timber on
+  wood pads, else weighted by the pad seed, half the stone / rubble ones mirrored; the manifest's `top` box centred on
+  the pad via `userData.zOffset` / `xOffset`), else the texel-drawn plinth; `userData.topW/topH` for markers, `faceZ` =
+  the front face's middle (DefenseScene `rankBadge(tower, level)` lays `rank_badge_2|3` flat there; Tower falls back to
+  the floating chevrons). The returned ground also has `patch(tx, tz, w, h)` (splat stains, Fx.decal). `laneTint(tiles, color, alpha)`
   → a multiply-blended wet band along a lane (laneSlow reward).
 - **Look:** `DEFENSE_VIEW.post` runs the jungle's PostFx at full dark (moon tint × ambient, navy lift, vignette; no canopy, no
   player light): enemy eyes and the Relay crystal (Emissive.js) and `lightPool`s (`DEFENSE_VIEW.glow`: lamps, Relay,
@@ -296,7 +337,9 @@ Module functions (import from `../core/Assets.js`):
   `WAVE_VARIANTS[night − 1] = [A, B, C]` (`{ key, name, groups }`, group `{ push, at, lane, type, count, gap, hpMult? }`),
   `WAVES` (variant A, back-compat), `variantCount(night)`, `variantFor(run)` (`run.waveVariant` override, else
   `run.rng('wave')`), `waveFor(night, variant)` → `{ key, name, pushes, groups }` (the Long Night generator past night 6),
-  `DEFENSE` (lull, callEarly, startGuard, exchange, longNight, extra-group push/time window, speeds, banners…), `SALVAGE`.
+  `DEFENSE` (lull, callEarly, startGuard, exchange, longNight, extra-group push/time window, speeds, banners…), `SALVAGE`,
+  `RELAY_ZAP` + `relayZapDamage(night)` (the Relay's own bolt: `DefenseScene._relayZap(dt)` in `_step` during pushes, a
+  pseudo-tower at the core in `forecastNight`; the prep line shows until `meta.hints.relay_zap`).
   `src/data/protocols.js` — `PROTOCOLS`, `PROTOCOL_ORDER`, `PROTOCOL_ICONS`, `perNight(arr, night)`.
   `src/data/towers.js` — level 3 = `upgrades[1].branches.{a,b}` (`name, line, detail, cost, set`), `BRANCH_KEYS`,
   `branchOf(rec)` ('a' for old saves), `BIG_SIZE`. `READINESS` (src/data/guide.js) tunes the forecast.
@@ -330,6 +373,13 @@ Module functions (import from `../core/Assets.js`):
   `aim(k)`, `cancelAim()`, `cast(k, { x, z })` (pays, telegraph, resolves after `telegraph` s), `litAt(pos)`,
   `flareMult(pos)`, `update(dt)`, `frame()` (aim ring, button cooldown sweep via `--cd`), `handleInput()` (Q/W/E, LMB
   cast, RMB/Esc cancel; returns true when it used the input), `panel()` (the `.df-protobar` buttons), `dispose()`.
+  Looks (critic H2 §8, no smooth-alpha discs): the aim is `AIM_DASHES` 1.5-texel dashes rebuilt per radius, marching;
+  landing rings are `fx.ring({ hard, px: 2 })`; a Flare is `fx_flare_pool` (flat, 3-tile radius at 1×, renderOrder −3)
+  + the upright `fx_flare_ember` canister, blinking out its last 0.6 s (the additive disc only without the art); a rooted
+  enemy gets `scene.makeVines(e)` → `fx_vine_snare` in front of its feet (renderOrder 3, no depth write so the enemy's
+  x-ray never fires), 'burst' then 'hold' via `scene.vinesLook(group, rooted, dt)` (procedural vines without the art).
+  Health bars during a push: `DefenseEnemy.barFocus` (set per frame by the scene: hovered, the selected tower's target,
+  the boss, `DEFENSE_VIEW.hpBarRoles`).
 - **`forecastNight(scene)`** → `{ level: 'weak'|'risky'|'strong', lost, lo, hi, lanes: [{ name, short, lost, dots }],
   ratio }` — a 1-D replay of tonight's wave per lane (samples `READINESS.sample` tiles, step `READINESS.step` s) against
   `scene.towers` (their stats, `rec.target` rule, path coverage), slows, spitters, burrowers, seed bursts, boss roots /
@@ -363,7 +413,9 @@ The default framebuffer ignores alpha, so scenes without PostFx are unaffected. 
 Weather (Weather.js sets them; neutral by default): `uWTint` (RGB multiplier), `uFog` / `uFogCol` / `uFogR` (a veil
 from `uFogR.x` to `.y` × the light radius, 5 Bayer steps, value-noise lumps, dimmer with `uDark`), `uRain` / `uRainK` /
 `uRainP` / `uRainCol` (1-px streaks on world-pixel lanes, per-lane hashed periods); `post.lightMult` scales the light
-radius in `timeOfDay`.
+radius in `timeOfDay`. After dark the fog veil is multiplied by the night light (`uFogNight`, critic H2 §6: moonlit
+navy, not a pale sheet) and emissive texels (alpha < 1) stay above it; `uHeat` / `uHeatK` = the heat shimmer (a share
+of far-zone row bands shifted ±1 whole px: `[band period px, drift px/s, segment px, from × the light radius]`).
 
 ## Effects (`src/core/Fx.js`)
 
@@ -377,6 +429,14 @@ for friendly markers, `hitStop(t)` / `slowMo(time, scale)` with `dt *= fx.step(r
 `hitFlash(root)`: `JUICE.hitFlash.white` frames of white, then `tint` frames of red-orange, on the hit sprite only.
 Death splats (`decal` without `life`) are desaturated toward `JUICE.death.splatGround` and fade out in steps over
 `decalFade` s. `chargeLane` draws a dust-dither capsule with rounded ends and moving chevrons.
+`splat(pos, creatureKey, size)` (critic H2 §7): the creature's kind (`JUICE.death.splat.kind`: blood / sap / magenta / acid)
+as the artist's `splat_<kind>_1|2` (×2 from `bigFrom`), else the procedural splat in that kind's colour. With
+`fx.ground = { patch(tx, tz, w, h), unlit }` set by the scene (JungleScene: `JungleWorld.groundPatch`, unlit; DefenseScene:
+the board's `ground.patch`, Lambert), `decal({ art })` stains the art into the baked ground under it: each texel pulled
+`splat.toGround` toward the ground texel beneath, lifted to the darkest ground texel it covers, orientation baked in, on the
+ground's texel grid (one texture per splat, disposed with it). `ring(pos, { hard, px })`: `hard` = full then half, no
+smooth fade; `px` = line width in texels. `sprite(pos, key, { anim, life, scale, y })`: a one-shot manifest effect
+(`fx_spore_ring`), disposed after `life` s; null without the art.
 
 ## UI helpers (`src/ui/ui.js`)
 
@@ -387,6 +447,15 @@ to a danger button, else a lone button; a capture listener keeps these keys from
 has its own KeyNav, like `screensKit.ask`; `guard` s of ignored keys after it opens),
 `resChip(key, amount)`, `resRow(res)`, `costLine(cost, haveRes)` (marks shortfalls red), `bar(cls, color)` → `{node, set(frac, text)}`,
 `toast(game.ui, text, 'good'|'bad'|'amber')` (game-time: `setToastsPaused(game.ui, true)` freezes them while paused), `fmtTime(s)`.
+**One text lane** (critic H2 §5.1, tuning `TEXT_LANE` in `src/data/hud.js`): `toast` goes to the first `.toasts` host under
+`ui` (the jungle's sits in the top-left column under the coach line, `--max-toasts: 1`); past the host's CSS `--max-toasts`
+a toast queues (deduped, dropped after `stale` s; one on screen with others waiting leaves after `hurry` s).
+`setToastsHeld(ui, s)` holds new toasts for up to `s` s. `showBanner(parent, node, { prio, time, wait, toasts, onShow })`
+puts a banner node in `parent`'s lane: one at a time, a higher `prio` cuts a lower one (place names 0, goal / sunset 1,
+area boss 2, back home 3), queued ones wait at most `wait` s; while one is up the `toasts` host is held; `.out` at `time`,
+removed after the fade. `bannerBusy(parent)`. JungleScene `_banner(title, sub, { prio, cls, time, extra })` builds one
+(`extra` = a follow-up line fading in `extraDelay` s later: a boss kill's rewards). `showHint(…, { parent })` docks a hint
+in a container instead of floating it (night prep: `DefenseScene.hintDock`, top of the side panel).
 CSS sizes: `calc(var(--u) * N)` = N px on a 960×540 stage (scales with the window; JS: `game.u`). Shared classes in `src/ui/style.css`.
 
 ## Run (`src/core/Run.js`) — the single source of truth

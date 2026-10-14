@@ -9,7 +9,9 @@
 //   tint       linear RGB multiplier over the whole view · fog: strength of a dithered veil that thickens away
 //   from you (fogColor), from fogRange[0] to fogRange[1] × the light radius · rain: density of 1-px rain streaks
 //   (streak length / speed in RAIN_LOOK) + puddle ripples per second around you (ripples) · shafts: × the light
-//   shafts · audio: AmbientAudio.setRain level.
+//   shafts · audio: AmbientAudio.setRain level · fogNight: × the veil's light at full night, a number or [r, g, b]
+//   (critic H2 §1: it takes the moonlight's colour and stays dim; default 0.3) · shimmer: share of far row bands that wobble one pixel (heat haze;
+//   `shimmerK` = [band period px, drift px/s, segment px, from × the light radius]).
 export const WEATHER = {
   fromNight: 2,
   chance: 0.35,
@@ -25,13 +27,15 @@ export const WEATHER = {
       name: 'Fog', icon: '≋',
       short: 'You see 35% less, but containers hold 20% more Scrap',
       lightMult: 0.65, lootScrap: 1.2,
-      tint: [0.92, 0.95, 0.96], fog: 0.62, fogRange: [0.3, 1.05], fogColor: [0.6, 0.66, 0.64], shafts: 0, audio: 0,
+      tint: [0.92, 0.95, 0.96], fog: 0.62, fogRange: [0.3, 1.05], fogColor: [0.6, 0.66, 0.64], fogNight: [0.15, 0.18, 0.135], shafts: 0, audio: 0,
     },
     heat: {
       name: 'Heat', icon: '☀',
       short: 'Stamina refills 25% slower and spore pods are everywhere',
       staminaRegen: 0.75, pods: 1.5,
-      tint: [1.08, 1.0, 0.85], fog: 0.3, fogRange: [0.5, 1.4], fogColor: [0.86, 0.72, 0.48], shafts: 1.5, audio: 0,
+      // (critic H2 §1: the haze was invisible at ×2) a warmer grade, a nearer ochre haze, and heat shimmer far out
+      tint: [1.12, 1.0, 0.8], fog: 0.36, fogRange: [0.45, 1.3], fogColor: [0.9, 0.74, 0.46], fogNight: 0.3, shafts: 1.5, audio: 0,
+      shimmer: 0.55, shimmerK: [11, 14, 37, 0.35],
     },
   },
 };

@@ -22,13 +22,14 @@
 // A deflect (Player.tryDeflect) turns a lunge, charge, spear or glob away and leaves the attacker reeling.
 
 import * as THREE from 'three';
-import { CONFIG, JUICE, SPLAT, DEFLECT } from '../data/config.js';
+import { CONFIG, JUICE, SPLAT, DEFLECT, ROLL } from '../data/config.js';
 import { EXPLORE_ENEMIES } from '../data/enemies.js';
-import { setAnim, setFacing, updateVisual, flashVisual, setBaseColor, animLength, animHitFrac, setAnimSpeed } from '../core/Assets.js';
+import { setAnim, setFacing, updateVisual, flashVisual, setBaseColor, animLength, animHitFrac, setAnimSpeed, CARD_MASK_REF } from '../core/Assets.js';
 import { shade } from '../core/Fx.js';
 import { rayLength, castRay } from '../world/collide.js';
 import { nightTune } from '../data/config.js';
 import { CROWD, BRUSH, SPORES } from '../data/jungle.js';
+import { inFootprint } from '../world/Solid.js';
 
 let barTex = null;
 function barMaterial(color) {
@@ -51,6 +52,32 @@ const CHARGES = { charge: true, charge2: true };
 function leadVel(p) {
   const vx = p.vel?.x || 0, vz = p.vel?.z || 0, v = Math.hypot(vx, vz), max = CONFIG.player.speed;
   return v > max ? { x: vx * max / v, z: vz * max / v } : { x: vx, z: vz };
+}
+
+/** Distance from (px, pz) to the segment (ax, az)–(bx, bz). */
+function segDist(px, pz, ax, az, bx, bz) {
+  const vx = bx - ax, vz = bz - az, l2 = vx * vx + vz * vz || 1e-6;
+  const t = Math.max(0, Math.min(1, ((px - ax) * vx + (pz - az) * vz) / l2));
+  return Math.hypot(px - (ax + vx * t), pz - (az + vz * t));
+}
+
+/**
+ * Make a ground ring telegraph (Fx.ringTele) read through foliage (critic I2 #9): a copy of it drawn only where
+ * something nearer covers it (depthFunc GREATER, after every card), never over the player's own texels (the card-mask
+ * stencil). It is the ring mesh's child, so it moves, animates and goes away with it.
+ */
+function xrayRing(tele) {
+  const m = tele?.group;
+  if (!m?.material?.map) return;
+  const mat = new THREE.MeshBasicMaterial({
+    map: m.material.map, alphaTest: 0.5, transparent: true, depthWrite: false, depthFunc: THREE.GreaterDepth, side: THREE.DoubleSide,
+    stencilWrite: true, stencilWriteMask: 0x00, stencilRef: CARD_MASK_REF, stencilFunc: THREE.NotEqualStencilFunc,
+    stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.KeepStencilOp,
+  });
+  const x = new THREE.Mesh(m.geometry, mat);
+  x.renderOrder = 38;
+  x.userData.noSnap = true;
+  m.add(x);
 }
 
 /** A positional sound; new names fall back to older ones until the audio data has them. */
@@ -124,14 +151,19 @@ export class ExploreEnemy {
     // amber ground ring instead of being drawn bigger. `scale` still sizes its hitbox. The always-on ring is a dim
     // dark red in the jungle, so the hot-red wind-up rings pop (critic I #12); occlusion silhouettes never print
     // over the player (critic I #3).
-    const vkey = this.def.sprite || key;
+    // A creature with its own art (def.sprite) that isn't loaded wears def.fallback's look instead (a tinted Crawler…);
+    // this.look = the fields in force (tint, pod…).
+    let vkey = this.def.sprite || key;
+    this.look = this.def;
+    if (this.def.fallback && !this.game.assets.hasSprite(vkey)) { this.look = { ...this.def, ...this.def.fallback }; vkey = this.look.sprite; }
+    // (opts.visScale: a whole-number sprite scale for a boss-sized creature — the Pack Lord, critic H2 §2.3.)
     this.vis = this.game.assets.makeVisual(vkey, {
-      scale: this.game.assets.hasSprite(vkey) ? 1 : scale,
+      scale: this.game.assets.hasSprite(vkey) ? Math.max(1, Math.round(opts.visScale || 1)) : scale,
       ring: this.elite ? (X.elite.ringColor || JUICE.hostileRing.color) : (JUICE.hostileRingJungle || JUICE.hostileRing.color),
       silhouetteSkipsMask: true,
     });
     if (this.elite) setBaseColor(this.vis, X.elite.tint);
-    else if (this.def.tint) setBaseColor(this.vis, this.def.tint);
+    else if (this.look.tint) setBaseColor(this.vis, this.look.tint);
     scene.three.add(this.vis);
     // The Thorn Stalker starts under the brush.
     this.hidden = this.def.attack === 'ambush';
@@ -226,16 +258,18 @@ export class ExploreEnemy {
    */
   deflected(kind) {
     const D = DEFLECT;
+    // One word per deflect (critic H2 §3): the player's "DEFLECT" says it; the attacker just reels (no second label).
     if (kind === 'charge') {
       this.hit(D.chargeDamage, -(this.aimDir?.x || 0), -(this.aimDir?.z || 0), 0, 'deflect');
-      if (!this.dead) this.stun(D.chargeStun, 'STAGGERED');
+      if (!this.dead) this.stun(D.chargeStun, null);
       return;
     }
+    // It stays in reach of the riposte (critic I2 #7): DEFLECT.shove is 0 by default.
     const p = this.scene.player.pos;
     const dx = this.x - p.x, dz = this.z - p.z, l = Math.hypot(dx, dz) || 1;
-    this.kb.x += (dx / l) * 5; this.kb.z += (dz / l) * 5;
+    this.kb.x += (dx / l) * D.shove; this.kb.z += (dz / l) * D.shove;
     this.scene.fx.hitFlash(this.vis, JUICE.melee.whiteFlash * 1.5);
-    this.stun(this.elite ? D.eliteStun : D.stun, 'PARRIED', '#ffffff');
+    this.stun(this.elite ? D.eliteStun : D.stun, null);
   }
 
   /** The player went down: stop attacking and step back off the body (critic I #12). */
@@ -271,7 +305,8 @@ export class ExploreEnemy {
     fx.burst({ x: this.x, z: this.z }, { color: '#ffffff', color2: c1, count: 6, speed: 4.5, up: 2, life: 0.18, size: 2 / 32, y: h * 0.5 });
     fx.flash({ x: this.x, y: h * 0.5, z: this.z }, { color: c1, size: 0.55 + this.radius, life: 0.07 });
     fx.ring({ x: this.x, z: this.z }, { color: c1, radius: 1 + this.radius, life: 0.35 });
-    fx.decal({ x: this.x + kd.x * 0.15, z: this.z + kd.z * 0.15 }, { color: shade(c2 || c1, JUICE.death.decalShade), radius: (0.3 + this.radius) * JUICE.death.decalSize });
+    // Its own kind of splat (blood / sap / magenta / acid), never the burst's dark colour (critic H2 §3: navy blots).
+    fx.splat({ x: this.x + kd.x * 0.15, z: this.z + kd.z * 0.15 }, this.key, (this.def.size || 0.7) * (this.scale || 1));
     // The sprite stays for a beat: flash, squash and pop, slide along the killing hit, fade.
     for (const s of [this.barBg, this.barFill]) s.visible = false;
     fx.corpse(this.vis, { dx: kd.x, dz: kd.z });
@@ -429,11 +464,16 @@ export class ExploreEnemy {
           if (this.state !== 'attack') break;   // deflected
           if (this.stateT <= 0 || hitWall) this._afterLunge(toP, dist, playerTarget);
         } else if (CHARGES[mv]) {
-          const hitWall = sc.world.moveBody(this, this.aimDir.x * d.chargeSpeed * dt, this.aimDir.z * d.chargeSpeed * dt, this.radius, this.moveOpts) && sc.world.blockedCircle(this.x + this.aimDir.x * 0.15, this.z + this.aimDir.z * 0.15, this.radius, true);
+          this._hit.obj = undefined;
+          const hitWall = sc.world.moveBody(this, this.aimDir.x * d.chargeSpeed * dt, this.aimDir.z * d.chargeSpeed * dt, this.radius, this.moveOptsHit) && sc.world.blockedCircle(this.x + this.aimDir.x * 0.15, this.z + this.aimDir.z * 0.15, this.radius, true);
           if (Math.random() < 0.7) sc.fx.burst({ x: this.x, y: -0.35, z: this.z }, { color: '#8b9bb4', count: 1, speed: 1, up: 1, life: 0.3, size: 0.09 });
           this._contact(dist);
           if (this.state !== 'attack') break;   // deflected
-          if (hitWall) {
+          if (hitWall && this._hit.obj) {
+            // Charging into a trunk / rock / ruin is a splat (critic I2 #11): the bonus damage and the stun.
+            this.cd = d.cooldown;
+            this._splat('charge', this.aimDir.x, this.aimDir.z);
+          } else if (hitWall) {
             this.state = 'stunned';
             this.stateT = d.stun || 0.8;
             this.cd = d.cooldown;
@@ -815,6 +855,9 @@ export class ExploreEnemy {
       const ll = Math.hypot(lx, lz) || 1;
       this.aimDir = { x: lx / ll, z: lz / ll };
       this.stateT = (ll / d.lunge) * d.lungeTime + 0.02;
+      const x0 = this.x, z0 = this.z, tx = this.lungeTarget.x, tz = this.lungeTarget.z;
+      const reach = this.radius + sc.player.r + 0.2 + ROLL.nearPad;
+      sc.player.nearMiss?.((px, pz) => segDist(px, pz, x0, z0, tx, tz) < reach);
       // The strike frame lands mid-lunge, where contact happens.
       if (al > 0) this.atkAnimSpeed = Math.max(0.7, Math.min(2.5, (animHitFrac(this.vis, 'attack', 0.4) * al) / Math.max(0.05, this.stateT * 0.55)));
       this.game.sfx.playAt('lunge', this.x, this.z);
@@ -844,8 +887,12 @@ export class ExploreEnemy {
       else this.game.sfx.playAt('enemy_shot', this.x, this.z);
       this.stateT = 0;
     } else if (CHARGES[mv]) {
-      this.stateT = ((this.curLen ?? this.teleLen) / d.chargeSpeed) + 0.05;
+      const len = this.curLen ?? this.teleLen;
+      this.stateT = (len / d.chargeSpeed) + 0.05;
       this.game.sfx.playAt('charge', this.x, this.z);
+      const x0 = this.x, z0 = this.z, x1 = x0 + this.aimDir.x * len, z1 = z0 + this.aimDir.z * len;
+      const reach = this.radius + sc.player.r + 0.2 + ROLL.nearPad;
+      sc.player.nearMiss?.((px, pz) => segDist(px, pz, x0, z0, x1, z1) < reach);
     } else if (mv === 'stomp') {
       this._stomp();
       this.stateT = 0;
@@ -859,6 +906,7 @@ export class ExploreEnemy {
   _stomp() {
     const S = this.def.elite.stomp;
     const sc = this.scene, p = sc.player, fx = sc.fx;
+    p.nearMiss?.((px, pz) => Math.hypot(px - this.x, pz - this.z) < S.radius + p.r * 0.5 + ROLL.nearPad);
     const dx = p.pos.x - this.x, dz = p.pos.z - this.z, d = Math.hypot(dx, dz) || 1e-4;
     if (!p.dead && d < S.radius + p.r * 0.5) {
       const dmg = Math.round(S.damage * nightTune('enemyDamage', this.night) * CONFIG.expedition.elite.damageMult);
@@ -921,18 +969,33 @@ export class ExploreEnemy {
    * Knocked back hard into a trunk / rock / ruin, or onto a bramble (even creatures that slip through brush catch
    * on its thorns): extra damage and a short stun (SPLAT, critic I §9B).
    */
+  /**
+   * Knocked back hard (≥ SPLAT.speed) into a bramble or a trunk / rock / ruin: splat. SPLAT.reach tiles of slack
+   * (critic I2 #11): a knock that is about to end just short of one still slams the creature into it.
+   */
   _checkSplat(blocked) {
     const kbs = Math.hypot(this.kb.x, this.kb.z);
     if (kbs < SPLAT.speed) return;
     const ux = this.kb.x / kbs, uz = this.kb.z / kbs;
     const w = this.scene.world;
-    const bx = Math.floor(this.x + ux * (this.radius + 0.12)), bz = Math.floor(this.z + uz * (this.radius + 0.12));
-    if (w.brushAt(bx, bz) === BRUSH.bramble) this._splat('bramble', ux, uz, bx, bz);
-    else if (blocked && this._hit.obj) this._splat('object', ux, uz);
+    for (const k of [this.radius + 0.12, this.radius + 0.12 + SPLAT.reach]) {
+      const bx = Math.floor(this.x + ux * k), bz = Math.floor(this.z + uz * k);
+      if (w.brushAt(bx, bz) === BRUSH.bramble) { this._splat('bramble', ux, uz, bx, bz); return; }
+    }
+    if (blocked && this._hit.obj) { this._splat('object', ux, uz); return; }
+    const qx = this.x + ux * SPLAT.reach, qz = this.z + uz * SPLAT.reach;
+    for (const c of w.collidersNear(qx, qz, this.radius + 0.1)) {
+      if (!inFootprint(c, qx, qz, this.radius)) continue;
+      // Slide it the rest of the way so it visibly hits the bark.
+      w.moveBody(this, ux * SPLAT.reach, uz * SPLAT.reach, this.radius, this.moveOpts);
+      this._splat('object', ux, uz);
+      return;
+    }
   }
 
+  /** The splat itself: bonus damage and a stun, with a big impact (critic I2 #11). kind: 'object' | 'bramble' | 'charge'. */
   _splat(kind, ux, uz, bx, bz) {
-    const S = SPLAT[kind];
+    const S = SPLAT[kind], I = SPLAT.impact;
     const sc = this.scene, fx = sc.fx;
     this.splatCd = 0.6;
     this.knockT = 0;
@@ -941,17 +1004,22 @@ export class ExploreEnemy {
     const h = this.vis.userData.vis.height;
     if (kind === 'bramble') {
       sc.world.hitBrush(bx, bz, 1);
-      fx.burst({ x: cx, y: 0.3, z: cz }, { color: '#c23a3a', color2: '#4a2428', count: 12, speed: 2.6, up: 2, life: 0.45, size: 2 / 32, gravity: 6, vx: -ux, vz: -uz });
+      fx.burst({ x: cx, y: 0.3, z: cz }, { color: '#c23a3a', color2: '#4a2428', count: 16, speed: 2.8, up: 2.2, life: 0.5, size: 2 / 32, gravity: 6, vx: -ux, vz: -uz });
     } else {
-      fx.burst({ x: cx, y: 0.3, z: cz }, { color: '#8f563b', color2: '#c0cbdc', count: 12, speed: 2.4, up: 2.4, life: 0.5, size: 2 / 32, gravity: 9, vx: -ux * 1.5, vz: -uz * 1.5 });
+      // Bark chips and dust off the trunk, leaves shaken loose from above, a dust ring where it hit.
+      fx.burst({ x: cx, y: 0.35, z: cz }, { color: '#8f563b', color2: '#c0cbdc', count: 18, speed: 3, up: 2.6, life: 0.55, size: 2 / 32, gravity: 9, vx: -ux * 2, vz: -uz * 2 });
+      fx.burst({ x: cx + ux * 0.2, y: 1.4, z: cz + uz * 0.2 }, { color: '#4b8139', color2: '#99e550', count: 8, speed: 0.8, up: 0.2, life: 1.1, size: 2 / 32, aspect: 2, gravity: 1.2, drag: 2, flutter: 1.2 });
+      fx.ring({ x: cx, z: cz }, { color: '#e4a672', radius: I.ring, life: 0.3 });
+      fx.crack?.({ x: cx - ux * 0.2, z: cz - uz * 0.2 });
     }
-    fx.flash({ x: cx, y: h * 0.45, z: cz }, { color: '#fee761', size: 0.55, life: 0.07 });
-    fx.text({ x: this.x, z: this.z }, 'SPLAT!', { color: '#fee761', cls: 'big', y: h + 0.45, life: 0.7 });
-    fx.hitStop(0.05);
-    this.game.shake(3, 0.12);
+    fx.flash({ x: cx, y: h * 0.45, z: cz }, { color: '#fee761', size: 0.7, life: 0.08 });
+    flashVisual(this.vis, '#ffffff', 0.12);
+    fx.text({ x: this.x, z: this.z }, 'SPLAT!', { color: '#fee761', cls: 'big', y: h + 0.45, life: 0.8, key: 'splat' });
+    fx.hitStop(I.hitStop);
+    this.game.shake(I.shake, 0.18);
     sfxAt(this.game, this.x, this.z, 'splat_wall', 'crash');
     this.hit(S.damage, ux, uz, 0, 'splat');
-    if (!this.dead) this.stun(S.stun, null);
+    if (!this.dead) this.stun(kind === 'charge' ? (this.def.stun || 0.8) : S.stun, null);
   }
 
   // ---------------------------------------------------------------- the Thorn Stalker
@@ -991,9 +1059,9 @@ export class ExploreEnemy {
         const at = this.eruptAt;
         const ex = at.x - this.x, ez = at.z - this.z, el = Math.hypot(ex, ez);
         if (el > 0.02) { const s = Math.min(el, 7 * dt); this.x += (ex / el) * s; this.z += (ez / el) * s; }
-        if (Math.random() < dt * 16) {
+        if (Math.random() < dt * 32) {
           const a = Math.random() * Math.PI * 2, r = Math.random() * d.ring;
-          sc.fx.burst({ x: at.x + Math.cos(a) * r, y: -0.3, z: at.z + Math.sin(a) * r }, { color: '#5a4430', color2: '#8c4026', count: 1, speed: 0.5, up: 1.4, life: 0.35, size: 2 / 32, gravity: 6 });
+          sc.fx.burst({ x: at.x + Math.cos(a) * r, y: -0.3, z: at.z + Math.sin(a) * r }, { color: '#5a4430', color2: '#8c4026', count: 2, speed: 0.6, up: 1.8, life: 0.4, size: 2 / 32, gravity: 6 });
         }
         if (this.stateT <= 0) this._erupt();
         break;
@@ -1067,11 +1135,13 @@ export class ExploreEnemy {
     this.stateT = this.windT = d.windup;
     this.eruptAt = { x: p.pos.x, z: p.pos.z };
     this.tele = sc.fx.ringTele(this.eruptAt, { radius: d.ring, color: '#ff0044', color2: '#8c4026', time: d.windup, fade: 0.1 });
+    xrayRing(this.tele);   // it lives in the ferns: the ring shows through them (critic I2 #9)
     sfxAt(this.game, this.eruptAt.x, this.eruptAt.z, 'windup_stalker', 'rustle');
   }
 
   _erupt() {
     const d = this.def, sc = this.scene, p = sc.player, fx = sc.fx, at = this.eruptAt;
+    p.nearMiss?.((px, pz) => Math.hypot(px - at.x, pz - at.z) < d.ring + p.r * 0.5 + ROLL.nearPad);
     this.tele = null;
     this.x = at.x; this.z = at.z;
     this.hidden = false;

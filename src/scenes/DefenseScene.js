@@ -30,11 +30,11 @@ import { JUICE } from '../data/config.js';
 import { vineTextures, shade } from '../core/Fx.js';
 import { Fx } from '../core/Fx.js';
 import { PixelCamera } from '../core/PixelView.js';
-import { updateVisual, flashVisual, setAnim } from '../core/Assets.js';
+import { updateVisual, flashVisual, setAnim, animDone } from '../core/Assets.js';
 import { CONFIG, RESOURCE_KEYS } from '../data/config.js';
 import { TOWERS, TARGET_RULES, TARGET_RULE_TEXT, TARGET_RULE_LABEL, BRANCH_KEYS, branchOf } from '../data/towers.js';
 import { DEFENSE_ENEMIES } from '../data/enemies.js';
-import { WAVE_VARIANTS, DEFENSE, SALVAGE, healthMult, waveFor, variantFor } from '../data/waves.js';
+import { WAVE_VARIANTS, DEFENSE, SALVAGE, RELAY_ZAP, relayZapDamage, healthMult, waveFor, variantFor } from '../data/waves.js';
 import { PROTOCOLS } from '../data/protocols.js';
 import { ProtocolDeck } from './DefenseProtocols.js';
 import { forecastNight } from './DefenseForecast.js';
@@ -223,6 +223,7 @@ export class DefenseScene {
     this.projectiles = new Projectiles(this);
     this._buildLights();
     this._buildGround();
+    this.fx.ground = { patch: (tx, tz, w, h) => this.ground?.patch?.(tx, tz, w, h) || null, unlit: false };   // splats stain the board (Fx.decal)
     this._buildScenery();
     this._buildCore();
     this._buildPads();
@@ -423,6 +424,30 @@ export class DefenseScene {
     this.slowRingMat = T(new THREE.MeshBasicMaterial({ color: '#8ff8ff', transparent: true, opacity: 0.75, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
   }
 
+  /**
+   * The rank badge for a level 2 / 3 tower (critic H2 §11): rank_badge_<n> lying flat on its plinth's front face
+   * (DEFENSE_VIEW.rankBadgeOnPlinth), at 1× (1 texel = 1 px), or null (Tower falls back to the floating chevrons).
+   */
+  rankBadge(tower, level) {
+    const key = `rank_badge_${level}`;
+    const pad = this.pads?.[tower.rec.pad];
+    if (!DEFENSE_VIEW.rankBadgeOnPlinth || !pad?.faceZ || !this.game.assets.hasSprite(key)) return null;
+    this._rankMats ||= {};
+    if (!this._rankMats[key]) {
+      const info = this.game.assets.spriteInfo(key);
+      const img = info.tex.image;
+      const mat = this._track(new THREE.MeshBasicMaterial({ map: info.tex, transparent: true, alphaTest: 0.5, depthWrite: false }));
+      this._rankMats[key] = { mat, geom: this._track(new THREE.PlaneGeometry(img.width / 32, img.height / 32)) };
+    }
+    const R = this._rankMats[key];
+    const m = new THREE.Mesh(R.geom, R.mat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(0, 0.03, pad.faceZ);
+    m.renderOrder = -1;   // on the plinth (−2), under the tower sprite
+    m.userData.pxSnap = true;
+    return m;
+  }
+
   /** Ground ring shown under a slowed enemy (shared geometry). */
   makeSlowRing(enemy) {
     const m = new THREE.Mesh(this.slowRingGeom, this.slowRingMat);
@@ -439,6 +464,22 @@ export class DefenseScene {
    * thorny tendrils wrapped around the feet (drawn in front of the enemy). Shared textures.
    */
   makeVines(enemy) {
+    // Hand-drawn snare (critic H2 §8): fx_vine_snare (roots out of a cracked ring, coiled round the feet) just in
+    // front of the enemy, 'burst' then 'hold' (vinesLook); the procedural wrap + roots below when the art is missing.
+    const big = (enemy.def.size || 0.6) >= 1.1 ? 2 : 1;   // whole-number scales only (crisp texels)
+    if (this.game.assets.hasSprite('fx_vine_snare')) {
+      const g = new THREE.Group();
+      const snare = this.game.assets.makeVisual('fx_vine_snare', { shadow: false, scale: big });
+      snare.position.z = 0.06;
+      // Drawn after its enemy and writing no depth, so it doesn't trip the enemy's x-ray silhouette (red checker).
+      snare.userData.vis.body.renderOrder = 3;
+      for (const m of snare.userData.vis.mats) m.depthWrite = false;
+      setAnim(snare, 'burst', true);
+      g.userData.snare = snare;
+      g.add(snare);
+      enemy.obj.add(g);
+      return g;
+    }
     if (!this.vineMats) {
       const v = vineTextures();
       this.vineMats = {
@@ -450,7 +491,6 @@ export class DefenseScene {
     }
     const M = this.vineMats;
     const g = new THREE.Group();
-    const big = (enemy.def.size || 0.6) >= 1.1 ? 2 : 1;   // whole-number scales only (crisp texels)
     const roots = new THREE.Mesh(this.vineRootGeom, M.roots);
     roots.rotation.x = -Math.PI / 2;
     roots.position.y = 0.025;
@@ -464,6 +504,16 @@ export class DefenseScene {
     g.add(roots, wrap);
     enemy.obj.add(g);
     return g;
+  }
+
+  /** A rooted enemy's vines (DefenseEnemy._updateStatusLook): shown while rooted; the sprite snare bursts on, then holds. */
+  vinesLook(g, on, dt) {
+    const s = g.userData.snare;
+    if (s && on && !g.visible) setAnim(s, 'burst', true);
+    g.visible = on;
+    if (!s || !on) return;
+    if (s.userData.vis.anim === 'burst' && animDone(s)) setAnim(s, 'hold');
+    updateVisual(s, dt);
   }
 
   /** Dirt mound shown while a burrower is underground. */
@@ -779,8 +829,9 @@ export class DefenseScene {
       const [x, y] = at;
       const pad = { i, x: x + 0.5, z: y + 0.5, closed: !s, forward: !!s?.forward, beacon: s?.beacon || null, lane: s?.lane };
       if (s) {
-        const base = makePlinth(i * 7 + 3, wood.includes(i), grow);
-        base.position.set(x + 0.5, 0.02, y + 0.5 + base.userData.zOffset);
+        const base = makePlinth(i * 7 + 3, wood.includes(i), grow, this.game.assets);
+        base.position.set(x + 0.5 + (base.userData.xOffset || 0), 0.02, y + 0.5 + base.userData.zOffset);
+        pad.faceZ = base.userData.faceZ;
         this.three.add(base);
         this._track(base.geometry, base.material, base.material.map);
         const mw = Math.round(base.userData.topW * 32) + 2, mh = Math.round(base.userData.topH * 32) + 2;
@@ -931,6 +982,8 @@ export class DefenseScene {
       this._noDepthWrite(e.visual);
       if (e._ring === undefined) e._ring = e.visual.getObjectByName('ring') || null;
       if (e._ring) e._ring.visible = e === this.hoverEnemy || e === target || !!e.boss;
+      // Health bar only on the enemies you're looking at, the boss and the big ones (DEFENSE_VIEW.hpBarRoles).
+      e.barFocus = e === this.hoverEnemy || e === target || !!e.boss || (DEFENSE_VIEW.hpBarRoles || []).includes(e.def?.role);
     }
     // Rewards that boost towers tonight: a small glint over every tower now and then.
     const tn = this.tonight;
@@ -1035,7 +1088,9 @@ export class DefenseScene {
     this.protoBar = el('div.df-protobar', { style: { display: 'none' } });
     // Leak feed (pushes and lulls): what got through to the Relay tonight, newest first (_pushLeakFeed).
     this.leakFeed = el('div.df-leaks', { style: { display: 'none' } });
-    this.side = el('div.df-side.panel.ui-block', {}, this.sideHead, this.sideBody, this.leakFeed, this.protoBar, this.sideFoot);
+    // Coach hints dock here, under the panel's title (critic H2 §5.1: never over the board); kept out of re-renders.
+    this.hintDock = el('div.df-hintdock');
+    this.side = el('div.df-side.panel.ui-block', {}, this.sideHead, this.hintDock, this.sideBody, this.leakFeed, this.protoBar, this.sideFoot);
     // Fade the bottom edge while more content sits below the scroll fold.
     this.sideBody.addEventListener('scroll', () => this._sideMore());
 
@@ -1555,8 +1610,11 @@ export class DefenseScene {
       const bearing = this.map.lanes[this.dangerLane]?.bearing;
       const faces = ang != null && bearing != null && Math.abs(((ang * 180 / Math.PI - bearing) % 360 + 540) % 360 - 180) <= 67.5;
       const area = DISTRICTS[this.district]?.name || 'the area';
-      const via = dl ? el('div.small.df-via', `Comes down the ${dl.name.replace(/lane/i, 'path')}${dir && faces ? ` (${area} lies ${dir})` : `, the side nearest ${area}`}.`) : null;
-      body.append(el('div.df-threat', { title: `Danger from ${DISTRICTS[this.district]?.name || 'the area'} you visited` }, el('div.df-tag.bad', '⚠ Danger tonight'), el('div.small', thr.text), via));
+      // One row (critic H2 §4.5: the box clipped at 720p prep with a docked hint above it and mid-wave at 1080p); where
+      // the area lies goes in the box's tooltip.
+      const via = dl ? el('div.small.df-via', `Comes down the ${dl.name.replace(/lane/i, 'path')}.`) : null;
+      const where = dl ? ` It comes down the ${dl.name.replace(/lane/i, 'path')}${dir && faces ? ` (${area} lies ${dir})` : `, the side nearest ${area}`}.` : '';
+      body.append(el('div.df-threat', { title: `Danger from ${area}, the area you visited.${where}` }, el('div.df-tag.bad', '⚠ Danger tonight'), el('div.small', thr.text), via));
     }
     const boons = tn.boons || [];
     if (boons.length) {
@@ -1689,6 +1747,10 @@ export class DefenseScene {
       pair.append(button(label, () => this._patch(), { disabled: !!reason, reason, cls: halves ? 'df-half' : 'df-wide', title: `Emergency Patch: ${SKILLS.emergency_patch.desc}` }));
     }
     if (halves) foot.append(pair);
+    if (prep && !this.game.meta.hints?.relay_zap) {
+      // The Relay's own zap (RELAY_ZAP), said once: the line goes after the first wave starts.
+      foot.append(el('div.small.df-zapline', {}, el('span.df-zapglyph', 'ϟ '), RELAY_ZAP.hint));
+    }
     if (prep) {
       // Readiness (critic K §4.6 / L §6.2): per path and a predicted Relay loss from the night forecast;
       // a weak defense asks before starting.
@@ -1982,6 +2044,7 @@ export class DefenseScene {
       // Snapshot with the build locked: quitting mid-push restarts the night (or the lull it reached).
       this.run.wavePush = 0;
       this.run.save('wave');
+      if (!game.meta.hints?.relay_zap && !this.run.debug) { game.meta.hints.relay_zap = true; game.saveMeta(); }
       game.sfx.play('wave_horn');
       toast(game.ui, `Night ${this.night}: they're coming!`, 'bad', 2);
       this._startPush(0);
@@ -2122,7 +2185,7 @@ export class DefenseScene {
     this.fx.burst(e.pos, { color: d.color || '#3e8948', color2: '#181425', count: e.boss ? 60 : 10 + Math.round((d.size || 0.6) * 6), speed: e.boss ? 5 : 2.4, up: 3, life: 0.6, size: e.boss ? 0.14 : 0.08, y: e.height * 0.4 });
     // Death beat: a flash, the sprite squashes and pops (Fx.corpse), and a splat stays on the grass.
     this.fx.flash({ x: e.pos.x, y: e.height * 0.45, z: e.pos.z }, { color: d.color || '#ead4aa', size: 0.45 + (d.size || 0.6) * 0.4, life: 0.07 });
-    this.fx.decal(e.pos, { color: shade(d.color || '#3e8948', JUICE.death.decalShade), radius: (0.25 + (d.size || 0.6) * 0.35) * JUICE.death.decalSize });
+    this.fx.splat(e.pos, e.type, d.size || 0.6);   // its kind of splat (critic H2 §3), the same as by day
     if (!e.burrowed) this.fx.corpse(e.detachVisual(), { dx: e.dir.x, dz: e.dir.z });
     this.game.sfx.playAt((d.size || 0.6) >= 1 && !e.boss ? 'death_big' : 'enemy_die', e.pos.x, e.pos.z);
     // Seed Carrier: bursts into seedlings unless the killing blow was a blast, or a blast hit it within its
@@ -2601,6 +2664,7 @@ export class DefenseScene {
       for (const e of this.enemies) updateVisual(e.visual, dt);
     }
     for (const t of this.towers) t.update(dt, this.enemies, active && this.phase === 'wave');
+    if (active && this.phase === 'wave') this._relayZap(dt);
     this.projectiles.update(dt);
     this.fx.update(dt);
     if (this.enemies.some((e) => e.removed)) this.enemies = this.enemies.filter((e) => !e.removed);
@@ -2613,6 +2677,36 @@ export class DefenseScene {
     // A push that has spawned out can be called early: the panel shows the button from then on.
     if (wasWave && this._pushSpawned() && !this._calledShown) { this._calledShown = true; this.sideDirty = true; }
     if (!this._pushSpawned()) this._calledShown = false;
+  }
+
+  /**
+   * The Relay's own zap (RELAY_ZAP): during a push, the enemy closest to the Relay within range (else a planted
+   * Spitter lobbing sap at it) takes an energy bolt from the crystal every cooldown s. Never a burrowed one.
+   * Steps with the sim (pause / 1×–3× respected).
+   */
+  _relayZap(dt) {
+    const Z = RELAY_ZAP;
+    this.zapT = (this.zapT || 0) - dt;
+    if (this.zapT > 0) return;
+    let best = null, bd = Z.range * Z.range, spitter = null, sd = Infinity;
+    for (const e of this.enemies) {
+      if (e.dead || e.removed || e.burrowed || !e.onField) continue;
+      const d2 = (e.pos.x - this.corePos.x) ** 2 + (e.pos.z - this.corePos.z) ** 2;
+      if (d2 <= bd) { bd = d2; best = e; }
+      else if (Z.spitters && e.def.spit && e.state !== 'walk' && d2 < sd) { sd = d2; spitter = e; }   // returns fire
+    }
+    best = best || spitter;
+    if (!best) { this.zapT = 0; return; }
+    this.zapT = Z.cooldown;
+    const from = new THREE.Vector3(this.corePos.x, Z.originY, this.corePos.z);
+    const to = best.aimPoint(new THREE.Vector3());
+    this.fx.bolt(from, to, { color: Z.color, life: 0.16, jag: 0.5 });
+    this.fx.flash(from, { color: Z.color, size: 0.5, life: 0.08 });
+    this.fx.flash(to, { color: Z.color, size: 0.38, life: 0.07 });
+    this.fx.light(to, { color: Z.color, intensity: JUICE.bolt.light, distance: JUICE.bolt.lightDist, life: 0.1 });
+    this.damage(best, relayZapDamage(this.night), Z.damageType, { relay: true });
+    this.nightStats.zapHits = (this.nightStats.zapHits || 0) + 1;
+    this.game.sfx.playAt('zap', this.corePos.x, this.corePos.z);
   }
 
   _computeTowerStats() {
@@ -2894,7 +2988,8 @@ export class DefenseScene {
       const h = this._hintQueue[i];
       if (!h.when()) continue;
       this._hintQueue.splice(i, 1);
-      const n = showHint(this.game, h.id, h.html, { pos: h.pos, style: h.spot?.() || null, time: 11 });
+      // Docked in the side panel (critic H2 §5.1), never over the board; the panel's body scrolls under it.
+      const n = showHint(this.game, h.id, h.html, this.hintDock ? { parent: this.hintDock, time: 11 } : { pos: h.pos, style: h.spot?.() || null, time: 11 });
       if (n) { this._clickThroughHint(n); this._curHint = n; break; }
       i--;
     }

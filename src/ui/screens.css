@@ -313,7 +313,7 @@
 .results-panel { width: calc(var(--u) * 660); display: flex; flex-direction: column; gap: calc(var(--u) * 10); padding: calc(var(--u) * 16) calc(var(--u) * 20); text-align: center; }
 .results-panel.win { border-color: var(--good); }
 .results-panel.lose { border-color: #a22633; }
-.res-headline { font-size: max(var(--fq), round(calc(var(--u) * 34 - 0.01px), var(--fq))); font-weight: bold; letter-spacing: round(0.14em, var(--fpx)); }
+.res-headline { font-size: max(var(--fq), round(calc(var(--u) * 34 - 0.01px), var(--fq))); font-weight: bold; letter-spacing: round(0.04em, var(--fpx)); }   /* critic H2 §7: titles ≤ 0.04em */
 .win .res-headline { color: var(--good); text-shadow: calc(var(--u) * 3) calc(var(--u) * 3) 0 var(--ink), 0 0 calc(var(--u) * 18) rgba(99, 199, 77, 0.45); }
 .lose .res-headline { color: var(--danger); text-shadow: calc(var(--u) * 3) calc(var(--u) * 3) 0 var(--ink), 0 0 calc(var(--u) * 18) rgba(228, 59, 68, 0.45); }
 .res-sub { color: var(--text); }

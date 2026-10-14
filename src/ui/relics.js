@@ -58,6 +58,45 @@ export function pendantUrl(rarity) {
   return _url[rarity] || (_url[rarity] = pendantCanvas(rarity).toDataURL());
 }
 
+// Unseen relics in the Codex (critic H2 §7): the object's own shape, not the plaque. The plaque is a 1-texel rim plus a
+// flat backing (pixel-art/ui_relics/build.py: FRAMES), so the object = every texel inside the rim that isn't the
+// backing colour or a corner stud. Filled ink-dark with a 1-texel slate edge so the shape still reads on a dark card.
+const PLAQUE_BACK = ['#262b44', '#193c3e', '#3e2731'];
+const SIL = { fill: '#0b0a12', edge: '#5a6988' };
+const _sil = {};
+
+function silhouetteUrl(img, id) {
+  if (_sil[id]) return _sil[id];
+  const W = img.width, H = img.height;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, W, H).data;
+  const back = PLAQUE_BACK.map((h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]);
+  const stud = (x, y) => (x <= 2 || x >= W - 3) && (y <= 2 || y >= H - 3) && x + y !== 0;
+  const obj = new Uint8Array(W * H);
+  for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+    const i = (y * W + x) * 4;
+    if (d[i + 3] < 128 || stud(x, y)) continue;
+    if (back.some(([r, gg, b]) => Math.abs(d[i] - r) + Math.abs(d[i + 1] - gg) + Math.abs(d[i + 2] - b) < 12)) continue;
+    obj[y * W + x] = 1;
+  }
+  const out = g.createImageData(W, H);
+  const put = (x, y, hex) => {
+    const o = (y * W + x) * 4;
+    out.data[o] = parseInt(hex.slice(1, 3), 16); out.data[o + 1] = parseInt(hex.slice(3, 5), 16); out.data[o + 2] = parseInt(hex.slice(5, 7), 16); out.data[o + 3] = 255;
+  };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (obj[y * W + x]) { put(x, y, SIL.fill); continue; }
+    const near = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => obj[(y + dy) * W + (x + dx)] && x + dx >= 0 && x + dx < W && y + dy >= 0 && y + dy < H);
+    if (near) put(x, y, SIL.edge);
+  }
+  g.clearRect(0, 0, W, H);
+  g.putImageData(out, 0, 0);
+  return (_sil[id] = c.toDataURL());
+}
+
 /** Does the art pass have an icon for this relic yet? */
 export function hasRelicArt(assets, id) { return !!assets?.hasSprite?.(`relic_${id}`); }
 
@@ -88,6 +127,15 @@ export function relicKey(assets, id) {
 export function relicIcon(game, id, size = 18, opts = {}) {
   const R = RELICS[id];
   const sil = opts.silhouette ? '.rl-sil' : '';
+  if (hasRelicArt(game.assets, id) && opts.silhouette) {
+    // The object's shape only (silhouetteUrl), at the same whole-number scale the plaque icon would use.
+    const key = `relic_${id}`, img = game.assets.spriteInfo(key)?.tex?.image;
+    const k = game.assets.iconScale(key, size * (game.u || 1)) || 1;
+    if (img) {
+      return el('span.vicon.rl-icon.rl-sil.rl-obj', { style: { width: `calc(var(--u) * ${size})`, height: `calc(var(--u) * ${size})` } },
+        el('span.rl-pend', { style: { width: `${img.width * k}px`, height: `${img.height * k}px`, backgroundImage: `url(${silhouetteUrl(img, id)})` } }));
+    }
+  }
   if (hasRelicArt(game.assets, id)) {
     const n = iconEl(game, `relic_${id}`, size);
     n.classList.add('rl-icon');

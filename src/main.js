@@ -5,6 +5,7 @@
 //   ?debug=defense&night=4&scrap=400&circuits=10&biofiber=10   (&map=crossing &beacons=3: night map, beacons on)
 //   ?debug=briefing | summary | results      (&mode=long|daily, &og=3: Long Night / Daily / Overgrowth level)
 //   ?debug=explore&night=4&objective=hold_uplink&event=workshop&weather=rain&bosses=data_center   (Stage 7 days)
+// &seed=N fixes the run seed (the same jungle every load).
 // They start a fresh run and jump straight to that scene. `window.vr` exposes the game in the console.
 // Debug runs don't count toward lifetime stats and don't overwrite the real run save unless &save=1.
 
@@ -48,6 +49,7 @@ async function boot() {
   if (dbg) {
     // &mode=long|daily &og=N: a Long Night / Daily run, or an Overgrowth level (src/data/modes.js)
     game.run = Run.create(game.meta, { mode: q.get('mode') || 'normal', overgrowth: Number(q.get('og')) || 0 });
+    if (q.has('seed')) game.run.seed = Number(q.get('seed')) >>> 0;   // &seed=N: a fixed jungle (before/after captures)
     game.run.debug = true;   // keeps debug runs out of lifetime stats / records
     game.run.noSave = q.get('save') !== '1';   // and away from the real run save (add &save=1 to test Continue)
     game.run.night = Math.max(1, Math.min(game.run.mode === 'long' ? 99 : 6, Number(q.get('night')) || 1));

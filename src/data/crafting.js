@@ -34,7 +34,7 @@ export const RECIPES = {
   overcharger: { group: 'mod', mod: 'overcharger', cost: { circuits: 1, intel: 1 } },
   serrated_edge: {
     group: 'blade', name: 'Serrated Edge', icon: '✂', num: 'bleed 3 a second for 3 s',
-    line: 'Machete hits make creatures bleed: 3 damage a second for 3 s.',
+    line: 'Machete hits make creatures bleed: 3 damage a second for 3 s (area bosses: half).',
     cost: { scrap: 20, biofiber: 3 }, blade: { bleedDps: 3, bleedTime: 3 },
   },
   balanced_grip: {
@@ -44,7 +44,7 @@ export const RECIPES = {
   },
   heavy_spine: {
     group: 'blade', name: 'Heavy Spine', icon: '▼', num: '+25% chop damage',
-    line: 'The heavy chop hits 25% harder (40 → 50 with the machete).',
+    line: 'The heavy chop hits 25% harder (36 → 45 with the machete).',
     cost: { scrap: 25, circuits: 1 }, blade: { chopDamage: 1.25 },
   },
   med_kit: {
@@ -104,4 +104,5 @@ export const BLADE_STACK = {
 };
 
 // Bleeding creatures (Serrated Edge, src/entities/BladeKit.js): damage lands every `tick` s, drawn in `color`.
-export const BLEED = { tick: 0.5, color: '#e43b44' };
+// Area bosses (and the Pack Lord) bleed at × `boss` (critic I2 #12).
+export const BLEED = { tick: 0.5, color: '#e43b44', boss: 0.5 };

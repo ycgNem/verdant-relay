@@ -2,12 +2,12 @@
   "boss_brood_hive": {
     "file": "boss_brood_hive.png",
     "ppu": 32,
-    "frames": 8,
-    "fw": 96,
-    "fh": 82,
+    "frames": 10,
+    "fw": 104,
+    "fh": 90,
     "anchor": [
-      50,
-      73
+      54,
+      81
     ],
     "fps": 8,
     "anims": {
@@ -26,24 +26,29 @@
       ],
       "dead": [
         7
+      ],
+      "windup": [
+        8,
+        9
       ]
     },
     "animFps": {
       "idle": 5,
       "attack": 7,
       "hurt": 8,
-      "dead": 1
+      "dead": 1,
+      "windup": 6
     }
   },
   "boss_drowned_engine": {
     "file": "boss_drowned_engine.png",
     "ppu": 32,
-    "frames": 8,
-    "fw": 94,
-    "fh": 90,
+    "frames": 10,
+    "fw": 102,
+    "fh": 98,
     "anchor": [
-      47,
-      87
+      51,
+      95
     ],
     "fps": 8,
     "anims": {
@@ -62,24 +67,29 @@
       ],
       "dead": [
         7
+      ],
+      "windup": [
+        8,
+        9
       ]
     },
     "animFps": {
       "idle": 5,
       "attack": 7,
       "hurt": 8,
-      "dead": 1
+      "dead": 1,
+      "windup": 6
     }
   },
   "boss_thorn_mother": {
     "file": "boss_thorn_mother.png",
     "ppu": 32,
-    "frames": 8,
-    "fw": 90,
-    "fh": 95,
+    "frames": 10,
+    "fw": 98,
+    "fh": 103,
     "anchor": [
-      45,
-      87
+      49,
+      95
     ],
     "fps": 8,
     "anims": {
@@ -98,24 +108,29 @@
       ],
       "dead": [
         7
+      ],
+      "windup": [
+        8,
+        9
       ]
     },
     "animFps": {
       "idle": 5,
       "attack": 7,
       "hurt": 8,
-      "dead": 1
+      "dead": 1,
+      "windup": 6
     }
   },
   "boss_warden": {
     "file": "boss_warden.png",
     "ppu": 32,
-    "frames": 8,
-    "fw": 76,
-    "fh": 96,
+    "frames": 10,
+    "fw": 84,
+    "fh": 104,
     "anchor": [
-      38,
-      88
+      42,
+      96
     ],
     "fps": 8,
     "anims": {
@@ -134,13 +149,18 @@
       ],
       "dead": [
         7
+      ],
+      "windup": [
+        8,
+        9
       ]
     },
     "animFps": {
       "idle": 5,
       "attack": 7,
       "hurt": 8,
-      "dead": 1
+      "dead": 1,
+      "windup": 6
     }
   },
   "prop_relay_pylon": {

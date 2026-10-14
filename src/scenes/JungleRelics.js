@@ -20,7 +20,8 @@ import { LORE_LOGS, LANDMARK_KINDS, LORE_SPOTS } from '../data/lore.js';
 import { makeRng, subSeed } from '../core/rng.js';
 import { setAnim, updateVisual } from '../core/Assets.js';
 import { lightPool } from '../core/PixelGlow.js';
-import { el, button, modal } from '../ui/ui.js';
+import { el, button, modal, showBanner } from '../ui/ui.js';
+import { TEXT_LANE } from '../data/hud.js';
 import { relicKey, relicIcon, relicCard, relicTitle, relicTag } from '../ui/relics.js';
 
 const RS = () => RELIC_SOURCES;
@@ -98,7 +99,7 @@ export class JungleRelics {
     player.hp = 1;
     player.iframes = Math.max(player.iframes || 0, 1.5);
     const fx = this.scene.fx;
-    fx.text(player.pos, 'SECOND WIND', { color: '#fee761', cls: 'big', y: this.scene._headY() + 0.2, life: 1.2 });
+    fx.text(player.pos, 'LIFELINE', { color: '#fee761', cls: 'big', y: this.scene._headY() + 0.2, life: 1.2 });   // (not "Second Wind": that's a Machete skill)
     fx.ring(player.pos, { color: '#fee761', radius: 1.6, life: 0.5 });
     fx.slowMo?.(0.4, 0.35);
     this.game.flash('#fee761', 0.25);
@@ -351,11 +352,12 @@ export class JungleRelics {
   dropRelic(x, z, opts = {}) {
     const id = opts.id && RELICS[opts.id] && !this._taken().includes(opts.id) ? opts.id
       : this._draw({ rarity: opts.rarity, weights: RS().weights }, `drop:${Math.round(x)}:${Math.round(z)}:${this.drops.length}`);
-    if (id) this.spawnDrop(id, x, z);
+    if (id) this.spawnDrop(id, x, z, opts);
     return id;
   }
 
-  spawnDrop(id, x, z) {
+  /** opts.quiet: no "RELIC: …" label over it (an area boss's kill banner already says so, critic H2 §5.1). */
+  spawnDrop(id, x, z, opts = {}) {
     const A = this.game.assets;
     const vis = A.makeVisual(relicKey(A, id));
     const a = Math.random() * Math.PI * 2;
@@ -368,7 +370,7 @@ export class JungleRelics {
     this.scene.three.add(d.glow);
     this.drops.push(d);
     const R = RELICS[id];
-    this.scene.fx.text({ x, z }, `RELIC: ${R.name}`, { color: R.rarity === 'X' ? '#e05a9a' : '#fee761', cls: 'big', y: 1.4, life: 1.4 });
+    if (!opts.quiet) this.scene.fx.text({ x, z }, `RELIC: ${R.name}`, { color: R.rarity === 'X' ? '#e05a9a' : '#fee761', cls: 'big', y: 1.4, life: 1.4 });
     this.scene.fx.ring({ x, z }, { color: '#fee761', radius: 1.4, life: 0.5 });
     this.game.sfx.play('relic_drop') || this.game.sfx.play('relic');
     return d;
@@ -468,13 +470,11 @@ export class JungleRelics {
     const sub = K && !this.state.relics.has(sh.id)
       ? `${K.label}${K.extra ? ` · ${K.extra.toLowerCase()}` : ''} · a relic: pick 1 of 2`
       : D?.name || '';
-    this.placeNode?.remove();
+    // The top-centre lane (critic H2 §5.1, ui.showBanner): a place name is the least of the banners — it waits for
+    // one on screen (and goes stale after TEXT_LANE.banner.placeWait s), and an area boss's name cuts it.
     const b = el('div.j-place', {}, el('div.j-place-n', s.name), el('div.j-place-s', sub));
-    this.scene.hud.root.append(b);
-    this.placeNode = b;
-    this.game.sfx.play('place_found');
-    setTimeout(() => b.classList.add('out'), 2800);
-    setTimeout(() => { b.remove(); if (this.placeNode === b) this.placeNode = null; }, 3500);
+    const L = TEXT_LANE.banner;
+    showBanner(this.scene.hud.root, b, { prio: 0, time: L.placeTime, wait: L.placeWait, onShow: () => this.game.sfx.play('place_found') });
   }
 
   // ================================================================== HUD, map
@@ -490,8 +490,12 @@ export class JungleRelics {
     this.strip.innerHTML = '';
     if (!this.carried.length) return;
     this.strip.append(el('span.rl-k', 'RELICS'));
+    // Icons at the world's texel size (critic H2 §7: ×2 at 720p, ×3 at 1080p, like everything in the jungle): a slot
+    // of 24 world texels in UI units, so Assets.iconScale lands on the same whole device-px scale as the world.
+    const K = this.game._layout?.().k || 2, dpr = window.devicePixelRatio || 1;
+    const size = (24 * K) / dpr / (this.game.u || 1);
     for (const id of this.carried) {
-      const n = relicIcon(this.game, id, 16);
+      const n = relicIcon(this.game, id, size);
       n.classList.add(`rl-${RELICS[id].rarity}`);
       if (id === fresh) n.classList.add('new');
       n.title = `${relicTitle(id)}\nCarried: yours once you get home, lost if you go down.`;

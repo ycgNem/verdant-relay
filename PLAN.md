@@ -176,15 +176,15 @@ Wave B — the night becomes a game (critic K + J M1/M2)
       Call next push (N, +1 Scrap / 2 s), two L3 branches per tower (`rec.branch`, `_3a/_3b` sprites), L2 ≈ +70% DPS
       for ≈ 0.9× cost, surcharge 6, Scrap→component exchange (prep, from N2), Piercer / Root big / RG 190 HP, the
       Colossus besieges the plaza (5 per slam / 3 s, 8 slams) and is killable, Seed Carrier blast tag 3 s, Mortar
-      1.9 s / 28, three variants per night + the Long Night generator, HEALTH_MULT 1.0 / 2.4 / 3.3 / 6.0 / 6.2 / 7.0
-      with fewer, tougher enemies from night 2 and a per-map hpMult (Twin 0.86, Crossing 1.07, Ford 1.18), two pads per
-      map moved to see both trails, stipend +10…30, salvage pick (3 / 2 / 1 options by Relay lost), 1× / 2× / 3×,
-      truthful per-path readiness (`DefenseForecast`, calibrated on the sim), weak-start confirm needs its button or
-      Shift+Space, no Space-pause for 0.6 s after a push starts. Balance: full-run sim of the real scene
-      (`.playwright-mcp/nightmech`, DESIGN §5 table): newcomer 0/36 (N3 holds 78%, falls N4), typical 75–81% wins with
-      falls on N5–N6 and 0 / −3 / −3 / −37 / −42 / −51, strong 36/36; tall vs wide within ~4 HP on N4.
-      Not done: typical's nights 2–3 stay light (−3 each; more would kill newcomers on N3), and its N4–N6 losses run
-      ~5–10 above the 15–30 / 25–40 targets at a 75–81% win rate
+      1.9 s / 28, three variants per night + the Long Night generator, HEALTH_MULT 1.25 / 3.5 / 4.7 / 7.4 / 7.3 / 9.2
+      with fewer, tougher enemies from night 2, the **Relay zap** (`RELAY_ZAP`: the crystal bolts the nearest enemy within
+      3 tiles, or a planted Spitter, every 0.7 s; counted in readiness; said once in prep) and a per-map hpMult (Twin
+      0.95, Crossing 1.07, Ford 1.18), two pads per map moved to see both trails, stipend +10…30, salvage pick
+      (3 / 2 / 1 options by Relay lost), 1× / 2× / 3×, truthful per-path readiness (`DefenseForecast`, calibrated on the
+      sim), weak-start confirm needs its button or Shift+Space, no Space-pause for 0.6 s after a push starts. Balance:
+      full-run sim of the real scene (`.playwright-mcp/nightmech`, DESIGN §5 table): newcomer 0/36 (86% get through N3,
+      falls N4), typical 78–86% wins, 0 / −8 / −11 / −33 / −46 / −47, falls N5–N6, strong 36/36.
+      Not done: typical's N5–N6 losses run ~10 over the aim at a ~80% win rate (no N4 falls)
 - [x] Run systems: death rules (salvage ≤ carried, dawn HP, reward needs extraction, home confirm, mid-day quit =
       abandon), honest area cards, **research tree** (21 nodes in 3 branches + 3 hidden future towers), **Overgrowth
       1–10**, **Long Night** endless, daily seed, clean title, Results "what got through". (Camp crafting landed with
@@ -212,6 +212,11 @@ Wave C — the jungle gets content (critic J M3–M5, M7, N2, N4; critic L UX)
       phase 2 at 50%, leash reset, HUD bar, ☠ on map + briefing card; kill = rare relic, +30 Research, a skill point,
       that area's night danger gone (`run.bosses`). Bloater from day 4 (swells and bursts into spores; a chop
       launches it), Feral Chief leading camps from day 5 (Ferals +20% speed near it)
+- [x] Boss fights redesigned (critic I2): move PATTERNS per phase (windup pose → telegraph → release, recovery gaps),
+      an OPENING after each big move (×1.5 damage, gold bar), anti-hug rings past the chop's reach + a ranged move (no
+      safe stand-off), honest Thorn Mother clouds (ring = cloud size, drawn cloud edges, directional spore damage, a
+      tick no longer shields you), minions loot-free / no kill-heals / capped, lairs cleared of props within 6 tiles,
+      600 × elite HP. Measured with the I2 bot (`.playwright-mcp/objectives/boss2/`)
 - [x] Named landmarks + lore logs: every major site and landmark named (`src/data/lore.js`; big map once mapped, a
       banner on first entry), landmark extras (radio mast maps 40 tiles, glasshouse heals 40), 20 data logs read in
       story order (~10 spots a jungle, ~3–4 a run), kept in `meta.lore` and re-readable in the Codex
@@ -234,6 +239,18 @@ Wave C — the jungle gets content (critic J M3–M5, M7, N2, N4; critic L UX)
       Settings tabs (Sound / Game / Controls): key rebinding (`src/data/controls.js`, `meta.settings.keys`,
       `Input.useBindings`), fullscreen; ford ◇ on the maps + "cross at the stepping stones"; creature icons use the
       cropped side frame
+- [x] Presentation polish (critic H2): one text lane (`TEXT_LANE`: banners one at a time by priority, toasts queued one
+      at a time under the top-left panel and held during banners, night hints docked in the side panel, one DEFLECT
+      word); one engaged area boss (lairs ≥ aggro + leash + 6 apart, Pack Lord tether 9, quiet "left" toasts, intro
+      banner before the bar, kill banner then rewards); trails visible (brush/tree x-ray over trails, trailShade 0.12,
+      dirt ×1.44: median 37–52 → 62–82, unoccluded 11–80% → 70–100% at seed 4242); fog after dark × night light
+      (median 67 → 34, hue 209), heat warmer + shimmer; per-creature splats stained into the ground (0 of 7 darker than
+      the ground under them, was 5 of 8); day rings only on threats; boss `_p2` sheets + aura, emissive boss keys, Pack
+      Lord ×2 + gold ring + 4-tile clearing; twig X decal gone. Batch-4 art wired: Bloater / Thorn Stalker sheets,
+      Protocol FX (dashed aim, vine snare, flare pool + ember, spore ring), plinth variants + front-face rank plates,
+      health bars only on focus / big enemies, `icon_craft_<id>` on the Workbench, 9-slice `ui_panel_frame` on every
+      `.panel`, titles ≤ 0.04 em, relic HUD icons at world texel scale, Codex object silhouettes.
+      Not done: Data Center deep canopy keeps one trail median at ~50; the heat shimmer only shows in motion
 - [ ] Fresh critic round on the result
 
 ## Acceptance checklist

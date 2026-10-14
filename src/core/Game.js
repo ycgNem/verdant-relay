@@ -245,6 +245,11 @@ export class Game {
     const dpr = window.devicePixelRatio || 1;
     this.stage.style.setProperty('--fq', `${(CONFIG.ui.fontGrid / dpr).toFixed(4)}px`);
     this.stage.style.setProperty('--fpx', `${(1 / dpr).toFixed(4)}px`);   // one device px (letter-spacing)
+    // The world's texel in CSS px (pixel art in the DOM at the game's own scale: the 9-slice panel frame, icons)
+    // and the frame image as an absolute URL (a relative one would resolve against the built stylesheet).
+    this.stage.style.setProperty('--tx', `${(L.k / dpr).toFixed(4)}px`);
+    this._frameUrl ||= `url("${new URL(`${import.meta.env.BASE_URL}sprites/ui_panel_frame.png`, document.baseURI).href}")`;
+    this.stage.style.setProperty('--frame', this._frameUrl);
   }
 
   applySettings() {

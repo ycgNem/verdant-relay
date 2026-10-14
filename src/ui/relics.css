@@ -5,6 +5,7 @@
 .rl-icon { display: inline-grid; place-items: center; flex: none; }
 .rl-pend { display: block; background-size: 100% 100%; image-rendering: pixelated; }
 .rl-sil .rl-pend, .rl-sil .vicon-sprite { filter: brightness(0); opacity: 0.55; }
+.rl-sil.rl-obj .rl-pend { filter: none; opacity: 1; }   /* the art's own object silhouette (relics.js silhouetteUrl) */
 
 .rl-rar { font-family: var(--font-label); font-size: max(var(--fq), round(calc(var(--u) * 9 - 0.01px), var(--fq))); letter-spacing: round(0.06em, var(--fpx)); }
 .rl-C { --rc: #c0cbdc; }

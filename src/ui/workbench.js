@@ -8,7 +8,7 @@
 
 import './workbench.css';
 import { el, button, costLine, resIcon, toast } from './ui.js';
-import { BRANCH_COLOR } from './screensKit.js';
+import { BRANCH_COLOR, iconEl } from './screensKit.js';
 import { WORKBENCH, RECIPES, RECIPE_KEYS, RECIPE_GROUPS, TOWER_MODS, TOWER_MOD_KEYS } from '../data/crafting.js';
 import { SKILLS, SKILL_KEYS, SKILL_BRANCHES, SKILL_OFFERS } from '../data/skills.js';
 import { CONFIG } from '../data/config.js';
@@ -21,12 +21,21 @@ export function showBench(run) {
   return RECIPE_KEYS.some((k) => !run.craftBlocked(k));
 }
 
+/**
+ * A recipe's hand-made icon (icon_craft_<key>, 24×24) at a whole-number scale (Assets.iconScale: 1× in a 16u card
+ * slot at 720p, 2× at 1080p), or null when the sprite isn't there (the glyph stays).
+ */
+function craftIcon(game, key, size = 16) {
+  const k = `icon_craft_${key}`;
+  return game?.assets?.hasSprite?.(k) ? iconEl(game, k, size) : null;
+}
+
 /** What a recipe makes, for its card: { icon (node), name, num, line, color }. */
-function recipeLook(key) {
+function recipeLook(key, game) {
   const r = RECIPES[key];
   const m = r.mod ? TOWER_MODS[r.mod] : null;
   const name = m?.name || r.name;
-  const icon = r.gives?.meds ? resIcon('pick_med') : el('span.wb-glyph', m?.icon || r.icon || '◆');
+  const icon = craftIcon(game, key) || (r.gives?.meds ? resIcon('pick_med') : el('span.wb-glyph', m?.icon || r.icon || '◆'));
   return { icon, name, num: m?.num || r.num, line: m?.line || r.line, color: m?.color || (r.group === 'blade' ? BRANCH_COLOR.Machete : r.group === 'relay' ? '#2ce8f5' : '#63c74d') };
 }
 
@@ -66,7 +75,7 @@ export function workbenchView(game, opts = {}) {
   let order = [];
   const craft = (key) => {
     const run = game.run;
-    const look = recipeLook(key);
+    const look = recipeLook(key, game);
     if (!run.craft(key)) {
       game.sfx.play('error');
       toast(game.ui, run.craftBlocked(key) || 'Can\'t make that now', 'bad', 2);
@@ -93,7 +102,7 @@ export function workbenchView(game, opts = {}) {
       if (!keys.length) continue;
       const cards = keys.map((key) => {
         const r = RECIPES[key];
-        const look = recipeLook(key);
+        const look = recipeLook(key, game);
         const reason = run.craftBlocked(key);
         n += 1;
         order.push(key);
@@ -157,13 +166,13 @@ export function modRow(scene, t) {
   const line = el('div.df-modline', {}, el('span.df-modk', { title: 'One socket per tower: mods are made at the Workbench after a trip' }, 'Mod'));
   if (fitted) {
     line.append(el('span.df-modchip', { style: { '--c': fitted.color }, title: `${fitted.name}: ${fitted.line}` },
-      el('span.df-modic', fitted.icon), fitted.name));
+      craftIcon(game, rec.mod, 12) || el('span.df-modic', fitted.icon), fitted.name));
   } else line.append(el('span.small.muted', 'empty socket'));
   const btns = el('div.df-modbtns', {}, fitted ? el('span.df-modnum', { title: fitted.line }, fitted.num) : null);
   if (scene.canBuild) {
     for (const k of can) {
       const m = TOWER_MODS[k];
-      btns.append(button(el('span', {}, el('span.df-modic', { style: { '--c': m.color } }, m.icon), fitted ? `Swap: ${m.name}` : `Fit ${m.name}`),
+      btns.append(button(el('span', {}, craftIcon(game, k, 12) || el('span.df-modic', { style: { '--c': m.color } }, m.icon), fitted ? `Swap: ${m.name}` : `Fit ${m.name}`),
         () => { if (run.fitMod(rec, k)) done(`${m.name} fitted: ${m.num}`); },
         { cls: 'df-modbtn', title: `${m.name}: ${m.num}. ${m.line} (you have ${run.itemCount(k)})` }));
     }
@@ -202,7 +211,7 @@ export function codexKit(game) {
   const wl = el('div.codex-list.codex-recipes');
   for (const k of RECIPE_KEYS) {
     const r = RECIPES[k];
-    const look = recipeLook(k);
+    const look = recipeLook(k, game);
     wl.append(el('div.codex-row.codex-recipe', { style: { '--c': look.color } },
       el('div.codex-main', {},
         el('div.row.codex-title', {}, look.icon, el('b', look.name), el('span.amber.small', look.num || ''), el('span.grow'), costLine(r.cost)),

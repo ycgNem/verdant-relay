@@ -319,7 +319,7 @@ export class DefenseEnemy {
 
     // HP bar
     if (this.barFill) {
-      const show = this.hp < this.maxHp && !this.burrowed;
+      const show = this.hp < this.maxHp && !this.burrowed && this.barFocus !== false;   // barFocus: DefenseScene (hover / target / big)
       this.barBg.visible = this.barFill.visible = show;
       if (show) {
         const f = this.hp / this.maxHp;
@@ -346,7 +346,7 @@ export class DefenseEnemy {
       setBaseColor(this.visual, tint);
     }
     if (rooted && !this.vines) this.vines = this.scene.makeVines(this);
-    if (this.vines) this.vines.visible = rooted;
+    if (this.vines) { if (this.scene.vinesLook) this.scene.vinesLook(this.vines, rooted, dt); else this.vines.visible = rooted; }
     const slowed = !rooted && this.slowMult < 0.999;
     if (slowed && !this.slowRing && this.scene.makeSlowRing) this.slowRing = this.scene.makeSlowRing(this);
     if (this.slowRing) this.slowRing.visible = slowed;
@@ -576,6 +576,7 @@ export class DefenseEnemy {
     this.removed = true;
     this.cancelTelegraphs();
     if (this.visual) this.scene.game.assets.disposeVisual(this.visual);
+    if (this.vines?.userData.snare) this.scene.game.assets.disposeVisual(this.vines.userData.snare);   // sprite snare (own texture)
     this.obj.removeFromParent();   // hp bars, vines and mound use shared geometry/materials
   }
 }

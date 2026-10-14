@@ -117,6 +117,9 @@ export class PostFx {
       uFog: { value: 0 },
       uFogCol: { value: new THREE.Vector3(0.6, 0.66, 0.64) },
       uFogR: { value: new THREE.Vector2(0.3, 1.05) },        // the veil runs from x to y × the light radius
+      uFogNight: { value: new THREE.Vector3(0.3, 0.3, 0.3) },  // × the veil's moonlight at full night (critic H2 §1)
+      uHeat: { value: 0 },                                    // heat shimmer: share of far bands that wobble (0 = off)
+      uHeatK: { value: new THREE.Vector4(11, 14, 37, 0.35) }, // band period (px), drift (px/s), segment (px), from (× light r)
       uRain: { value: 0 },
       uRainK: { value: new THREE.Vector4(6, 7, 420, 3) },    // gap, len, speed (px/s), slant (px down per px left)
       uRainP: { value: new THREE.Vector3(46, 80, 0.42) },    // period min / max (px), mix
@@ -137,8 +140,9 @@ export class PostFx {
         uniform vec3 uTint, uLift, uLampTint, uNightLift;
         uniform vec3 uWTint, uFogCol, uRainP, uRainCol;
         uniform vec2 uFogR;
-        uniform float uFog, uRain;
-        uniform vec4 uRainK;
+        uniform float uFog, uRain, uHeat;
+        uniform vec3 uFogNight;
+        uniform vec4 uRainK, uHeatK;
         varying vec2 vUv;
         const float BAYER[16] = float[16](0.03125,0.53125,0.15625,0.65625,0.78125,0.28125,0.90625,0.40625,0.21875,0.71875,0.09375,0.59375,0.96875,0.46875,0.84375,0.34375);
         float bayer4(vec2 p){ int x = int(mod(p.x, 4.0)); int y = int(mod(p.y, 4.0)); return BAYER[y * 4 + x]; }
@@ -150,7 +154,19 @@ export class PostFx {
         void main() {
           vec2 px = vec2(vUv.x * uRes.x, (1.0 - vUv.y) * uRes.y);        // internal px, y down
           vec2 ground = uFocus + (px - uRes * 0.5) / uPpu;                 // tile coords under the pixel
-          vec4 sc = texture2D(tScene, vUv);
+          vec2 suv = vUv;
+          if (uHeat > 0.0) {
+            // Heat shimmer (critic H2 §1: the haze was invisible at ×2): away from you, thin world-anchored row bands
+            // drift upward and shift the picture one whole pixel left / right in short segments — pixel-exact.
+            float far = smoothstep(uLightR * uHeatK.w, uLightR * (uHeatK.w + 0.45), length((px - uPlayer) * vec2(1.0, 1.25)));
+            vec2 hw = floor(px) + floor(uFocus * uPpu + 0.5);
+            float row = hw.y + floor(uTime * uHeatK.y);
+            float band = mod(row, uHeatK.x);
+            float s = band < 1.0 ? 1.0 : (band >= 3.0 && band < 4.0 ? -1.0 : 0.0);
+            float on = step(h21(vec2(floor(row / uHeatK.x), floor(hw.x / uHeatK.z))), uHeat * far);
+            suv.x += s * on / uRes.x;
+          }
+          vec4 sc = texture2D(tScene, suv);
           vec3 col = sc.rgb;
           float card = step(1.5, sc.a);
           float emit = sc.a < 0.98 ? clamp(1.0 - sc.a, 0.0, 1.0) : 0.0;  // emissive / lit share
@@ -202,9 +218,14 @@ export class PostFx {
           if (uFog > 0.0) {
             float fd = smoothstep(uLightR * uFogR.x, uLightR * uFogR.y, d);
             float fn = vnoise(ground * 0.14 + vec2(uTime * 0.05, uTime * 0.021));
-            float fk = clamp(uFog * fd * (0.7 + 0.6 * fn), 0.0, 1.0) * (1.0 - emit * 0.6);
+            // Emissives (eyes, fireflies, the crystal, lamps) stay above the veil.
+            float fk = clamp(uFog * fd * (0.7 + 0.6 * fn), 0.0, 1.0) * (1.0 - emit);
             fk = floor(fk * 5.0 + b) / 5.0;
-            col = mix(col, uFogCol * max(lit, vec3(0.3)) * mix(1.0, 0.45, uDark), fk);   // (dimmer after dark)
+            // After dark the veil is lit by the night itself (critic H2 §1: it was a grey wash brighter than the night):
+            // the moonlight (and the lamp near you) × uFogNight, over the navy lift — dim, blue, never a grey sheet.
+            float nk = smoothstep(0.15, 0.75, uDark);
+            vec3 fogLit = mix(max(lit, vec3(0.3)), lit * uFogNight, nk);
+            col = mix(col, uFogCol * fogLit + uNightLift * nk, fk);
           }
           if (uRain > 0.0) {
             vec2 wp = floor(px) + floor(uFocus * uPpu + 0.5);

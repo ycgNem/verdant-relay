@@ -38,7 +38,7 @@ export const DEFENSE_MAPS = {
   // The classic: two winding trails from the north-west and south-west that meet at the Relay.
   twin: {
     key: 'twin', name: 'Twin Paths', blurb: 'Two winding trails meet at the Relay.',
-    hpMult: 0.86,   // enemy health × this on this map (DefenseScene.hpMult; balance sim: the trails only meet at the Relay, so few pads see both)
+    hpMult: 0.95,   // enemy health × this on this map (DefenseScene.hpMult; balance sim: the trails only meet at the Relay, so few pads see both)
     width: FIELD.w, height: FIELD.h,
     core: { x: 20.6, y: 8.2 }, coreRadius: 1.2,
     lanes: [
@@ -193,6 +193,15 @@ export const DEFENSE_VIEW = {
   // Build-pad plinths: drawn per pad seed; their size follows the widest tower sprite (towerArt), so bigger
   // tower art (48 × 64) gets bigger plinths without new data.
   plinth: { w: [27, 33], top: [21, 27], face: [5, 8], chips: [1, 3] },
+  // Hand-made plinths (critic H2 §11; DefenseGround.makePlinth): wood pads get `wood`, the rest pick one of `keys` by
+  // the pad's seed with these weights. Drawn at 1× (whole texels); the procedural plinth above when the art is missing.
+  plinthArt: { keys: ['plinth_stone', 'plinth_rubble', 'plinth_timber'], weights: [0.5, 0.32, 0.18], wood: 'plinth_timber' },
+  // Rank badges on the plinth's front face (rank_badge_2 / rank_badge_3, Tower.refreshVisual via DefenseScene.rankBadge)
+  // instead of chevrons floating over the tower; the floating chevrons stay as the fallback.
+  rankBadgeOnPlinth: true,
+  // Enemy health bars during a push (critic H2 §11: a bar over every hurt enemy was noise): only the hovered enemy,
+  // the selected tower's target, the boss and these roles (src/data/enemies.js DEFENSE_ENEMIES role) show one.
+  hpBarRoles: ['Tank', 'Elite', 'Boss'],
   // Towers draw a 1-texel outline (Assets outline) in their type colour so they separate from the plinth
   // and the dark ground; `towerOutlineMix` darkens that colour toward black (0 = type colour, 1 = black).
   // typeBrackets: also the dashed type-coloured square on the pad (off: reads as a TD board, critic G #12).

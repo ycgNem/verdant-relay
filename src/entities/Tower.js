@@ -104,7 +104,11 @@ export class Tower {
     this.badge?.removeFromParent();
     this.badge = null;
     const b = scene.levelBadge?.[this.level];
-    if (b) {
+    const onPlinth = b && scene.rankBadge?.(this, this.level);
+    if (onPlinth) {
+      this.badge = onPlinth;   // rank_badge_<n> on the plinth's front face (DefenseScene.rankBadge)
+      this.obj.add(this.badge);
+    } else if (b) {
       this.badge = new THREE.Sprite(b.mat);
       this.badge.scale.set(b.w / 32, b.h / 32, 1);   // 1 texel = 1 px (32 px per tile)
       this.badge.center.set(0.5, 0);

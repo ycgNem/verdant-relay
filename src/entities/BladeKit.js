@@ -45,8 +45,17 @@ export class Bleeds {
   }
 
   add(e) {
+    if (!e || e.dead) return;
+    // A stationary area boss is a hittable proxy (AreaBosses.hittables, rebuilt every call): key it by where it
+    // stands and bleed it through its own hit(), at × BLEED.boss (critic I2 #12).
+    if (e.boss && typeof e.hit === 'function') {
+      const k = `boss:${e.x.toFixed(1)},${e.z.toFixed(1)}`;
+      const b = this.list.get(k);
+      if (b) { b.t = this.time; b.proxy = e; } else this.list.set(k, { t: this.time, tick: BLEED.tick, acc: 0, key: {}, proxy: e });
+      return;
+    }
     // Creatures only (nests and spore pods have no `def`).
-    if (!e || e.dead || !e.def || typeof e.hp !== 'number') return;
+    if (!e.def || typeof e.hp !== 'number') return;
     const b = this.list.get(e);
     if (b) b.t = this.time;
     else this.list.set(e, { t: this.time, tick: BLEED.tick, acc: 0, key: {} });   // key: its own merging number
@@ -54,6 +63,13 @@ export class Bleeds {
 
   update(dt) {
     for (const [e, b] of this.list) {
+      if (b.proxy) {
+        b.t -= dt;
+        b.tick -= dt;
+        if (b.tick <= 0) { b.tick += BLEED.tick; this._tickBoss(b); }
+        if (b.t <= 0) this.list.delete(e);
+        continue;
+      }
       if (e.dead) { this.list.delete(e); continue; }
       b.t -= dt;
       b.tick -= dt;
@@ -65,11 +81,23 @@ export class Bleeds {
     }
   }
 
-  _tick(e, b) {
-    b.acc += this.dps * BLEED.tick;
+  /** A stationary boss bleeds through its own hurt (shield, phases and death included), reduced. */
+  _tickBoss(b) {
+    b.acc += this.dps * (BLEED.boss ?? 1) * BLEED.tick;
     const dmg = Math.floor(b.acc);
     if (dmg <= 0) return;
     b.acc -= dmg;
+    b.proxy.hit(dmg, 0, 0, 0, 'bleed');
+  }
+
+  _tick(e, b) {
+    // A boss creature (the Pack Lord) bleeds less, through its own hit() so its phase change still happens.
+    const lord = !!e.lordOf;
+    b.acc += this.dps * (lord ? (BLEED.boss ?? 1) : 1) * BLEED.tick;
+    const dmg = Math.floor(b.acc);
+    if (dmg <= 0) return;
+    b.acc -= dmg;
+    if (lord) { e.hit(dmg, 0, 0, 0, 'bleed'); return; }
     const fx = this.scene.fx;
     const h = e.vis.userData.vis?.height || 1;
     e.hp -= dmg;

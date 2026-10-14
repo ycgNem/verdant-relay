@@ -8,9 +8,16 @@
 // Casting from code (the balance sim): deck.cast(key, {x, z}).
 
 import * as THREE from 'three';
+import { setAnim, updateVisual } from '../core/Assets.js';
 import { el, button, costLine } from '../ui/ui.js';
 import { PROTOCOLS, PROTOCOL_ICONS, perNight } from '../data/protocols.js';
 import { toast } from '../ui/ui.js';
+
+// Looks (critic H2 §8: no smooth-alpha discs): the aim cursor is a 1-px dashed ring; Vine Snare wraps each rooted
+// enemy in fx_vine_snare (DefenseScene.makeVines); a Flare is the fx_flare_pool sprite (3-tile radius at 1x) with the
+// burning fx_flare_ember canister in the middle; Arc Discharge stays code bolts. Rings on landing step out hard.
+const TEXEL = 1 / 32;
+const AIM_DASHES = 24;
 
 export class ProtocolDeck {
   constructor(scene) {
@@ -25,19 +32,30 @@ export class ProtocolDeck {
     this.casts = 0;         // casts made tonight (stats / sim)
     this.buttons = {};
 
-    // Aim cursor: a ring + faint fill on the ground under the mouse, in the protocol's colour.
+    // Aim cursor: a 1-px dashed ring on the ground under the mouse, in the protocol's colour (no fill). Its dashes
+    // are rebuilt per radius (aim) so the line stays one texel thick; the ring marches slowly.
     const T = (x) => scene._track(x);
-    this.aimFill = T(new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.12, depthWrite: false }));
-    this.aimRingMat = T(new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9, depthWrite: false }));
+    this.aimRingMat = T(new THREE.MeshBasicMaterial({ color: '#ffffff', depthWrite: false, side: THREE.DoubleSide }));
     this.aimObj = new THREE.Group();
-    const fill = new THREE.Mesh(T(new THREE.CircleGeometry(1, 40)), this.aimFill);
-    const ring = new THREE.Mesh(T(new THREE.RingGeometry(0.93, 1, 48)), this.aimRingMat);
-    for (const m of [fill, ring]) { m.rotation.x = -Math.PI / 2; m.renderOrder = 6; }
-    this.aimObj.add(fill, ring);
     this.aimObj.visible = false;
+    this.aimR = 0;
     scene.three.add(this.aimObj);
-    // Flare ground glow (shared geometry; one material per flare so each fades on its own).
+    // Flare ground glow fallback (no fx_flare_pool art): shared geometry, one material per flare.
     this.flareGeom = T(new THREE.CircleGeometry(1, 40));
+  }
+
+  /** (Re)build the aim ring's dashes for radius r: AIM_DASHES dashes, 1.5 texels thick (never thinner than a pixel). */
+  _aimRing(r) {
+    if (Math.abs(this.aimR - r) < 1e-3) return;
+    this.aimR = r;
+    for (const c of [...this.aimObj.children]) { c.geometry.dispose(); c.removeFromParent(); }
+    const seg = (Math.PI * 2) / AIM_DASHES;
+    for (let i = 0; i < AIM_DASHES; i++) {
+      const m = new THREE.Mesh(new THREE.RingGeometry(r - TEXEL * 1.5, r, 4, 1, i * seg, seg * 0.5), this.aimRingMat);
+      m.rotation.x = -Math.PI / 2;
+      m.renderOrder = 6;
+      this.aimObj.add(m);
+    }
   }
 
   /** Charges this protocol can store tonight. */
@@ -67,9 +85,8 @@ export class ProtocolDeck {
     if (why) { this.scene.game.sfx.play('error'); toast(this.scene.game.ui, `${PROTOCOLS[k].name}: ${why}`, 'bad', 1.8); return; }
     this.aiming = k;
     const P = this.def(k);
-    this.aimFill.color.set(P.color);
     this.aimRingMat.color.set(P.color);
-    this.aimObj.scale.setScalar(P.radius);
+    this._aimRing(P.radius);
     this.scene.sideDirty = true;
   }
 
@@ -112,7 +129,7 @@ export class ProtocolDeck {
         if (e.boss) { const r = e.protocolRoot(P.bossRoot); if (r === 'cancel') cancelled = true; if (r) n++; }
         else if (e.applyRoot(P.root)) n++;
       }
-      fx.ring(pos, { color: P.color, radius: P.radius, life: 0.45 });
+      fx.ring(pos, { color: P.color, radius: P.radius, life: 0.45, hard: true, px: 2 });
       fx.burst(pos, { color: '#63c74d', color2: '#265c42', count: 26, speed: 2.4, up: 2.5, life: 0.55, size: 0.08, y: 0.05 });
       scene.game.sfx.playAt('vine_root', c.x, c.z);
       if (cancelled) {
@@ -127,23 +144,39 @@ export class ProtocolDeck {
         const to = new THREE.Vector3(c.x + Math.cos(a) * P.radius * 0.6, 0.1, c.z + Math.sin(a) * P.radius * 0.6);
         fx.bolt(new THREE.Vector3(c.x, 4.5, c.z), to, { color: i % 2 ? '#8ff8ff' : '#2ce8f5', life: 0.22, jag: 0.6 });
       }
-      fx.ring(pos, { color: P.color, radius: P.radius, life: 0.35 });
+      fx.ring(pos, { color: P.color, radius: P.radius, life: 0.35, hard: true, px: 2 });
       fx.flash({ x: c.x, y: 0.4, z: c.z }, { color: '#2ce8f5', size: 1.1, life: 0.1 });
       fx.light(pos, { color: '#2ce8f5', intensity: 6, distance: 5, life: 0.2 });
       fx.burst(pos, { color: '#2ce8f5', color2: '#ffffff', count: 24, speed: 3.2, up: 3, life: 0.45, size: 0.07, y: 0.1 });
       scene.game.shake(3, 0.2);
       scene.game.sfx.playAt('arc_discharge', c.x, c.z);
     } else if (c.key === 'flare') {
-      const mat = scene._track(new THREE.MeshBasicMaterial({ color: '#feae34', transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending }));
-      const mesh = new THREE.Mesh(this.flareGeom, mat);
-      mesh.rotation.x = -Math.PI / 2;
-      mesh.position.set(c.x, 0.045, c.z);
-      mesh.scale.setScalar(P.radius);
-      mesh.renderOrder = 1;
+      const A = scene.game.assets;
+      let mesh, mat = null, ember = null;
+      if (A.hasSprite('fx_flare_pool')) {
+        // The pool art is a 3-tile radius at 1x; a bigger Flare (relics) steps up a whole scale, never in between.
+        mesh = A.makeVisual('fx_flare_pool', { shadow: false, scale: Math.max(1, Math.round(P.radius / 3)) });
+        mesh.position.set(c.x, 0.025, c.z);
+        mesh.userData.vis.body.renderOrder = -3;   // under the plinths (−2) and the towers: light on the ground
+        setAnim(mesh, 'idle');
+        if (A.hasSprite('fx_flare_ember')) {
+          ember = A.makeVisual('fx_flare_ember', { shadow: false });
+          ember.position.set(c.x, 0, c.z);
+          setAnim(ember, 'idle');
+          scene.three.add(ember);
+        }
+      } else {
+        mat = scene._track(new THREE.MeshBasicMaterial({ color: '#feae34', transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending }));
+        mesh = new THREE.Mesh(this.flareGeom, mat);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.set(c.x, 0.045, c.z);
+        mesh.scale.setScalar(P.radius);
+        mesh.renderOrder = 1;
+      }
       scene.three.add(mesh);
-      this.flares.push({ x: c.x, z: c.z, r: P.radius, t: P.time, life: P.time, mult: P.damageMult, mesh, mat, spark: 0 });
+      this.flares.push({ x: c.x, z: c.z, r: P.radius, t: P.time, life: P.time, mult: P.damageMult, mesh, mat, ember, spark: 0 });
       fx.flash({ x: c.x, y: 1.2, z: c.z }, { color: '#fee761', size: 1.2, life: 0.2 });
-      fx.ring(pos, { color: '#feae34', radius: P.radius, life: 0.5 });
+      fx.ring(pos, { color: '#feae34', radius: P.radius, life: 0.5, hard: true, px: 2 });
       scene.game.sfx.playAt('flare_pop', c.x, c.z);
     }
   }
@@ -183,14 +216,20 @@ export class ProtocolDeck {
     for (let i = this.flares.length - 1; i >= 0; i--) {
       const f = this.flares[i];
       f.t -= dt;
-      f.mat.opacity = 0.16 * Math.min(1, f.t / 0.6) * (0.85 + 0.15 * Math.sin(f.t * 9));
+      if (f.mat) f.mat.opacity = 0.16 * Math.min(1, f.t / 0.6) * (0.85 + 0.15 * Math.sin(f.t * 9));
+      else {
+        // Sprite pool: its own flicker frames; the last 0.6 s it blinks out (whole frames on / off).
+        updateVisual(f.mesh, dt);
+        if (f.ember) updateVisual(f.ember, dt);
+        f.mesh.visible = f.t > 0.6 || Math.floor(f.t * 10) % 2 === 0;
+      }
       f.spark -= dt;
       if (f.spark <= 0) {
         f.spark = 0.15;
         const a = Math.random() * Math.PI * 2, r = Math.random() * f.r;
         this.scene.fx.burst({ x: f.x + Math.cos(a) * r, y: 0, z: f.z + Math.sin(a) * r }, { color: '#fee761', color2: '#feae34', count: 1, speed: 0.3, up: 1.6, gravity: 1, life: 0.7, size: 0.05, y: 0.1 });
       }
-      if (f.t <= 0) { f.mesh.removeFromParent(); this.flares.splice(i, 1); }
+      if (f.t <= 0) { this._dropFlare(f); this.flares.splice(i, 1); }
     }
   }
 
@@ -203,7 +242,7 @@ export class ProtocolDeck {
         const p = scene.game.mouseOnPlane(scene.camera, 0);
         this.aimObj.visible = !!p && !scene.overUi;
         if (p) this.aimObj.position.set(p.x, 0.06, p.z);
-        this.aimRingMat.opacity = 0.7 + 0.3 * Math.sin(scene.game.time * 8);
+        this.aimObj.rotation.y = scene.game.time * 0.6;
       }
     }
     for (const k of this.keys) {
@@ -263,9 +302,16 @@ export class ProtocolDeck {
     return wrap;
   }
 
+  _dropFlare(f) {
+    const A = this.scene.game.assets;
+    if (f.mat) f.mesh.removeFromParent(); else A.disposeVisual(f.mesh);
+    if (f.ember) A.disposeVisual(f.ember);
+  }
+
   dispose() {
-    for (const f of this.flares) f.mesh.removeFromParent();
+    for (const f of this.flares) this._dropFlare(f);
     this.flares = [];
+    for (const c of this.aimObj.children) c.geometry.dispose();
     this.aimObj.removeFromParent();
   }
 }

@@ -33,6 +33,7 @@ import { JUNGLE, LEVEL, BRUSH, REGION_LOOK, SPORES, GROUND, DAY } from '../data/
 import { footprint, inFootprint } from './Solid.js';
 import { PLACE_NAMES, LANDMARK_NAMES, LORE_SPOTS } from '../data/lore.js';
 import { GUIDE } from '../data/guide.js';
+import { BOSS } from '../data/bosses.js';
 
 const TAU = Math.PI * 2;
 
@@ -652,6 +653,10 @@ export function generateWorld(seed, districtKeys, opts = {}) {
   // Relic strongboxes, landmark shrines, data logs and place names (src/data/relics.js, lore.js): own streams,
   // after everything else is placed, so the rest of the layout doesn't shift.
   siteFeatures(world, seed, occupied, B, (tx, tz) => tileLevelMin(tx, tz) <= LEVEL.mud);
+  // Area boss lairs (src/data/bosses.js): one site index per region (bossLairs; no random draws, nothing shifts).
+  // Their arenas are cleared of loot and lore (critic I2 #5), before reachability is checked.
+  world.lairs = bossLairs(world, districtKeys.length);
+  clearLairProps(world, seed, occupied, B, (tx, tz) => tileLevelMin(tx, tz) <= LEVEL.mud);
   world.occupied = occupied;
   // Far from a return point (the Relay or any pylon) = richer: `yield` multiplies a container's Scrap.
   const LD = J.lootDistance;
@@ -705,9 +710,54 @@ export function generateWorld(seed, districtKeys, opts = {}) {
     }
   }
   world.objects = world.objects.filter((o) => o.kind !== 'tree' || !props.some((p) => o.z > p.z && o.z < p.z + PF.tree && Math.abs(o.x - p.x) < PF.treeX));
-  // Area boss lairs (src/data/bosses.js): one site index per region (bossLair; no random draws, nothing shifts).
-  world.lairs = districtKeys.map((_, ri) => bossLair(world, ri));
-  return world;
+  return world;   // (world.lairs: chosen above, after the site features)
+}
+
+/**
+ * Clear the lairs (critic I2 #5: crates, terminals, lore stones and the relic strongbox stood 0.7–3.4 tiles from
+ * the bosses): every container, relic strongbox and data log within BOSS.clearProps.radius of a lair moves to an
+ * open tile BOSS.clearProps.to [min, max] tiles from it (outside every lair's radius). Its own seeded stream and
+ * the same id, so the layout is the same every day and opened ones stay opened.
+ */
+function clearLairProps(world, seed, occupied, B, wet) {
+  const CP = BOSS.clearProps, W = world.size;
+  const lairs = (world.lairs || []).map((i) => world.sites[i]).filter(Boolean);
+  if (!CP || !lairs.length) return;
+  const rng = makeRng(subSeed(seed, 'lairprops'));
+  const near = (x, z) => lairs.find((s) => Math.hypot(x - s.x, z - s.z) < CP.radius);
+  // No wild spore pods in an arena either (the Thorn Mother brings her own): the fight is the boss.
+  world.spores = (world.spores || []).filter((p) => !near(p.x, p.z));
+  for (const list of [world.containers, world.relicCaches, world.loreSpots]) for (const c of list || []) {
+    const L = near(c.x, c.z);
+    if (!L) continue;
+    for (let t = 0; t < 160; t++) {
+      const late = t >= 80;   // after 80 tries: further out, and brush tiles count (cleared)
+      const a = rng.next() * TAU, d = CP.to[0] + rng.next() * (CP.to[1] - CP.to[0] + (late ? 4 : 0));
+      const tx = Math.floor(L.x + Math.cos(a) * d), tz = Math.floor(L.z + Math.sin(a) * d);
+      if (tx < 1 || tz < 1 || tx >= W - 1 || tz >= W - 1) continue;
+      const i = tz * W + tx;
+      if (occupied[i] || (!late && B[i] >= BRUSH.thicket) || wet(tx, tz) || world.deep[i] || near(tx + 0.5, tz + 0.5)) continue;
+      occupied[Math.floor(c.z) * W + Math.floor(c.x)] = 0;
+      occupied[i] = 1;
+      if (!c.hidden) B[i] = BRUSH.none;
+      c.x = tx + 0.5; c.z = tz + 0.5;
+      break;
+    }
+  }
+}
+
+/** An area's lair candidates in order of preference (bossLair). */
+function lairCandidates(world, ri) {
+  const c = world.center;
+  const mine = world.sites.filter((s) => s.region === ri && s.type !== 'pylon');
+  const far = (a, b) => Math.hypot(b.x - c.x, b.z - c.z) - Math.hypot(a.x - c.x, a.z - c.z);
+  const out = [];
+  const add = (s) => { if (s && !out.includes(s)) out.push(s); };
+  add(mine.find((s) => s.type === 'major' && s.lost));
+  mine.filter((s) => s.lost && s.type !== 'camp').sort(far).forEach(add);
+  add(mine.find((s) => s.type === 'major'));
+  mine.slice().sort(far).forEach(add);
+  return out;
 }
 
 /**
@@ -715,14 +765,27 @@ export function generateWorld(seed, districtKeys, opts = {}) {
  * Relay, else its major site (else any non-pylon site). Returns the site index, or -1.
  */
 export function bossLair(world, ri) {
-  const c = world.center;
-  const mine = world.sites.filter((s) => s.region === ri && s.type !== 'pylon');
-  const far = (a, b) => Math.hypot(b.x - c.x, b.z - c.z) - Math.hypot(a.x - c.x, a.z - c.z);
-  const pick = mine.find((s) => s.type === 'major' && s.lost)
-    || mine.filter((s) => s.lost && s.type !== 'camp').sort(far)[0]
-    || mine.find((s) => s.type === 'major')
-    || mine.slice().sort(far)[0];
-  return pick ? pick.idx : -1;
+  return lairCandidates(world, ri)[0]?.idx ?? -1;
+}
+
+/**
+ * Every area's lair, spread out (critic H2 §5.2: two bosses joined one fight): each area takes its most preferred
+ * site at least BOSS.aggro + leash + lairGap tiles from the lairs already chosen (areas in order); if none is, the
+ * candidate furthest from them. Deterministic (no RNG).
+ */
+export function bossLairs(world, nAreas) {
+  const gap = BOSS.aggro + BOSS.leash + BOSS.lairGap;
+  const picked = [];
+  const lairs = [];
+  for (let ri = 0; ri < nAreas; ri++) {
+    const cands = lairCandidates(world, ri);
+    const minD = (s) => picked.reduce((m, q) => Math.min(m, Math.hypot(s.x - q.x, s.z - q.z)), Infinity);
+    let pick = cands.find((s) => minD(s) >= gap);
+    if (!pick && cands.length) pick = cands.reduce((a, b) => (minD(b) > minD(a) ? b : a));
+    if (pick) picked.push(pick);
+    lairs.push(pick ? pick.idx : -1);
+  }
+  return lairs;
 }
 
 /**

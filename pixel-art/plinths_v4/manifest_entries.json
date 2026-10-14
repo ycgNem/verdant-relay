@@ -1,0 +1,48 @@
+{
+  "plinth_stone": {
+    "file": "plinth_stone.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0,
+    "top": [
+      1,
+      1,
+      35,
+      26
+    ]
+  },
+  "plinth_timber": {
+    "file": "plinth_timber.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0,
+    "top": [
+      2,
+      2,
+      35,
+      26
+    ]
+  },
+  "plinth_rubble": {
+    "file": "plinth_rubble.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0,
+    "top": [
+      4,
+      1,
+      36,
+      28
+    ]
+  },
+  "rank_badge_2": {
+    "file": "rank_badge_2.png",
+    "ppu": 32,
+    "shadow": 0
+  },
+  "rank_badge_3": {
+    "file": "rank_badge_3.png",
+    "ppu": 32,
+    "shadow": 0
+  }
+}
