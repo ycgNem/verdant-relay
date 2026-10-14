@@ -27,6 +27,8 @@ export const RECIPE_GROUPS = [
   { title: 'Supplies', note: null, groups: ['gear', 'relay'] },
 ];
 
+import { WEAPONS } from './config.js';
+
 export const RECIPES = {
   focusing_lens: { group: 'mod', mod: 'focusing_lens', cost: { circuits: 2 } },
   thorn_coating: { group: 'mod', mod: 'thorn_coating', cost: { biofiber: 2 } },
@@ -44,13 +46,16 @@ export const RECIPES = {
   },
   heavy_spine: {
     group: 'blade', name: 'Heavy Spine', icon: '▼', num: '+25% chop damage',
-    line: 'The heavy chop hits 25% harder (36 → 45 with the machete).',
+    // (the numbers come from WEAPONS, so the line can't go stale again: critic J2 C8)
+    line: `The heavy chop hits 25% harder (${WEAPONS.machete.chop.damage} → ${Math.round(WEAPONS.machete.chop.damage * 1.25)} with the machete).`,
     cost: { scrap: 25, circuits: 1 }, blade: { chopDamage: 1.25 },
   },
+  // hideWith: a research node that replaces this recipe — Field Dressing's briefing shop sells med kits for 15 Scrap
+  // (no Biofiber), so the Workbench stops offering them (critic J2 C1: one med-kit shop at a time).
   med_kit: {
     group: 'gear', name: 'Med kit', icon: '✚', num: 'heals 25',
     line: 'Heals 25 health in the jungle (Q). You can carry 2.',
-    cost: { scrap: 15, biofiber: 1 }, gives: { meds: 1 },
+    cost: { scrap: 15, biofiber: 1 }, gives: { meds: 1 }, hideWith: 'field_dressing',
   },
   reinforced_plating: {
     group: 'relay', name: 'Reinforced Plating', icon: '⛨', num: '+10 Relay max health',
@@ -59,6 +64,12 @@ export const RECIPES = {
   },
 };
 export const RECIPE_KEYS = Object.keys(RECIPES);
+
+/** Is this recipe on the Workbench for this profile (not replaced by a research node: `hideWith`)? */
+export function recipeOffered(key, meta) {
+  const r = RECIPES[key];
+  return !!r && !(r.hideWith && meta?.unlocks?.includes(r.hideWith));
+}
 
 // Tower mods: one socket per tower. `kinds` = the tower kinds (towers.js) it fits; `tower` = the stat change,
 // applied in Run.towerStats with the same format as SKILLS[*].tower, plus two flags Tower / DefenseScene read:
@@ -76,7 +87,7 @@ export const TOWER_MODS = {
     kinds: ['bullet', 'chain', 'mortar'], tower: { slowedBonus: 1.25 },
   },
   uplink: {
-    name: 'Uplink', icon: '⌁', color: '#feae34', num: 'hits burrowed enemies',
+    name: 'Tunnel Sight', icon: '⌁', color: '#feae34', num: 'hits burrowed enemies',
     line: 'The tower can shoot enemies while they tunnel underground.',
     kinds: ['bullet'], tower: { seesBurrowed: true },
   },

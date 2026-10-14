@@ -70,8 +70,8 @@ export const CONFIG = {
     deathReturnHp: 35,       // player HP after a failed expedition (going down, abandoning, quitting mid-day)
     deathFloorAfter: 15,     // seconds into the day before the salvage Scrap floor applies (abandoning at once earns nothing)
     nightlyHeal: 25,         // player HP recovered each night…
-    dawnHpFloor: 60,         // …and you wake with at least this much, whether you got home or went down (Run.dawnHp)
-    maxSkillPoints: 1,       // skill points one trip can earn (the goal, or a bonus task if the goal isn't done); area bosses add one each on top (skills.js)
+    dawnHpFloor: 75,         // …and you wake with at least this much, whether you got home or went down (Run.dawnHp; 60 → 75, critic J2 #1)
+    maxSkillPoints: 1,       // skill points one trip can earn (from its goal; bonus tasks pay loot instead, critic J2 #1); area bosses add one each on top (skills.js)
     quickExtraction: 0.75,   // hold-time multiplier with the Quick Extraction skill
     packRatMagnet: 1.5,      // magnet radius multiplier with Pack Rat I
     packRatScrap: 1.1,       // container Scrap multiplier with Pack Rat II
@@ -418,7 +418,7 @@ export function nightTune(key, night) {
 
 export const RESOURCES = {
   scrap: { label: 'Scrap', short: 'SCR', color: '#c0cbdc', glyph: '⚙', icon: 'pick_scrap', desc: 'Builds towers, pays for repairs and most upgrades.' },
-  circuits: { label: 'Circuits', short: 'CIR', color: '#2ce8f5', glyph: '▣', icon: 'pick_circuits', desc: 'The bottleneck for electronic towers: Arc Spires and Pulse Beacons cost 2, upgrades 1–2.' },
+  circuits: { label: 'Circuits', short: 'CIR', color: '#2ce8f5', glyph: '▣', icon: 'pick_circuits', desc: 'The bottleneck for electronic towers: Arc Spires and Pulse Totems cost 2, upgrades 1–2.' },
   biofiber: { label: 'Biofiber', short: 'BIO', color: '#63c74d', glyph: '❦', icon: 'pick_biofiber', desc: 'Organic towers and traps: Thorn Nests, Snare Vines, Mortar Pods.' },
   intel: { label: 'Intel', short: 'INT', color: '#feae34', glyph: '✉', icon: 'pick_intel', desc: 'Spend it in night prep: Decrypt for Research Data, or Sabotage the wave.' },
 };

@@ -1,5 +1,5 @@
 // Run skills (Stage 7 skill rework, critic J §3 / M7): fewer, weightier picks that build an identity.
-// Earned with skill points — one per trip (the goal, or a bonus task if the goal wasn't done) and one per area boss
+// Earned with skill points — one per trip (from its goal; bonus tasks pay loot instead, critic J2) and one per area boss
 // killed (CONFIG.expedition.maxSkillPoints caps the trip; boss points come on top) — so a run ends with ~6–8 skills.
 // Lost at the end of the run.
 //
@@ -122,8 +122,8 @@ export const SKILLS = {
     desc: 'Gain 15 Scrap at the start of each night.', scrap: 15,
   },
   watchtower_network: {
-    branch: 'Warden', night: true, name: 'Watchtower Network', icon: '◈', num: 'beacons ×1.5',
-    desc: 'Pulse Beacon bonuses are 50% stronger.', needsUnlock: 'pulse_beacon',
+    branch: 'Warden', night: true, name: 'Watchtower Network', icon: '◈', num: 'Pulse Totems ×1.5',
+    desc: 'Pulse Totem bonuses are 50% stronger.', needsUnlock: 'pulse_beacon',
     tower: { kinds: ['support'], mult: { buffRate: 1.5, bonusAttackChance: 1.5, buffDamage: 1.5 } },
   },
   last_stand: {

@@ -25,6 +25,11 @@
 // `boon.short` is the briefing card's one-line reward; `boon.text` the full sentence (summary, night prep).
 // Boon fields: freeUpgrades, freeRepair, towerRate, towerDamage, enemyCount, enemySpeed, laneSlow, bankScrap,
 // bankRes {circuits, …} (Run.addBoon). `relic`: the goal also drops a relic of that rarity (scene.dropRelic).
+// Every goal pays +20 Scrap at home on top of its own reward (critic J2 #1: goals paid in kind and looting beat
+// them) — it is in each boon's `bankScrap` and in its `short` / `text`, so the card says it (Razorback 25 → 45,
+// the core 30 → 50).
+// rewardAtDelivery: the goal ends by handing something to the drone at home (the Relay or a beacon), so its reward
+// is already home: it stands even if you go down afterwards (critic J2 C10; JungleScene `objectiveSecured`).
 
 export const PRIMARY = {
   restore_relay: {
@@ -33,35 +38,35 @@ export const PRIMARY = {
       { type: 'pickup', prop: 'fuse', label: 'find the fuse', room: 'side' },
       { type: 'activate', prop: 'power_box', hold: 1.5, label: 'fit it in the power box', room: 'objective' },
     ],
-    boon: { short: 'One free tower upgrade tonight', text: 'Generator online: one free tower upgrade tonight.', freeUpgrades: 1 },
+    boon: { short: '+20 Scrap and one free tower upgrade tonight', text: 'Generator online: +20 Scrap and one free tower upgrade tonight.', bankScrap: 20, freeUpgrades: 1 },
   },
   recover_data: {
     name: 'Download the route data',
     steps: [
       { type: 'activate', prop: 'terminal', hold: 7, spawnDuring: 4, label: 'hold E at the terminal (enemies come)', room: 'objective' },
     ],
-    boon: { short: '10% fewer enemies tonight', text: 'Their routes are mapped: tonight\'s wave is 10% smaller.', enemyCount: 0.9 },
+    boon: { short: '+20 Scrap and 10% fewer enemies tonight', text: 'Their routes are mapped: +20 Scrap, and tonight\'s wave is 10% smaller.', bankScrap: 20, enemyCount: 0.9 },
   },
   activate_pumps: {
     name: 'Switch on the two water pumps',
     steps: [
       { type: 'activate', prop: 'pump', hold: 1.5, count: 2, label: 'switch on both pumps', room: 'split' },
     ],
-    boon: { short: 'North path flooded: enemies 15% slower there', text: 'Pumps flood the north path: enemies there are 15% slower tonight.', laneSlow: { lane: 0, mult: 0.85 } },
+    boon: { short: '+20 Scrap, and the North path floods: enemies 15% slower there', text: 'Pumps flood the north path: +20 Scrap, and enemies there are 15% slower tonight.', bankScrap: 20, laneSlow: { lane: 0, mult: 0.85 } },
   },
   salvage_cell: {
     name: 'Salvage a power cell',
     steps: [
       { type: 'activate', prop: 'cell_cache', hold: 2.5, guards: 3, label: 'open the guarded cache (hold E)', room: 'objective' },
     ],
-    boon: { short: 'Towers fire 10% faster tonight', text: 'Power cell installed: towers fire 10% faster tonight.', towerRate: 1.1 },
+    boon: { short: '+20 Scrap and towers fire 10% faster tonight', text: 'Power cell installed: +20 Scrap, and towers fire 10% faster tonight.', bankScrap: 20, towerRate: 1.1 },
   },
   clear_blockage: {
     name: 'Kill the Razorback blocking the way',
     steps: [
       { type: 'kill', enemy: 'razorback', elite: true, label: 'kill the big Razorback', room: 'objective' },
     ],
-    boon: { short: '+25 Scrap when you get home', text: 'Its hoard: +25 Scrap when you get home.', bankScrap: 25 },
+    boon: { short: '+45 Scrap when you get home', text: 'Its hoard: +45 Scrap when you get home.', bankScrap: 45 },
   },
   // ---- Stage 7 (critic J M4): five new goals
   escort_engineer: {
@@ -71,7 +76,8 @@ export const PRIMARY = {
       { type: 'escort', phase: 'find', prop: 'engineer', hold: 1, label: 'find him (hold E)', room: 'objective' },
       { type: 'escort', phase: 'lead', label: 'lead him to the Relay or a beacon' },
     ],
-    boon: { short: 'Two free tower upgrades tonight', text: 'The engineer joins the Relay crew: two free tower upgrades tonight.', freeUpgrades: 2 },
+    boon: { short: '+20 Scrap and two free tower upgrades tonight', text: 'The engineer joins the Relay crew: +20 Scrap and two free tower upgrades tonight.', bankScrap: 20, freeUpgrades: 2 },
+    rewardAtDelivery: true,
   },
   hold_uplink: {
     name: 'Hold the uplink until it comes online',
@@ -80,7 +86,7 @@ export const PRIMARY = {
       { type: 'defend', phase: 'start', prop: 'uplink', hold: 1, label: 'start it (hold E)', room: 'objective' },
       { type: 'defend', phase: 'hold', label: 'stay close while it boots' },
     ],
-    boon: { short: '15% fewer enemies tonight', text: 'The uplink jams their calls: tonight\'s wave is 15% smaller.', enemyCount: 0.85 },
+    boon: { short: '+20 Scrap and 15% fewer enemies tonight', text: 'The uplink jams their calls: +20 Scrap, and tonight\'s wave is 15% smaller.', bankScrap: 20, enemyCount: 0.85 },
   },
   track_alpha: {
     name: 'Track down the Alpha and kill it',
@@ -91,7 +97,7 @@ export const PRIMARY = {
       { type: 'track', label: 'follow the tracks' },
       { type: 'kill', enemy: 'alpha', elite: true, label: 'kill the Alpha' },
     ],
-    boon: { short: 'A rare relic, and towers 10% stronger tonight', text: 'The Alpha\'s trophy: towers deal 10% more damage tonight.', towerDamage: 1.1 },
+    boon: { short: 'A rare relic, +20 Scrap and towers 10% stronger tonight', text: 'The Alpha\'s trophy: +20 Scrap, and towers deal 10% more damage tonight.', bankScrap: 20, towerDamage: 1.1 },
     relic: 'R',
   },
   haul_core: {
@@ -101,7 +107,8 @@ export const PRIMARY = {
       { type: 'carry', phase: 'pickup', prop: 'core', hold: 0.8, label: 'pick it up (hold E)', room: 'objective' },
       { type: 'carry', phase: 'deliver', label: 'carry it to the Relay or a beacon' },
     ],
-    boon: { short: '+30 Scrap and 2 Circuits when you get home', text: 'The core, sold for parts: +30 Scrap and 2 Circuits.', bankScrap: 30, bankRes: { circuits: 2 } },
+    boon: { short: '+50 Scrap and 2 Circuits', text: 'The core, sold for parts: +50 Scrap and 2 Circuits.', bankScrap: 50, bankRes: { circuits: 2 } },
+    rewardAtDelivery: true,
   },
   purge_bloom: {
     name: 'Pop all three spore nests within a minute',
@@ -109,7 +116,7 @@ export const PRIMARY = {
     steps: [
       { type: 'purge', label: 'pop the spore nests', room: 'objective' },
     ],
-    boon: { short: 'Enemies 10% slower tonight', text: 'The bloom is gone: enemies move 10% slower tonight.', enemySpeed: 0.9 },
+    boon: { short: '+20 Scrap and enemies 10% slower tonight', text: 'The bloom is gone: +20 Scrap, and enemies move 10% slower tonight.', bankScrap: 20, enemySpeed: 0.9 },
   },
 };
 export const PRIMARY_KEYS = Object.keys(PRIMARY);
@@ -151,20 +158,23 @@ export const GOALS = {
   purge: { count: 3, time: 60, hp: 30, spread: [3, 7], tries: 24, puffEvery: 6, puffRange: 3, puffFuse: 0.9, tint: '#d8f070' },
 };
 
-// Optional objectives: always optional, always marked on the map once the room is seen.
-// skillPoint: completing it grants the trip's skill point if the goal hasn't (CONFIG.expedition.maxSkillPoints = 1 a trip).
+// Optional objectives ("bonus tasks"): always optional, always marked on the map once the room is seen. They pay
+// loot / Research / tonight's flag, never the skill point (critic J2 #1: that comes only from the goal, so the goal
+// is worth doing). `skillPoint: true` would still grant the trip's point if the goal hasn't (none use it now).
 export const OPTIONAL = {
   nest: {
-    name: 'Destroy the enemy nest', prop: 'nest', type: 'kill', hp: 90, skillPoint: true,
-    reward: {}, flag: { text: 'Nest destroyed: next wave 15% smaller.', enemyCount: 0.85 },
+    name: 'Destroy the enemy nest', prop: 'nest', type: 'kill', hp: 90,
+    reward: { scrap: 10 }, research: 5, flag: { text: 'Nest destroyed: next wave 15% smaller.', enemyCount: 0.85 },
   },
   survivor: {
-    name: 'Rescue the stranded engineer', prop: 'survivor', type: 'activate', hold: 2, skillPoint: true,
-    reward: {}, flag: { text: 'Engineer rescued: free Relay repair (+25) tonight, or +15 Scrap if the Relay is full.', freeRepair: 25 },
+    // (A "mechanic", not an engineer: the escort goal is the stranded engineer, critic J2 C7.)
+    name: 'Rescue the trapped mechanic', prop: 'survivor', type: 'activate', hold: 2,
+    reward: { scrap: 10 }, research: 5, flag: { text: 'Mechanic rescued: free Relay repair (+25) tonight, or +15 Scrap if the Relay is full.', freeRepair: 25 },
   },
   data_log: {
-    name: 'Recover a district data log', prop: 'data_log', type: 'pickup', skillPoint: true,
-    reward: { intel: 2 }, research: 5,
+    // (An "intel drive": "data log" is the lore logs' word, critic J2 C5.)
+    name: 'Recover the intel drive', prop: 'data_log', type: 'pickup',
+    reward: { scrap: 10, intel: 2 }, research: 10,
   },
   locked_cache: {
     name: 'Open the locked cache', prop: 'locked_cache', type: 'activate', hold: 2,

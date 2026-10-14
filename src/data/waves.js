@@ -13,12 +13,12 @@
 // authored. Fewer, tougher enemies from night 2 (a leak costs its own Relay damage however weak the defense,
 // so a thin build's worst case stays bounded while a good one still feels the tanks), and the Relay's own zap
 // (RELAY_ZAP, below) gives every defense the same flat backstop. Total wave HP (no district threat), variant A:
-// N1 ≈ 660, N2 ≈ 2200, N3 ≈ 7000 (tank-heavy: Razorbacks), N4 ≈ 11000, N5 ≈ 16300 (Ruin Guards, 1 per group),
+// N1 ≈ 660, N2 ≈ 2200, N3 ≈ 7000 (tank-heavy: Razorbacks), N4 ≈ 10100, N5 ≈ 16300 (Ruin Guards, 1 per group),
 // N6 ≈ 12700 support + the 4590-HP Colossus (1020 × BOSS_HP 4.5), then × the map's hpMult (defenseMap.js:
 // Twin Paths 0.95, Crossing 1.07, Ford 1.18).
 // Relay damage per leak: Crawler 5, Skitter 3, Razorback 9, Spitter 4 (+ up to 8 × 2 sap), Burrower 6,
 // Seed Carrier 6, Seedling 1, Ruin Guard 10. The Colossus never "leaks": it besieges the Relay from the plaza
-// (5 per slam every 3 s, at most 8 slams) until it is killed.
+// (8 per slam every 3 s, at most 8 slams) until it is killed.
 //
 // Balance (Stage 7 sim of the real DefenseScene, .playwright-mcp/nightmech/campaign.mjs, 36 full runs per
 // profile over the three maps; table in DESIGN §5), mean Relay HP lost per night:
@@ -29,8 +29,13 @@
 // With the zap, typical's early nights bite (−8 / −11) while 86% of newcomers still get through night 3.
 // Typical's nights 5–6 run ~10 over the 20–35 / 25–40 aim at a ~80% win rate: lower them and it wins ~90%.
 // The brief's first curve [1.0, 1.4, 1.8, 2.1, 2.35, 2.5] left a typical run untouched (0 Relay HP lost on every night).
+// Final fixes (critic J2 / K2: goal +20 Scrap, Protocol rework, slam 8, N4 7.4 → 6.8), 36 runs each:
+//   newcomer 0/36 · −6 / −21 / −53 (34/36 hold) / −62 (11/34 hold) / −65 · falls N3 2, N4 23, N5 11
+//   typical  33/36 · 0 / −4 / −6 / −19 / −27 / −59 · falls N6 3 · boss killed 27/33 · maps 12 / 10 / 11 of 12
 
-export const HEALTH_MULT = [1.25, 3.5, 4.7, 7.4, 7.3, 9.2];
+// N4 7.4 → 6.8 (critic J2 final fixes: after the economy pass the newcomer still fell on N4 ×26/36 with the Relay at
+// ~40 after N3; only N4 eased).
+export const HEALTH_MULT = [1.25, 3.5, 4.7, 6.8, 7.3, 9.2];
 
 /** Enemy health multiplier for a night (past night 6: ×1.2 per extra night, for the Long Night). */
 export function healthMult(night) {
@@ -60,7 +65,7 @@ export const DEFENSE = {
   // Shift+Space (a plain Space double-tap can't skip the warning); Space doesn't pause for `pauseGrace` s after a
   // wave or push starts (so start-then-pause can't happen on a double-tap).
   startGuard: { confirm: 8, pauseGrace: 0.6 },
-  callEarly: { every: 2, scrap: 1 },
+  callEarly: { every: 1, scrap: 1 },   // (1 Scrap a second skipped, critic K2 #2)
   // Late-game Scrap sink (critic K §2.3): in prep (not lulls), trade `scrap` Scrap for 1 Circuit or 1 Biofiber,
   // at most `max` times a night from night `fromNight`, shown once you hold at least `showAt` Scrap.
   exchange: { scrap: 35, max: 2, showAt: 60, fromNight: 2, gives: ['circuits', 'biofiber'] },
@@ -91,6 +96,9 @@ export const DEFENSE = {
 export const RELAY_ZAP = {
   range: 3, cooldown: 0.7, damage: 13, damageType: 'energy', spitters: true,
   color: '#2ce8f5', originY: 3.4,
+  // Its reach on the board (critic K2): a dashed ring of `dashes` dashes while you hover the Relay, and for `ringShow`
+  // s after its first bolt each night (DefenseScene._buildZapRing / _updateBoard).
+  dashes: 28, ringShow: 2.5,
   hint: 'Your Relay zaps anything that gets close, and Spitters that spit at it.',
 };
 
@@ -103,7 +111,11 @@ export function relayZapDamage(night) { return RELAY_ZAP.damage * healthMult(nig
 // (next night's prep), rangeMod (the tower that dealt the most damage tonight, for the rest of the run;
 // a tower takes it once).
 export const SALVAGE = {
-  tiers: [{ lost: 10, picks: 3 }, { lost: 40, picks: 2 }, { lost: Infinity, picks: 1 }],
+  // Picks by Relay health lost tonight: 3 on a clean night, else 2 (critic J2 §4: a bad night got one dud).
+  // badNight: × weights once more than tiers[0].lost was lost (repair and parts). No dead options: no Relay patch
+  // while the Relay is full (Run.salvageOptions), no tune-up without a tower to tune.
+  tiers: [{ lost: 10, picks: 3 }, { lost: Infinity, picks: 2 }],
+  badNight: { patch: 3, parts: 1.5 },
   options: {
     parts: { name: 'Spare parts', line: '+1 Circuit and +1 Biofiber', give: { circuits: 1, biofiber: 1 }, weight: 3 },
     upgrade: { name: 'Free upgrade', line: 'Your first tower upgrade next night is free', freeUpgrades: 1, weight: 3 },

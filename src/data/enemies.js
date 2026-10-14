@@ -56,7 +56,7 @@ export const DEFENSE_ENEMIES = {
   },
   colossus: {
     name: 'Canopy Colossus', role: 'Boss', hp: 1020, speed: 0.55, coreDamage: 40, coreDamageMin: 15, bounty: 0, size: 2.2, boss: true,
-    note: 'Boss. Walks, roots itself to spawn a Crawler, then winds up and charges (a Vine Snare cancels the charge). At 60% health it roars and enrages: it charges faster and Skitters sprout too. On the plaza it stops and slams the Relay (5 damage every 3 s) until it is killed.', color: '#ff0044', gap: 1,
+    note: 'Boss. Walks, roots itself to spawn a Crawler, then winds up and charges (a Vine Snare cancels the charge). At 60% health it roars and enrages: it charges faster and Skitters sprout too. On the plaza it stops and slams the Relay (8 damage every 3 s) until it is killed.', color: '#ff0044', gap: 1,
     slowResist: 0.5, rootImmune: true,
     // Phase loop: approach -> rooted (telegraph, then spawns crawlers) -> charge (wind-up, then fast).
     // rootSpawn crawlers appear when it roots; the charge covers speed × chargeMult × charge tiles.
@@ -77,7 +77,7 @@ export const DEFENSE_ENEMIES = {
     // The finale (critic K #3): `stopAt` tiles before the end of its lane it stops on the plaza and slams the
     // Relay — a `windup` s ring telegraph, then `damage` — every `every` s until it is killed. After
     // `maxSlams` it collapses, spent (the night ends without a kill). No leak, no 15–40 damage walk-in.
-    siege: { stopAt: 2.5, every: 3, windup: 0.8, damage: 5, maxSlams: 8 },
+    siege: { stopAt: 2.5, every: 3, windup: 0.8, damage: 8, maxSlams: 8 },   // (damage 5 → 8, critic K2 #5: it couldn't threaten)
   },
 };
 

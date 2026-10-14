@@ -1,5 +1,6 @@
 # Builds src/ui/fonts/vr-glyphs.ttf: a tiny pixel font that overrides a few Tiny5 glyphs that read badly
-# (critic F #15): "~" (Tiny5 draws a flat dash), "8" (a diagonal X-shape that reads as a theta) and "4".
+# (critic F #15): "~" (Tiny5 draws a flat dash), "8" (a diagonal X-shape that reads as a theta), "4", and "9"
+# (critic K2: its open top read as "3").
 # style.css loads it with a unicode-range in front of Tiny5, so only these characters change.
 #
 # Metrics match Tiny5 (measured in the browser): 8-unit em (here 1 pixel = 100 units, unitsPerEm 800),
@@ -26,6 +27,13 @@ GLYPHS = {
               '###',
               '..#',
               '..#']),
+    # Tiny5's "9" (.#./#.#/.##/..#/##.) has an open top-left and reads as "3" at HUD size ("94" → "34" on the
+    # Relay bar, critic K2 §4): a closed loop like the "8" above.
+    '9': (4, ['###',
+              '#.#',
+              '###',
+              '..#',
+              '###']),
     '~': (5, ['....',
               '.#.#',
               '#.#.',

@@ -140,7 +140,8 @@ export function pickMapKey(seed) {
   let h = (Number(seed) || 0) >>> 0;
   h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0;
   h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0;
-  return MAP_KEYS[(h ^ (h >>> 16)) % MAP_KEYS.length];
+  // `>>> 0` keeps the mix unsigned: a signed (negative) value gave a negative index (undefined → Twin 67%, critic J2 §8).
+  return MAP_KEYS[((h ^ (h >>> 16)) >>> 0) % MAP_KEYS.length];
 }
 
 /** Forward-pad slots of a map, flattened: [{ lane, at: [x, y], rank }] — pad index = map.pads.length + i. */
@@ -242,7 +243,11 @@ export const DEFENSE_VIEW = {
   // Board clutter (critic H fix 9): empty pads glow only when they matter; hostile rings only on the
   // hovered enemy and the selected tower's target.
   pads: { idleOpacity: 0.32, pulse: [0.4, 0.25] },
-  leakRows: 3,                // live leak feed (in-wave side panel): newest rows shown
+  leakRows: 3,                // live leak feed (in-wave side panel): newest rows shown (a lull shows only its header)
+  // Side panel fit (critic K2 §5): when the side panel is shorter than `dockMinPanel` UI units (every 16:9 window:
+  // the UI scales with the window, so 720p and 1440p have the same room), coach hints dock only in prep — in pushes
+  // and lulls the build list and "Call next push" need the room.
+  dockMinPanel: 600,
   // Visible rewards: a flooded-path tint on a laneSlow lane, a glint on towers while towerRate/towerDamage apply.
   rewards: { laneTint: '#3a7cc0', laneTintAlpha: 0.5, glintEvery: 2.2 },   // laneTint multiplies the trail (wet, cooler)
 };

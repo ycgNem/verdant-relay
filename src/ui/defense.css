@@ -398,3 +398,33 @@
 .df-via { color: #ffb0b0; margin-top: calc(var(--u) * 2); }
 /* "Call next push +N Scrap" as the big lull button: may wrap, a size down (it overflowed at 1080p). */
 .df-side .btn.df-start.df-callnext { white-space: normal; font-size: max(var(--fq), round(calc(var(--u) * 13 - 0.01px), var(--fq))); }
+
+/* Side panel fit at 720p (critic K2 §5): the Protocols sit in one row; the hint dock and the leak feed give way
+   (shrink, clip) before the build list does, and the build list keeps room for about four cards, so the footer
+   ("Call next push") always stays on screen. */
+.df-side .df-protos { flex-direction: row; gap: calc(var(--u) * 3); }
+.df-side .btn.df-proto { flex: 1 1 0; min-width: 0; padding: calc(var(--u) * 3) calc(var(--u) * 3); }
+/* Two or three Protocols: each button is [icon][timer] over its cost, the key in the corner, the name in the tooltip. */
+.df-side .df-protos.n3 .df-pname, .df-side .df-protos.n2 .df-pname { display: none; }
+.df-side .df-protos.n3 .df-pmain, .df-side .df-protos.n2 .df-pmain {
+  grid-template-columns: auto auto; justify-content: start; column-gap: calc(var(--u) * 3); row-gap: calc(var(--u) * 1);
+}
+.df-side .df-protos.n3 .df-pglyph, .df-side .df-protos.n2 .df-pglyph { grid-column: 1; grid-row: 1; }
+.df-side .df-protos.n3 .df-pt, .df-side .df-protos.n2 .df-pt { grid-column: 2; grid-row: 1; min-width: 0; text-align: left; }
+.df-side .df-protos.n3 .df-pcost, .df-side .df-protos.n2 .df-pcost { grid-column: 1 / span 2; grid-row: 2; justify-self: start; }
+.df-side .df-protos.n3 .btn.df-proto .hotkey, .df-side .df-protos.n2 .btn.df-proto .hotkey {
+  position: absolute; top: calc(var(--u) * 2); right: calc(var(--u) * 2); margin: 0; z-index: 2;
+  font-size: max(var(--fq), round(calc(var(--u) * 8 - 0.01px), var(--fq))); line-height: 1.1; padding: 0 calc(var(--u) * 2);
+}
+.df-side .df-hintdock { flex: 0 1 auto; min-height: 0; overflow: hidden; }
+.df-side .df-leaks { flex: 0 1 auto; min-height: 0; overflow: hidden; }
+.df-side .df-body { min-height: calc(var(--u) * 96); }
+/* The Relay's health digits (critic K2 §4: "94" read as "34" at 720p — white anti-aliased digits with a 1-px shadow
+   on bright cyan lost the 9's left stroke): no shadow; dark navy over the cyan fill, white over the empty bar
+   (one label, its colour split at the fill edge: --f is the fill fraction, set with the bar). */
+.df-relaybar .barlbl {
+  text-shadow: none; color: transparent;
+  background: linear-gradient(90deg, #0b1a2e calc(var(--f, 1) * 100%), #ffffff 0);
+  -webkit-background-clip: text; background-clip: text;
+}
+.df-side.df-nodock .df-hintdock { display: none; }

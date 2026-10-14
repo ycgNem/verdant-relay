@@ -330,7 +330,7 @@ export function skillPicker(game, opts = {}) {
     if (!run || run.skillPoints <= 0) return;
     const ids = run.skillOptions(game.meta);
     node.append(el('div.row.picker-head', {},
-      el('span.pts', { title: 'One skill point per trip (the goal, or a bonus task), and one per area boss killed' }, el('b', String(run.skillPoints)), run.skillPoints === 1 ? ' skill point to spend' : ' skill points to spend'),
+      el('span.pts', { title: 'One skill point per trip (from its goal), and one per area boss killed' }, el('b', String(run.skillPoints)), run.skillPoints === 1 ? ' skill point to spend' : ' skill points to spend'),
       el('span.small.muted', `Pick 1 of ${ids.length} · keys 1–${Math.max(1, ids.length)}`),
       el('span.grow'),
       opts.onSave ? sbtn(game, opts.saveLabel || 'Save point for later', () => opts.onSave(), { hotkey: 'L', cls: 'save-pt small-btn' }) : null));

@@ -147,7 +147,7 @@ export class SummaryScene {
     }
     const obj = PRIMARY[x.objective || run.objectiveFor(x.district)];
     // The goal's night reward only arrives if you got home (Run.applyExpedition: `rewardLost` otherwise).
-    const reward = x.objectiveDone && obj && extracted ? obj.boon.text : null;
+    const reward = x.objectiveDone && obj && (extracted || x.objectiveSecured) ? obj.boon.text : null;
     rows.push(el(`div.sum-row${x.objectiveDone ? '.ok' : '.no'}`, {}, el('span.sum-k.amber', 'Goal'),
       el('div', {}, el('b', `${x.objectiveDone ? '✓' : '✗'} ${obj ? obj.name : 'Goal'}`),
         x.objectiveDone ? null : el('span.small.muted', x.objectiveFailed ? '  · failed' : '  · not done'))));
@@ -214,7 +214,7 @@ export class SummaryScene {
 
   continueBtn() {
     // Before the Workbench step the button says where it goes next.
-    const toBench = this.step === 'summary' && showBench(this.game.run);
+    const toBench = this.step === 'summary' && showBench(this.game.run, this.game.meta);
     const label = toBench ? 'Workbench ' : 'Prepare for the night ';
     return sbtn(this.game, el('span', {}, label, el('span.arrow', '▶')), () => this.next(), { cls: 'primary continue-btn', hotkey: 'Enter', sfx: toBench ? 'ui_confirm' : 'to_night' });
   }
@@ -251,7 +251,7 @@ export class SummaryScene {
   next() {
     const game = this.game;
     if (game.scene !== this) return;
-    if (this.step === 'summary' && showBench(game.run)) {
+    if (this.step === 'summary' && showBench(game.run, game.meta)) {
       this.step = 'bench';
       this.render();
       return;

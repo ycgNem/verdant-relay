@@ -11,28 +11,30 @@
 //              of them until the research tree sells these unlocks.
 //
 // Vine Snare   roots non-boss enemies in the circle for `root` s; the Colossus for `bossRoot` s, and a
-//              Colossus winding up its charge has the charge cancelled (back to walking).
-// Arc Discharge `damage[0] + damage[1] × night` energy damage to everything in the circle (Ruin Guard
-//              shields don't apply).
+//              Colossus winding up its charge has the charge cancelled (back to walking). While it holds them
+//              they take × `rootDamage` damage (critic K2 #3: Q on crowds was worth nothing).
+// Arc Discharge `damage` × healthMult(night) energy damage to everything in the circle (Ruin Guard shields
+//              don't apply): it keeps pace with the night's enemy health (N4 185, N6 230). Paid in Scrap, so a
+//              lull's bounties have a use (critic K2 #3).
 // Flare        for `time` s: burrowed enemies inside can be shot by every tower, and towers inside deal
-//              `damageMult` × damage.
+//              `damageMult` × damage. Paid in Scrap (Intel stays for Read / Disrupt).
 export const PROTOCOLS = {
   vine_snare: {
     name: 'Vine Snare', hotkey: 'Q', code: 'KeyQ', color: '#63c74d', glyph: '§',
-    line: 'Roots enemies in a circle for 2 s. Cancels the Colossus charge.',
+    line: 'Roots enemies in a circle for 2 s; they take 25% more damage while held. Cancels the Colossus charge.',
     cost: {}, cooldown: 28, charges: [1, 1, 1, 2, 2, 2], radius: 1.6, telegraph: 0.4,
-    root: 2.0, bossRoot: 1.0, cancelCharge: true, unlock: null,
+    root: 2.0, bossRoot: 1.0, rootDamage: 1.25, cancelCharge: true, unlock: null,
   },
   arc_discharge: {
     name: 'Arc Discharge', hotkey: 'W', code: 'KeyW', color: '#2ce8f5', glyph: 'ϟ',
     line: 'A lightning strike that hits everything in a circle.',
-    cost: { circuits: 1, scrap: 10 }, cooldown: 18, charges: [1], radius: 1.4, telegraph: 0.6,
-    damage: [40, 20], damageType: 'energy', unlock: 'protocol_arc',
+    cost: { scrap: 20 }, cooldown: 18, charges: [1], radius: 1.4, telegraph: 0.6,
+    damage: 25, damageType: 'energy', unlock: 'protocol_arc',
   },
   flare: {
     name: 'Flare', hotkey: 'E', code: 'KeyE', color: '#feae34', glyph: '✹',
     line: 'Lights an area for 6 s: tunnelling enemies can be shot, towers inside hit 25% harder.',
-    cost: { intel: 1 }, cooldown: 30, charges: [1], radius: 3, telegraph: 0.25,
+    cost: { scrap: 15 }, cooldown: 30, charges: [1], radius: 3, telegraph: 0.25,
     time: 6, damageMult: 1.25, unlock: 'protocol_flare',
   },
 };

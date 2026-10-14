@@ -33,7 +33,7 @@ export function forecastNight(scene) {
     const spit = DEFENSE_ENEMIES.spitter.spit;
     let stopI = n - 1;
     for (let i = 0; i < n; i++) if (Math.hypot(xs[i] - scene.corePos.x, zs[i] - scene.corePos.z) <= spit.range) { stopI = i; break; }
-    return { li, lane, n, xs, zs, on, slow, stopI, speed: scene.enemySpeedMult(li), lost: 0, threat: 0, covered: 0 };
+    return { li, lane, n, xs, zs, on, slow, stopI, speed: scene.enemySpeedMult(li), lost: 0, threat: 0, covered: 0, by: {} };
   });
 
   // Towers: coverage per lane (sample flags) and per-attack numbers.
@@ -113,7 +113,7 @@ export function forecastNight(scene) {
           if (e.shotT <= 0) {
             e.shotT += e.def.spit.every;
             e.shots += 1;
-            lost += e.def.spit.damage; L.lost += e.def.spit.damage;
+            lost += e.def.spit.damage; L.lost += e.def.spit.damage; L.by[e.type] = (L.by[e.type] || 0) + e.def.spit.damage;
             if (e.shots >= e.def.spit.shots) e.dead = true;
           }
         }
@@ -135,14 +135,14 @@ export function forecastNight(scene) {
           e.slamT += dt;
           if (e.slamT >= siege.every) {
             e.slamT -= siege.every; e.slams += 1;
-            lost += siege.damage; L.lost += siege.damage;
+            lost += siege.damage; L.lost += siege.damage; L.by[e.type] = (L.by[e.type] || 0) + siege.damage;
             if (e.slams >= siege.maxSlams) e.dead = true;
           }
         }
         e.d += v * dt;
         if (!e.def.boss && e.d >= L.lane.total) {
           e.dead = true;
-          lost += e.def.coreDamage; L.lost += e.def.coreDamage;
+          lost += e.def.coreDamage; L.lost += e.def.coreDamage; L.by[e.type] = (L.by[e.type] || 0) + e.def.coreDamage;
         }
       }
       // Fire.
@@ -216,7 +216,7 @@ export function forecastNight(scene) {
       for (let i = alive.length - 1; i >= 0; i--) if (alive[i].dead) alive.splice(i, 1);
     }
     // Anything still alive when the replay times out reaches the Relay.
-    for (const e of alive) { const v = e.def.boss ? siege.damage * siege.maxSlams : e.def.coreDamage; lost += v; e.L.lost += v; }
+    for (const e of alive) { const v = e.def.boss ? siege.damage * siege.maxSlams : e.def.coreDamage; lost += v; e.L.lost += v; e.L.by[e.type] = (e.L.by[e.type] || 0) + v; }
   }
 
   lost = Math.round(lost * R.lossScale);
@@ -224,7 +224,9 @@ export function forecastNight(scene) {
   const laneOut = lanes.map((L) => {
     const f = L.threat > 0 ? L.lost / L.threat : 0;
     const dots = L.threat === 0 ? 3 : L.covered === 0 ? 0 : f <= R.dots[0] ? 3 : f <= R.dots[1] ? 2 : f <= R.dots[2] ? 1 : 0;
-    return { name: L.lane.name.replace(/lane/i, 'path'), short: L.lane.short, lost: Math.round(L.lost * R.lossScale), dots };
+    // The path's top leaker (critic K2 #8): the enemy type that takes the most Relay health through it.
+    const top = Object.entries(L.by).sort((a, b) => b[1] - a[1])[0];
+    return { name: L.lane.name.replace(/lane/i, 'path'), short: L.lane.short, lost: Math.round(L.lost * R.lossScale), dots, top: top && Math.round(top[1] * R.lossScale) >= 1 ? top[0] : null };
   });
   const hp = run.relayHp;
   const lo = Math.max(0, Math.round(lost * R.band[0] - 2));

@@ -104,8 +104,11 @@ export class AreaBosses {
       const b = L.boss;
       if (!b || L.dead) { b?.update?.(dt); continue; }
       const d = Math.hypot(b.x - p.x, b.z - p.z);
+      // It wakes when YOU step into its lair (BOSS.aggro of its spot, the ☠), never because it wandered toward you, or
+      // when you hit it / its pack (critic J2 §4: strongboxes and goals near a lair woke it).
+      const inLair = Math.hypot((L.x ?? L.site.x) - p.x, (L.z ?? L.site.z) - p.z) < BOSS.aggro;
       if (busy && busy !== L) b.provoked = false;
-      else if (!b.engaged && !sc.ending && !pl.dead && (d < BOSS.aggro || b.provoked)) this._engage(L);
+      else if (!b.engaged && !sc.ending && !pl.dead && (inLair || b.provoked)) this._engage(L);
       if (b.engaged) {
         const far = Math.hypot(p.x - L.site.x, p.z - L.site.z) > BOSS.leash;
         L.away = far ? L.away + dt : 0;
@@ -969,6 +972,12 @@ class PackLordEnemy extends FeralChief {
 
   get ctl() { return this.lordOf.boss; }
 
+  /** Out of a fight it holds its lair (critic J2 §4): no sight / noise / pack alarm sends it after you. */
+  alert(spread = false) {
+    if (!this.ctl?.engaged) return;
+    super.alert(spread);
+  }
+
   /** A deflected lunge stuns it (ExploreEnemy); its rend waits that out — a parry is yours to punish. */
   deflected(kind) { this.parriedT = 1.2; return super.deflected(kind); }
 
@@ -1124,6 +1133,16 @@ class PackLordCtl {
     const e = sc.spawnEnemy(this.def.packType, p.x, p.z, atStart ? { guard: true } : { spawnIn: true, alerted: true });
     e.packOf = this.L;
     e.minion = true;   // no loot, no kill-heals (JungleScene.onEnemyKilled)
+    if (atStart) {
+      // The lair's pack holds it with the Lord (critic J2 §4: it followed you to a goal and the Lord came after): it only
+      // stirs once the fight is on, or when you hurt one of them (which wakes the Lord too).
+      const base = e.alert.bind(e);
+      e.alert = (spread) => {
+        if (!this.engaged && e.hp >= e.maxHp) return;
+        if (!this.engaged) this.provoked = true;
+        base(spread);
+      };
+    }
     if (!atStart) this.summoned = (this.summoned || 0) + 1;
     return e;
   }
@@ -1131,6 +1150,7 @@ class PackLordCtl {
   onEngage() {
     const e = this.enemy;
     if (!e.alerted) e.alert(true);
+    for (const f of this.scene.enemies) if (!f.dead && f.packOf === this.L && !f.alerted) f.alert(false);
   }
 
   update(dt) {

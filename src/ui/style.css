@@ -19,13 +19,14 @@
   --font-label: 'Silkscreen', 'Tiny5', 'Consolas', monospace;        /* small uppercase labels (8 px grid) */
 }
 
-/* Glyph fixes for Tiny5 (critic F #15): "~" (a flat dash in Tiny5), "8" (reads as a theta) and "4", redrawn
-   on Tiny5's exact pixel grid by tools/make_glyph_font.py. unicode-range keeps every other character on
-   Tiny5 (and Tiny5's line metrics, since this face has no space). */
+/* Glyph fixes for Tiny5 (critic F #15): "~" (a flat dash in Tiny5), "8" (reads as a theta) and "9" (its open top
+   read as "3": "94" → "34" on the Relay bar, critic K2), redrawn on Tiny5's exact pixel grid by
+   tools/make_glyph_font.py. unicode-range keeps every other character on Tiny5 (and Tiny5's line metrics, since
+   this face has no space). */
 @font-face {
   font-family: 'VR Glyphs';
   src: url('./fonts/vr-glyphs.ttf') format('truetype');
-  unicode-range: U+0038, U+007E;
+  unicode-range: U+0038, U+0039, U+007E;
   font-display: block;
 }
 /* The HUD clock is Silkscreen Bold, whose "4" is a filled block (critic G #10): a 2-stem "4" on its grid. */

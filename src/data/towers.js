@@ -138,7 +138,7 @@ export const TOWERS = {
     ],
   },
   pulse_beacon: {
-    name: 'Pulse Beacon',
+    name: 'Pulse Totem',   // (not "beacon": that is the jungle's switch-on pylons, critic J2 C6; the key stays)
     role: 'Support',
     line: 'Makes the towers around it shoot faster.',
     pips: { boost: 2, range: 2 },

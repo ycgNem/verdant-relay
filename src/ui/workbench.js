@@ -9,16 +9,16 @@
 import './workbench.css';
 import { el, button, costLine, resIcon, toast } from './ui.js';
 import { BRANCH_COLOR, iconEl } from './screensKit.js';
-import { WORKBENCH, RECIPES, RECIPE_KEYS, RECIPE_GROUPS, TOWER_MODS, TOWER_MOD_KEYS } from '../data/crafting.js';
+import { WORKBENCH, RECIPES, RECIPE_KEYS, RECIPE_GROUPS, TOWER_MODS, TOWER_MOD_KEYS, recipeOffered } from '../data/crafting.js';
 import { SKILLS, SKILL_KEYS, SKILL_BRANCHES, SKILL_OFFERS } from '../data/skills.js';
 import { CONFIG } from '../data/config.js';
 import { DEFENSE } from '../data/waves.js';
 import { TOWERS } from '../data/towers.js';
 
 /** The Workbench step shows after a trip when something can be crafted (never on the guided first night). */
-export function showBench(run) {
+export function showBench(run, meta) {
   if (!run || run.isGuidedDay?.()) return false;
-  return RECIPE_KEYS.some((k) => !run.craftBlocked(k));
+  return RECIPE_KEYS.some((k) => recipeOffered(k, meta) && !run.craftBlocked(k));
 }
 
 /**
@@ -98,7 +98,7 @@ export function workbenchView(game, opts = {}) {
     let n = 0;
     const rows = el('div.wb-rows');
     for (const { title, note, groups } of RECIPE_GROUPS) {
-      const keys = RECIPE_KEYS.filter((k) => groups.includes(RECIPES[k].group));
+      const keys = RECIPE_KEYS.filter((k) => groups.includes(RECIPES[k].group) && recipeOffered(k, game.meta));
       if (!keys.length) continue;
       const cards = keys.map((key) => {
         const r = RECIPES[key];
@@ -190,7 +190,7 @@ export function modRow(scene, t) {
 /** The Codex's Skills (by branch, keystones marked) and Workbench (recipes, tower mods) sections. */
 export function codexKit(game) {
   const out = [el('h3', 'Skills')];
-  out.push(el('p.small.muted', `One skill point per trip (the goal, or a bonus task) and one per area boss. Picks lean toward branches you own; a branch's ★ keystone opens once you have ${SKILL_OFFERS.keystoneNeeds} of its skills.`));
+  out.push(el('p.small.muted', `One skill point per trip (from its goal) and one per area boss. Picks lean toward branches you own; a branch's ★ keystone opens once you have ${SKILL_OFFERS.keystoneNeeds} of its skills.`));
   const list = el('div.codex-list.codex-skills');
   for (const b of SKILL_BRANCHES) {
     const keys = SKILL_KEYS.filter((k) => SKILLS[k].branch === b);

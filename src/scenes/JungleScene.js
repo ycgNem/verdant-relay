@@ -20,7 +20,7 @@ import '../ui/jungle.css';
 import { CONFIG, RESOURCES, RESOURCE_KEYS, JUICE, nightTune, STAMINA } from '../data/config.js';
 import { DISTRICTS, DISTRICT_KEYS } from '../data/districts.js';
 import { PRIMARY, OPTIONAL, EVENTS, EVENT_KEYS, EVENT_RULES } from '../data/objectives.js';
-import { DAY_CREATURES } from '../data/bosses.js';
+import { DAY_CREATURES, BOSS } from '../data/bosses.js';
 import { EXPLORE_ENEMIES } from '../data/enemies.js';
 import { JUNGLE, DAY, POP, BRUSH, LEVEL, ATMOS, PYLON_GLOW } from '../data/jungle.js';
 import { lightPool, beaconBeam } from '../core/PixelGlow.js';
@@ -366,7 +366,10 @@ export class JungleScene {
     };
     // (The guided run's world marks its goal site: the trail there is lined with crates, JungleGen guidedRoute.)
     const gSite = guided ? this.data.guided?.site : null;
-    const rank = (s) => (s.id === gSite ? -1000 : 0) + (deep ? far(s) * 100 + (guided ? (s.lost ? 50 : 0) : (s.lost ? 0 : 10)) : 0) + types.indexOf(s.type);
+    // Sites within BOSS.siteGap of a living boss's lair go last (critic J2 §4: a goal beside a lair).
+    const lairs = this.bosses?.lairSites() || [];
+    const byLair = (s) => (lairs.some((L) => Math.hypot(s.x - L.x, s.z - L.z) < BOSS.siteGap) ? 1000 : 0);
+    const rank = (s) => (s.id === gSite ? -1000 : 0) + byLair(s) + (deep ? far(s) * 100 + (guided ? (s.lost ? 50 : 0) : (s.lost ? 0 : 10)) : 0) + types.indexOf(s.type);
     const cand = this.rng.shuffle(all.filter((x) => types.includes(x.type)));
     cand.sort((a, b) => rank(a) - rank(b));
     for (const s of cand) if (out.length < n) out.push(s);
@@ -456,12 +459,14 @@ export class JungleScene {
     this.objStep = this.objDef.steps.length;
     this._grantSkillPoint();
     this.game.sfx.play('goal_done');
-    this._banner('GOAL DONE', `Head home to claim the reward (follow the cyan arrow), or keep exploring`);
+    this._banner('GOAL DONE', this.objDef.rewardAtDelivery
+      ? 'The drone has it: the reward is yours. Keep exploring, or head home'
+      : `Head home to claim the reward (follow the cyan arrow), or keep exploring`);
     for (const it of this.interactables) if (it.kind === 'primary') it.done = true;
   }
 
   /**
-   * +1 skill point for this trip. The goal (or a bonus task, if the goal isn't done) gives at most
+   * +1 skill point for this trip. The goal (bonus tasks no longer do: OPTIONAL.skillPoint) gives at most
    * CONFIG.expedition.maxSkillPoints a trip; `{ boss: true }` (an area boss killed) always gives one on top.
    */
   _grantSkillPoint(opts = {}) {
@@ -924,7 +929,7 @@ export class JungleScene {
       if (e === src || e.dead || e.alerted) continue;
       if (Math.hypot(e.x - x, e.z - z) <= r) {
         e.alert(false);
-        if (noise) e.home = { x, z };
+        if (noise && e.alerted) e.home = { x, z };   // (a lair's Pack Lord / pack ignore it and keep their home)
       }
     }
   }
@@ -1294,7 +1299,8 @@ export class JungleScene {
         lost.length ? el('div', {}, el('p.bad', 'Carried loot lost:'), el('div.resrow', {}, lost)) : el('p.muted', 'You weren\'t carrying anything.'),
         kept.length ? el('div', {}, el('p.good', 'The drone salvaged:'), el('div.resrow', {}, kept)) : null,
         this.relicsCtl?.lostLines(),   // relics you carried are lost (never salvaged)
-        this.objectiveDone ? el('p', {}, el('span.good', 'Your goal still earns its skill point'), el('span.bad', this.objDef.boon ? ', but its reward tonight needed you home.' : '.')) : null,
+        this.objectiveDone ? el('p', {}, el('span.good', this.objDef.rewardAtDelivery ? 'Your goal keeps its skill point and its reward (the drone already has it).' : 'Your goal still earns its skill point'),
+          this.objDef.rewardAtDelivery ? null : el('span.bad', this.objDef.boon ? ', but its reward tonight needed you home.' : '.')) : null,
         el('p.muted.small', `You start tomorrow with ${dawn} health. Everything stored at base, and your towers, are safe.`));
       // Keys too (critic L §2.3): Enter / Space / E / Esc, after a short guard so a key mashed in the fight can't skip it.
       const ov = modal(this.game.ui, 'You went down', body, [button('Back to base', () => this._finish('died'), { cls: 'primary', hotkey: 'Enter' })], { guard: 0.6, extraKeys: [this.game.input.keyFor('interact')] });
@@ -1361,6 +1367,9 @@ export class JungleScene {
       carried: { ...this.carried },
       salvaged: salvaged && Object.keys(salvaged).length ? salvaged : null,
       objectiveDone: this.objectiveDone,
+      // A goal finished by handing something to the drone at home (escort, haul) is already home: its reward stands
+      // even if you go down afterwards (critic J2 C10).
+      objectiveSecured: !!(this.objectiveDone && this.objDef.rewardAtDelivery),
       objective: this.objKey,
       objectiveName: this.objDef.name,
       boon: this.objectiveDone ? this.objDef.boon : null,
@@ -1429,7 +1438,8 @@ export class JungleScene {
     return [
       el(carried ? 'p.bad' : 'p.muted', !carried ? 'You carry nothing, so nothing is lost.'
         : saved ? `What you carry is lost, except what the drone saves (${saved}).` : 'Everything you carry is lost.'),
-      this.objectiveDone && this.objDef.boon ? el('p.small', {}, el('span.good', 'The goal keeps its skill point'), el('span.bad', ', but its reward tonight needs you home.')) : null,
+      this.objectiveDone && this.objDef.boon ? el('p.small', {}, el('span.good', this.objDef.rewardAtDelivery ? 'The goal keeps its skill point and its reward (the drone already has it).' : 'The goal keeps its skill point'),
+        this.objDef.rewardAtDelivery ? null : el('span.bad', ', but its reward tonight needs you home.')) : null,
       this.relicsCtl?.lostLines(),
       el('p.muted.small', `You start tomorrow with ${run.dawnHp(CONFIG.expedition.deathReturnHp)} health. Stored resources and towers are safe.`),
     ];

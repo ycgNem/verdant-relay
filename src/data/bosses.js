@@ -8,7 +8,10 @@
 // `run.bosses`. A boss you walk away from (beyond `leash` tiles of its lair for `leashTime` s) recovers to full.
 //
 // Common tuning (BOSS):
-//   hp × CONFIG.expedition.byNight.eliteHp (× a boss's own `hpK`) · aggro: tiles at which the fight starts
+//   hp × CONFIG.expedition.byNight.eliteHp (× a boss's own `hpK`) · aggro: the fight starts when YOU come within
+//     `aggro` tiles of its lair spot (the ☠: you stepped into its clearing) or hit it / its pack — never because it
+//     wandered toward you (critic J2 §4: the Pack Lord engaged at a goal 20 tiles out). Out of a fight the Pack Lord and
+//     its pack hold the lair (they ignore you, noise and each other's alarms).
 //   phase2: health share at which it roars (`roar` s, taking `roarTaken` damage) and turns to its second phase (tint2, faster, nastier moves)
 //   arena: brush cleared round a stationary boss · hurtFrame: s its hurt frame shows after a blow
 //   camPull: while the fight is on and the boss is within camRange tiles, the camera moves this share of the way
@@ -24,8 +27,11 @@
 //   beam) so no spot far off is either. Minions (brood, drones, the pack) drop nothing and feed no kill-heals (critic
 //   I2 #4), and are capped per fight (`cap`).
 //   clearProps: containers (crates, chests, terminals), relic strongboxes and data logs move out of `radius` tiles of
-//   a lair to `to` [min, max] tiles from it (JungleGen.clearLairProps; critic I2 #5): nothing to snag on mid-fight.
-//   (Landmark shrines stay by their ruin: no collider.) Wild spore pods inside `radius` are dropped.
+//   a lair to `to` [min, max] tiles from it (JungleGen.clearLairProps; critic I2 #5): nothing to snag on mid-fight, and
+//   (critic J2 §4) looting them never wakes the boss: `to[0]` ≥ aggro + 3.5 (the open radius + a boss spot off the
+//   site centre). (Landmark shrines stay by their ruin: no collider.) Wild spore pods inside `radius` are dropped.
+//   siteGap: goal, bonus-task and event sites within this many tiles of a living boss's lair are picked last
+//   (JungleScene._sitesIn).
 //   One fight at a time (critic H2 §5.2): lairs are at least aggro + leash + lairGap tiles apart (JungleGen bossLairs);
 //   while one boss is engaged no other can start; the Pack Lord, out of a fight, never roams past `tether` tiles of
 //   its lair. introTime: s the name banner shows [later fights, the day's first (with the reward line)]; killTime:
@@ -33,10 +39,11 @@
 export const BOSS = {
   fromNight: 3,
   hp: 600,
-  aggro: 9,
+  aggro: 6.5,
   leash: 20,
   leashTime: 4,
-  lairGap: 6,
+  lairGap: 8.5,     // (aggro + leash + lairGap = 35, as before the J2 wake change: the lairs stay where they were)
+  siteGap: 16,
   tether: 9,
   introTime: [2.6, 3.8],
   killTime: 3.8,
@@ -47,7 +54,7 @@ export const BOSS = {
   hurtFrame: 0.14,
   camPull: 0.45,
   camRange: 16,
-  clearProps: { radius: 6.5, to: [7, 9.5] },
+  clearProps: { radius: 10, to: [10, 12.5] },
   tint2: '#ffb0a0',
   // Phase 2 reads beyond the _p2 sheet (critic H2 §2.1): a particle aura by kind, `rate` puffs a second within
   // `spread` tiles of it — [color, color2, up (tiles/s), gravity, life, size (texels)].

@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { setAnim, updateVisual } from '../core/Assets.js';
 import { el, button, costLine } from '../ui/ui.js';
 import { PROTOCOLS, PROTOCOL_ICONS, perNight } from '../data/protocols.js';
+import { healthMult } from '../data/waves.js';
 import { toast } from '../ui/ui.js';
 
 // Looks (critic H2 §8: no smooth-alpha discs): the aim cursor is a 1-px dashed ring; Vine Snare wraps each rooted
@@ -126,8 +127,11 @@ export class ProtocolDeck {
       let n = 0, cancelled = false;
       for (const e of scene.enemies) {
         if (!inside(e)) continue;
-        if (e.boss) { const r = e.protocolRoot(P.bossRoot); if (r === 'cancel') cancelled = true; if (r) n++; }
-        else if (e.applyRoot(P.root)) n++;
+        let held = false;
+        if (e.boss) { const r = e.protocolRoot(P.bossRoot); if (r === 'cancel') cancelled = true; if (r) { n++; held = true; } }
+        else if (e.applyRoot(P.root)) { n++; held = true; }
+        // Held enemies take × rootDamage while the snare lasts (DefenseScene.damage reads it).
+        if (held && P.rootDamage) { e.snaredUntil = (scene.waveTime || 0) + (e.boss ? P.bossRoot : P.root); e.snareDmg = P.rootDamage; }
       }
       fx.ring(pos, { color: P.color, radius: P.radius, life: 0.45, hard: true, px: 2 });
       fx.burst(pos, { color: '#63c74d', color2: '#265c42', count: 26, speed: 2.4, up: 2.5, life: 0.55, size: 0.08, y: 0.05 });
@@ -137,7 +141,8 @@ export class ProtocolDeck {
         fx.text(pos, 'CHARGE STOPPED', { color: '#63c74d', cls: 'big', y: 2.6, life: 1.1 });
       } else if (n) fx.text(pos, `${n} rooted`, { color: '#63c74d', y: 1.4, life: 0.8 });
     } else if (c.key === 'arc_discharge') {
-      const dmg = P.damage[0] + P.damage[1] * scene.night;
+      // Scales with the night's enemy health (healthMult), so it stays worth a cast late (critic K2 #3).
+      const dmg = Array.isArray(P.damage) ? P.damage[0] + P.damage[1] * scene.night : Math.round(P.damage * healthMult(scene.night));
       for (const e of [...scene.enemies]) if (inside(e)) scene.damage(e, dmg, P.damageType, { protocol: c.key });
       for (let i = 0; i < 4; i++) {
         const a = (i / 4) * Math.PI * 2 + Math.random();
@@ -257,7 +262,8 @@ export class ProtocolDeck {
       b.classList.toggle('aiming', this.aiming === k);
       b.classList.toggle('disabled', !!this.blocked(k) && this.aiming !== k);
       const t = b.querySelector('.df-pt');
-      if (t) t.textContent = st.charges > 0 ? (this.maxCharges(k) > 1 ? `×${st.charges}` : 'Ready') : `${Math.ceil(st.cd)} s`;
+      // (In the one-row bar of two or three, a ready single charge shows nothing: the lit button says it.)
+      if (t) t.textContent = st.charges > 0 ? (this.maxCharges(k) > 1 ? `×${st.charges}` : this.keys.length > 1 ? '' : 'Ready') : `${Math.ceil(st.cd)} s`;
     }
   }
 
@@ -285,7 +291,9 @@ export class ProtocolDeck {
   /** Side-panel block: one button per protocol (icon, name, cost, hotkey, cooldown sweep). */
   panel() {
     if (!this.keys.length) return null;
-    const wrap = el('div.df-protos', {});
+    // One row of buttons (critic K2 §5: three stacked buttons took 187 px of a 720p panel); with three the names go
+    // to the tooltips (icon, key, cost and timer stay).
+    const wrap = el(`div.df-protos.n${this.keys.length}`, {});
     for (const k of this.keys) {
       const P = PROTOCOLS[k];
       const cost = Object.keys(P.cost).length ? costLine(P.cost, this.scene.run.res) : el('span.good', 'free');

@@ -120,8 +120,8 @@ export const READINESS = {
   bossPace: 0.62,
   burnShare: 0.4, bombletShare: 0.4,
   protocols: {
-    vine_snare: { dps: 6 },
-    arc_discharge: { dps: 2, perNight: 2.5 },
+    vine_snare: { dps: 7.5 },                  // (+25% damage taken while held, critic K2 #3)
+    arc_discharge: { dps: 2, perNight: 3.5 },  // (25 × healthMult a cast: ~1.4× the old 40 + 20 × night)
     flare: { dps: 4 },
   },
   protocolUse: 0.6, protocolReach: 9,
@@ -129,7 +129,7 @@ export const READINESS = {
   band: [0.6, 1.4],
   dots: [0.05, 0.2, 0.5],
   weakShare: 0.35,
-  strongLoss: 6, strongShare: 0.06,
+  strongLoss: 2, strongShare: 0,   // (critic K2 #8: never "strong" with a predicted loss worse than −2)
 };
 
 // Tower strength pips in the build list (1–3 each). Hover a card for the exact numbers.

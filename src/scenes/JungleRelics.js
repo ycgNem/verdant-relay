@@ -15,7 +15,7 @@
 
 import { CONFIG, STAMINA } from '../data/config.js';
 import { DISTRICTS } from '../data/districts.js';
-import { RELICS, RELIC_SOURCES, drawRelic } from '../data/relics.js';
+import { RELICS, RELIC_KEYS, RELIC_SOURCES, drawRelic, relicDead } from '../data/relics.js';
 import { LORE_LOGS, LANDMARK_KINDS, LORE_SPOTS } from '../data/lore.js';
 import { makeRng, subSeed } from '../core/rng.js';
 import { setAnim, updateVisual } from '../core/Assets.js';
@@ -178,9 +178,11 @@ export class JungleRelics {
     for (const sh of this.data.shrines || []) {
       const used = this.state.relics.has(sh.id);
       const K = LANDMARK_KINDS[sh.kind] || LANDMARK_KINDS.statue;
+      // A glasshouse's cistern heal is only used up when it heals (critic J2 §4): the landmark stays usable for it
+      // after its relic is taken.
       const it = this._addIt({
-        kind: 'shrine', src: sh, x: sh.x, z: sh.z, done: used, radius: 1.6, hold: RS().shrineHold, keepProgress: false,
-        verb: () => `${K.verb} (a relic: pick 1 of 2)`,
+        kind: 'shrine', src: sh, x: sh.x, z: sh.z, done: used && !this._cistern(sh), radius: 1.6, hold: RS().shrineHold, keepProgress: false,
+        verb: () => (this.state.relics.has(sh.id) ? `Drink from the rain cistern (+${RS().glasshouseHeal} health)` : `${K.verb} (a relic: pick 1 of 2)`),
         onComplete: (t) => this._useShrine(t),
       });
       if (!used) {
@@ -197,21 +199,25 @@ export class JungleRelics {
   /** The two relics a shrine offers (seeded per shrine; never one you already have or carry). */
   _offers(sh) {
     const rng = makeRng(subSeed(this.run.seed, 'shrine', sh.id));
-    const ex = this._taken();
-    const a = drawRelic(rng, ex, { weights: RS().shrineWeights });
-    const b = a ? drawRelic(rng, [...ex, a], { weights: RS().shrineWeights }) : null;
+    const ex = this._exclude(), taken = this._taken();
+    const draw = (more) => drawRelic(rng, [...ex, ...more], { weights: RS().shrineWeights }) || drawRelic(rng, [...taken, ...more], { weights: RS().shrineWeights });
+    const a = draw([]);
+    const b = a ? draw([a]) : null;
     return [a, b].filter(Boolean);
   }
+
+  /** A glasshouse whose rain cistern hasn't healed you yet this run. */
+  _cistern(sh) { return sh.kind === 'greenhouse' && !this.state.relics.has(`${sh.id}+`); }
 
   _useShrine(it) {
     const sc = this.scene, sh = it.src;
     it.done = false;   // stays until a relic is taken
-    // The landmark's one-time extra (radio mast: maps the land; glasshouse: heals).
+    // The landmark's one-time extra (radio mast: maps the land; glasshouse: heals — used up only when it heals).
     const extraKey = `${sh.id}+`;
     let extra = null;
     if (!this.state.relics.has(extraKey)) {
-      this.state.relics.add(extraKey);
       if (sh.kind === 'mast') {
+        this.state.relics.add(extraKey);
         sc.map.reveal(sh.x, sh.z, RS().mastReveal);
         extra = 'The mast crackles back to life: the land around it is now on your map.';
         this.game.sfx.play('mast_crackle');
@@ -219,9 +225,16 @@ export class JungleRelics {
       } else if (sh.kind === 'greenhouse') {
         const p = sc.player;
         const n = Math.min(RS().glasshouseHeal, p.maxHp - p.hp);
-        if (n > 0) { p.hp += n; sc.fx.text(p.pos, `+${Math.round(n)} HP`, { color: '#63c74d', cls: 'big', y: sc._headY() }); }
-        extra = n > 0 ? `You drink from the glasshouse's rain cistern: +${Math.round(n)} health.` : 'The glasshouse\'s rain cistern is cool and clean (you are already at full health).';
-      }
+        if (n > 0) { this.state.relics.add(extraKey); p.hp += n; sc.fx.text(p.pos, `+${Math.round(n)} HP`, { color: '#63c74d', cls: 'big', y: sc._headY() }); }
+        extra = n > 0 ? `You drink from the glasshouse's rain cistern: +${Math.round(n)} health.`
+          : `The glasshouse's rain cistern is cool and clean. You are at full health: come back when you are hurt (+${RS().glasshouseHeal}, once).`;
+      } else this.state.relics.add(extraKey);
+    }
+    // The relic was taken earlier: this visit was only for the cistern.
+    if (this.state.relics.has(sh.id)) {
+      it.done = !this._cistern(sh);
+      if (extra) sc.toast(extra, this._cistern(sh) ? 'amber' : 'good', 3.2);
+      return;
     }
     const offers = this._offers(sh);
     this.run.seeRelics(this.game, offers);
@@ -240,8 +253,8 @@ export class JungleRelics {
     const close = () => { this._unkeys(); sc.setPaused(false); };
     const take = (id) => {
       close();
-      it.done = true;
       this.state.relics.add(sh.id);
+      it.done = !this._cistern(sh);   // (an unused glasshouse cistern stays: "Drink from the rain cistern")
       this._offGlow(it);
       if (it.vis) { this.game.assets.disposeVisual(it.vis); it.vis = null; }
       this.carry(id, it.x, it.z);
@@ -257,7 +270,7 @@ export class JungleRelics {
     const K = LANDMARK_KINDS[sh.kind] || LANDMARK_KINDS.statue;
     sc.confirmModal = modal(this.game.ui, site?.name || K.label, body, [
       button(offers.length ? 'Leave both (come back later)' : 'Close', () => {
-        if (!offers.length) { it.done = true; this.state.relics.add(sh.id); this._offGlow(it); }
+        if (!offers.length) { this.state.relics.add(sh.id); it.done = !this._cistern(sh); this._offGlow(it); }
         close();
       }, { hotkey: 'Esc' }),
     ]);
@@ -341,8 +354,15 @@ export class JungleRelics {
   /** Relics already spoken for: owned, carried, or lying on the ground. */
   _taken() { return [...(this.run.relics || []), ...this.carried, ...this.drops.map((d) => d.id)]; }
 
+  /** _taken() plus relics that would do nothing for this build (relicDead: Bramble Gloves with a Parang, …). */
+  _exclude() {
+    const t = this._taken();
+    return [...t, ...RELIC_KEYS.filter((k) => !t.includes(k) && relicDead(k, this.run, this.game.meta))];
+  }
+
   _draw(opts, salt) {
-    return drawRelic(makeRng(subSeed(this.run.seed, this.run.night, 'relicdraw', salt)), this._taken(), opts);
+    const rng = () => makeRng(subSeed(this.run.seed, this.run.night, 'relicdraw', salt));
+    return drawRelic(rng(), this._exclude(), opts) || drawRelic(rng(), this._taken(), opts);
   }
 
   /**
@@ -441,7 +461,7 @@ export class JungleRelics {
         it.vis.position.y = 0.3 + Math.round((Math.sin(it.bob * 2.2) * 0.5 + 0.5) * 3) / 32;
         updateVisual(it.vis, dt);
       }
-      if (glint && it.kind !== 'lore' && Math.random() < 0.6) sc.fx.flash({ x: it.x + (Math.random() - 0.5) * 0.8, y: 0.3 + Math.random() * 0.6, z: it.z }, { color: '#fee761', size: 6 / 32, life: 0.08 });
+      if (glint && it.kind !== 'lore' && !(it.kind === 'shrine' && this.state.relics.has(it.src.id)) && Math.random() < 0.6) sc.fx.flash({ x: it.x + (Math.random() - 0.5) * 0.8, y: 0.3 + Math.random() * 0.6, z: it.z }, { color: '#fee761', size: 6 / 32, life: 0.08 });
     }
     this._discover();
   }
@@ -510,6 +530,7 @@ export class JungleRelics {
     const map = this.scene.map, p = this.scene.player.pos;
     for (const it of this.its) {
       if (it.done || it.hidden?.()) continue;
+      if (it.kind === 'shrine' && this.state.relics.has(it.src.id)) continue;   // (only the glasshouse cistern is left)
       const known = this.seen.has(it) || map.isExplored(it.x, it.z);
       if (it.kind === 'lore') { if (Math.hypot(it.x - p.x, it.z - p.z) < RS().seenRange) out.push({ x: it.x, z: it.z, type: 'lore' }); }
       else if (known) out.push({ x: it.x, z: it.z, type: 'relic' });

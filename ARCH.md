@@ -235,10 +235,11 @@ Module functions (import from `../core/Assets.js`):
   `bosses.markers` (type `boss`, a ☠ in `MAP_MARKERS`) and seen events; `_finish` adds `objectiveFailed`,
   `bossesKilled`, `weather` to the result. `JungleGen.generateWorld` sets `world.lairs[regionIdx]` (`bossLairs(world, n)`:
   per area the candidates of `lairCandidates` — lost major → furthest lost → major → furthest site — picked greedily so
-  every pair is ≥ `BOSS.aggro + BOSS.leash + BOSS.lairGap` apart, else the furthest; no RNG), and `_sitesIn` never hands out a lair. Right after
+  every pair is ≥ `BOSS.aggro + BOSS.leash + BOSS.lairGap` (35) apart, else the furthest; no RNG), and `_sitesIn` never hands out a lair
+  (and ranks sites within `BOSS.siteGap` of a live lair last; the Alpha's track anchors keep `clearProps.to[0]` off). Right after
   the site features (before reachability), `clearLairProps` moves every container, relic strongbox and data log within
-  `BOSS.clearProps.radius` of a lair to `clearProps.to` tiles from it (own seeded stream, ids kept; shrines stay; wild
-  spore pods there are dropped), every night.
+  `BOSS.clearProps.radius` (10) of a lair to `clearProps.to` (10–12.5) tiles from it — past the wake radius, so looting
+  never wakes a boss (critic J2 §4) — (own seeded stream, ids kept; shrines stay; wild spore pods there are dropped), every night.
   - `Goals(scene)` (`src/scenes/JungleGoals.js`; data `PRIMARY` / `GOALS` in objectives.js): step types `escort`
     (`phase` find / lead), `defend` (start / hold), `track` (+ the closing `kill`), `carry` (pickup / deliver), `purge`.
     `claims(step)` → `_setupObjective` hands it `setupStep(step, si, used)`; `update(dt)`, `hittables(out)` (nests),
@@ -252,7 +253,8 @@ Module functions (import from `../core/Assets.js`):
     `scene.events`, results in `eventsDone` (`{key, name, flag?}`). Announce at `EVENT_RULES.announce` (`_updateDiscovery`).
   - `AreaBosses(scene)` (`src/entities/AreaBoss.js`; data `BOSS` / `BOSSES` in bosses.js): `lairs[]` `{area, ri, site,
     def, boss, dead}` for `run.bossAlive(area)`, `lairSites()`, `inLair(x, z, pad)` (no wildlife there), `build()`,
-    `update(dt)` (engage within `BOSS.aggro`, leash, HUD bar `.j-bossbar` in `hud.root`; **one engaged lair at a time**:
+    `update(dt)` (engage when the PLAYER is within `BOSS.aggro` of the lair spot `L.x / L.z`, never from where the boss
+    wandered, or when `b.provoked` (hit it / its pack); leash, HUD bar `.j-bossbar` in `hud.root`; **one engaged lair at a time**:
     while one is busy no other engages, so the bar never switches; the intro banner (prio 2, `BOSS.introTime`) goes
     first and the bar waits for it (`barWait`); "You left…" only for a boss you hurt; the Pack Lord silently walks home
     past `BOSS.tether` from its site unless engaged), `hittables(out)`,
@@ -266,7 +268,9 @@ Module functions (import from `../core/Assets.js`):
     `damageTaken()`, phase 2 + `onPhase2`, `later(t, fn)`, `ringAt`, `hitCircle`, `hitLane`, `_inLane`, `_ringSelf(M,
     colors, onHit)` (the anti-hug ring), `lob`, `spawnMinion` (sets `e.minion`, counts `spawned`), `minionRoom(max,
     cap)`) → `ThornMother`, `BroodHive`, `Warden`, `DrownedEngine`; `PackLordEnemy` (a `FeralChief` in
-    `scene.enemies`) + `PackLordCtl`.
+    `scene.enemies`; its `alert()` is a no-op out of a fight, so sight / noise / pack alarms never send it after you) +
+    `PackLordCtl` (the starting pack's `alert` is wrapped the same way: it stirs on `engaged`, or when one is hurt, which
+    sets `provoked`; `onEngage` alerts the pack). `JungleScene.alertNear` re-homes only creatures that took the alarm.
     **The pattern engine** (`act(dt)`, critic I2): each phase loops `def.pattern[phase]` (a `'?'` slot draws from
     `def.wild[phase]`); the slot's move is the subclass method of that name, which starts its tell / telegraphs and
     returns its duration (`busyT`); then `def.gap[phase]` s of recovery. A move in `def.punish.after` ends in an opening
@@ -294,7 +298,7 @@ Module functions (import from `../core/Assets.js`):
   `woodPads`, `core`, `coreRadius`, `plaza`, `lamps`, `stream` (ford), `trees/rubble/bushes`, `margin`, `hpMult` (enemy
   health × this on the map: `DefenseScene.hpMult` = night curve × run mods × map, so the layouts play alike). `DEFENSE_MAP` = twin
   (legacy alias). Helpers: `mapFor(runOrKey)` (unknown → twin), `pickMapKey(seed)` (Run.create → `run.mapKey`),
-  `forwardSlots(map)` → `[{ lane, at, rank }]`, `padCount(map)` (pads + slots: Save validates `tower.pad < padCount`),
+  `forwardSlots(map)` → `[{ lane, at, rank }]` (`pickMapKey` mixes unsigned: ~⅓ each map; it used to give Twin 67%), `padCount(map)` (pads + slots: Save validates `tower.pad < padCount`),
   `laneForAngle(map, angle)` (jungle angle → the lane whose bearing is closest).
 - **Scene hooks** (`DefenseScene`): `this.map`, `laneForDistrict(key)` (the lane facing that area: region angle from
   `worldForRun` → `laneForAngle`; stored as `this.dangerLane`, read by `_waveOpts()` → `buildWave({ dangerLane })`),
@@ -339,7 +343,8 @@ Module functions (import from `../core/Assets.js`):
   `run.rng('wave')`), `waveFor(night, variant)` → `{ key, name, pushes, groups }` (the Long Night generator past night 6),
   `DEFENSE` (lull, callEarly, startGuard, exchange, longNight, extra-group push/time window, speeds, banners…), `SALVAGE`,
   `RELAY_ZAP` + `relayZapDamage(night)` (the Relay's own bolt: `DefenseScene._relayZap(dt)` in `_step` during pushes, a
-  pseudo-tower at the core in `forecastNight`; the prep line shows until `meta.hints.relay_zap`).
+  pseudo-tower at the core in `forecastNight`; the prep line shows until `meta.hints.relay_zap`; its reach is a dashed
+  cyan ring, `_buildZapRing()`, shown by `_updateBoard` while `_overRelay()` or for `ringShow` s after the night's first bolt).
   `src/data/protocols.js` — `PROTOCOLS`, `PROTOCOL_ORDER`, `PROTOCOL_ICONS`, `perNight(arr, night)`.
   `src/data/towers.js` — level 3 = `upgrades[1].branches.{a,b}` (`name, line, detail, cost, set`), `BRANCH_KEYS`,
   `branchOf(rec)` ('a' for old saves), `BIG_SIZE`. `READINESS` (src/data/guide.js) tunes the forecast.
@@ -354,6 +359,11 @@ Module functions (import from `../core/Assets.js`):
   time), protocols, towers (only while a push runs) and the end-of-push / end-of-night checks. Space: `_tryStartWave(how)`
   ('button' | 'space' | 'shift'; a weak readiness arms "Start anyway" for `DEFENSE.startGuard.confirm` s and only the
   button / Shift+Space starts), no Space-pause for `startGuard.pauseGrace` s after `_startPush` (`spaceGuardT`).
+  Side panel (critic K2 §5): in a lull `_renderPreview` lists the NEXT push per path; the leak feed folds to its header
+  (rows in its tooltip); `_updateHints` docks hints after prep only when the panel is ≥ `DEFENSE_VIEW.dockMinPanel` UI
+  units tall (`.df-nodock`; a `float: true` hint — the boss's — shows over the board instead); the hint dock and leak
+  feed shrink before `.df-body` (min 96 u), so the footer's "Call next push" stays on screen. `_dangerHasPath()`: only
+  a threat with an extra group gets the path line and the lane tag's ⚠.
 - **Damage and kills:** `damage(e, amount, opts)` (opts `{ type, source, pierce, blast }`; Flare ×`flareMult(pos)`, blast
   tags `e.blastT` so a Seed Carrier killed within 3 s of a blast doesn't burst), `_kill(e)` (bounties, seed rule,
   `nightStats.bossKilled` / `run.stats.bossKilled`). Leaks: `enemyReachedCore(e)` → `_noteLeak(src, dmg)`.
@@ -370,9 +380,12 @@ Module functions (import from `../core/Assets.js`):
   Sprite `${type}_3${branch}` when loaded, else `${type}_3`.
 - **`ProtocolDeck(scene)`** (`scene.protocols`): `keys` (= `run.protocolsFor(meta)`; debug runs get all), `def(k)`
   (`run.protocolDef` for relic changes), `maxCharges(k)`, `live()` (wave or lull), `blocked(k)` (reason or null),
-  `aim(k)`, `cancelAim()`, `cast(k, { x, z })` (pays, telegraph, resolves after `telegraph` s), `litAt(pos)`,
+  `aim(k)`, `cancelAim()`, `cast(k, { x, z })` (pays, telegraph, resolves after `telegraph` s; Vine Snare sets
+  `e.snaredUntil` / `e.snareDmg` = `rootDamage`, read by `DefenseScene.damage`; Arc Discharge deals `damage` ×
+  `healthMult(night)`), `litAt(pos)`,
   `flareMult(pos)`, `update(dt)`, `frame()` (aim ring, button cooldown sweep via `--cd`), `handleInput()` (Q/W/E, LMB
-  cast, RMB/Esc cancel; returns true when it used the input), `panel()` (the `.df-protobar` buttons), `dispose()`.
+  cast, RMB/Esc cancel; returns true when it used the input), `panel()` (the `.df-protobar` buttons: one row,
+  `.df-protos.n<count>`; with 2–3 the names go to the tooltip), `dispose()`.
   Looks (critic H2 §8, no smooth-alpha discs): the aim is `AIM_DASHES` 1.5-texel dashes rebuilt per radius, marching;
   landing rings are `fx.ring({ hard, px: 2 })`; a Flare is `fx_flare_pool` (flat, 3-tile radius at 1×, renderOrder −3)
   + the upright `fx_flare_ember` canister, blinking out its last 0.6 s (the additive disc only without the art); a rooted
@@ -380,14 +393,17 @@ Module functions (import from `../core/Assets.js`):
   x-ray never fires), 'burst' then 'hold' via `scene.vinesLook(group, rooted, dt)` (procedural vines without the art).
   Health bars during a push: `DefenseEnemy.barFocus` (set per frame by the scene: hovered, the selected tower's target,
   the boss, `DEFENSE_VIEW.hpBarRoles`).
-- **`forecastNight(scene)`** → `{ level: 'weak'|'risky'|'strong', lost, lo, hi, lanes: [{ name, short, lost, dots }],
+- **`forecastNight(scene)`** → `{ level: 'weak'|'risky'|'strong', lost, lo, hi, lanes: [{ name, short, lost, dots, top }],
   ratio }` — a 1-D replay of tonight's wave per lane (samples `READINESS.sample` tiles, step `READINESS.step` s) against
   `scene.towers` (their stats, `rec.target` rule, path coverage), slows, spitters, burrowers, seed bursts, boss roots /
-  siege and the run's protocols; `lost × lossScale`. `scene._readiness()` caches it per build / resources key.
+  siege and the run's protocols; `lost × lossScale`; `top` = the enemy type leaking most through that path (the prep
+  line names it on a ●○○ / ○○○ path). "Strong" needs a predicted loss ≤ `READINESS.strongLoss` (2).
+  `scene._readiness()` caches it per build / resources key.
 - **Run additions:** `upgradeCost(t, branch)`, `upgradeBranches(t)` (the branch table at level 2, else null),
   `upgrade(t, branch)` (sets `t.branch`), `towerStats` merges the branch's `set` and `t.rangeMod`; `exchangeLeft()` /
   `exchange(kind)` (`DEFENSE.exchange`, prep only from night 2); `protocolsFor(meta)`; `salvageOptions(lost, night)`
-  (seeded, `SALVAGE.tiers`) / `applySalvage(key, bestPad)`; fields `wavePush` (0–8), `salvage` (`{ freeUpgrades }` for
+  (seeded, `SALVAGE.tiers`: 3 picks on a clean night, else 2; no `patch` at a full Relay, no `tune` without a tower to
+  tune; `SALVAGE.badNight` weights after a bad night) / `applySalvage(key, bestPad)`; fields `wavePush` (0–8), `salvage` (`{ freeUpgrades }` for
   the next prep), `tonight.exchanged`. Save validates `tower.branch` ('a'|'b'), `tower.rangeMod` (1–1.5), `wavePush`,
   `salvage` (backward compatible, no version bump).
 - **Debug** (`vr.game.scene.debug`): `state()` (phase, push, lull, wave, protocols…), `callNext()`, `cast(k, x, z)`,
@@ -502,7 +518,8 @@ Fields: `seed night phase relayHp relayMax playerHp meds weapon res{scrap,circui
   machete upgrades' `blade` blocks stacked by `BLADE_STACK`), `prepScrapComing()` (stipend + Prepared Defenses not yet
   paid), `cheapestTowerScrap(meta)`. `relayMax` adds skills' and crafted recipes' `relayMax`.
 - UI (`src/ui/workbench.js`): `workbenchView(game, {onCraft})` → `{node, refresh, craftIndex(i)}` (SummaryScene's
-  `step = 'bench'`), `showBench(run)`, `modRow(scene, tower)` (DefenseScene `_renderTower`), `codexKit(game)` (Codex).
+  `step = 'bench'`), `showBench(run, meta)` (recipes filtered by `recipeOffered(key, meta)`: a recipe's `hideWith`
+  research node replaces it — the med kit leaves once Field Dressing sells them at the briefing), `modRow(scene, tower)` (DefenseScene `_renderTower`), `codexKit(game)` (Codex).
 - Machete kit (`src/entities/BladeKit.js`): Player sets `this.kit = run.bladeMods()` and
   `this.weapon = kitWeapon(WEAPONS[k], kit, bleeds)` once per trip (combo / hack-through time × `comboTime`, chop damage ×
   `chopDamage`, `chop.cutRange` = Cleaver, throw `returnTime` / `returnDamage`, `onHit` on every melee spec);
@@ -514,11 +531,14 @@ Fields: `seed night phase relayHp relayMax playerHp meds weapon res{scrap,circui
 - Intel (night prep): `decryptCost()`, `decrypt(game)` → Research; `sabotageCost()`, `sabotageBlocked()`, `sabotage()` → wave −10% once per night.
 - Wave size: `waveCountMult()` = `tonight.enemyCount` floored at `CONFIG.waveSizeFloor` (0.8); `waveCutCapped()`.
 - Expedition: `applyExpedition(result, game)` with
-  `{ district, extracted, died, carried:{…}, objectiveDone, objectiveFailed, boon, optionals:[{key,name,flag?,research?}], events:[{key,name,flag?}], bossesKilled:[area], weather, skillPointsEarned, medsLeft, playerHp, kills, relics:[id] }`.
+  `{ district, extracted, died, carried:{…}, objectiveDone, objectiveSecured, objectiveFailed, boon, optionals:[{key,name,flag?,research?}], events:[{key,name,flag?}], bossesKilled:[area], weather, skillPointsEarned, medsLeft, playerHp, kills, relics:[id] }`.
   Banks loot only if extracted (else the salvage, clamped to what was carried), awards research, applies the goal's boon
-  into `tonight` only if extracted (else `summary.rewardLost`), sets `summary.dawnHp`, stores `lastExpedition`.
+  into `tonight` only if extracted or `objectiveSecured` (a `PRIMARY.rewardAtDelivery` goal — escort, haul — whose drone
+  hand-off already happened at home; else `summary.rewardLost`), sets `summary.dawnHp`, stores `lastExpedition`.
+  Every PRIMARY boon carries `bankScrap` (+20 on top of its own reward, critic J2 #1); bonus tasks (`OPTIONAL`) no longer
+  give the skill point (`skillPoint` unset: loot + Research instead).
   Death rules: `salvageFor(carried, dayT)` (`min(carried, max(floor, share × carried))` for Scrap; nothing with No Drone),
-  `dawnHp(hp)` (`max(hp + nightlyHeal, dawnHpFloor)`, Hard Dawn lowers the floor), `abandonTrip(game)` (Continue from
+  `dawnHp(hp)` (`max(hp + nightlyHeal, dawnHpFloor)` = max(hp + 25, 75), Hard Dawn lowers the floor), `abandonTrip(game)` (Continue from
   an `explore` snapshot settles the trip as abandoned).
 - Relics (`src/data/relics.js`; field `relics[]` = brought home): **`relicMod(field)` is the one place effects are read**
   (combined by `FX_MODE`; Player / SporePods go through `scene.relicMod`). `hasRelic(id)`, `maxMeds()` (CONFIG + Medic's
@@ -556,7 +576,9 @@ Fields: `seed night phase relayHp relayMax playerHp meds weapon res{scrap,circui
 - The Codex (`src/data/relics.js`, `src/data/lore.js`): meta `relicsSeen[]`, `lore[]` (`metaCodex` keeps known ids
   only); the run's `relics[]` and `world.relics / lore / visited` string lists are checked in `validRun` (missing = none).
   `RELICS[id] = { name, rarity: 'C'|'R'|'X', when: 'day'|'night'|'both', text, down?, fx }`, `RELIC_SOURCES` (holds,
-  chances, rarity weights, magnet, map ranges), `drawRelic(rng, exclude, {rarity, weights})`, `relicLive(id, run)`;
+  chances, rarity weights, magnet, map ranges), `drawRelic(rng, exclude, {rarity, weights})`, `relicLive(id, run)`,
+  `relicDead(id, run, meta)` (does nothing for this build: JungleRelics `_exclude()` skips those in shrine offers and draws
+  while others are left);
   `PLACE_NAMES`, `LANDMARK_NAMES`, `LANDMARK_KINDS`, `LORE_SPOTS`, `LORE_LOGS` (story order), `LORE_BY_ID`.
 
 ## Conventions

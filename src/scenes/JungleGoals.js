@@ -18,6 +18,7 @@ import { DISTRICTS } from '../data/districts.js';
 import { DAY, POP, SPORES, LEVEL } from '../data/jungle.js';
 import { nightTune } from '../data/config.js';
 import { EXPLORE_ENEMIES } from '../data/enemies.js';
+import { BOSS } from '../data/bosses.js';
 import { setAnim, setFacing, updateVisual, flashVisual, setBaseColor } from '../core/Assets.js';
 import { clearDisc, compass } from '../world/JungleGen.js';
 import { WORDS } from '../data/guide.js';
@@ -399,7 +400,9 @@ export class Goals {
     const R = sc.relayPos;
     const near = DAY.objectiveMinDist * 0.5;
     const anchors = [...data.sites.filter((s) => s.type !== 'pylon' && s.type !== 'camp' && !lairs.includes(s)), ...data.containers]
-      .filter((a) => Math.hypot(a.x - R.x, a.z - R.z) >= near);
+      .filter((a) => Math.hypot(a.x - R.x, a.z - R.z) >= near)
+      // (no clue or Alpha at a boss's door: critic J2 §4)
+      .filter((a) => !lairs.some((L) => Math.hypot(a.x - L.x, a.z - L.z) < BOSS.clearProps.to[0]));
     const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
     const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
     const start = sc._spotNear(first, 0.5, 2.2);

@@ -1,36 +1,24 @@
 # Critic K2 (round 2): the night tower defense
 
-**Session:** 2026-10-14. Frozen snapshot `.playwright-mcp/frozen_r2b/`, served by request interception to my own headless
-Chrome (GPU). Most play was at 1280×720, with UI and readability passes at 1920×1080 and 1366×768. Everything is in
-`.playwright-mcp/roundK2/`:
-- Scripts: `k2.mjs` (helpers), `night2.mjs` (one night per JSON plan in `plans/`), `campaign2.mjs` (a real run),
-  `cover.mjs`, `calib.mjs`, `pacing.mjs`, and the UI probes `ui1`, `lull`, `zoom`, `guard`, `mods`, `buildfit`,
-  `zapboss`.
-- Per-night results: `*.out.json` (prep state, forecast, result, samples, push log) plus `*_end.png`.
-- Logs: `logs/`.
+**Session:** 2026-10-14. Frozen snapshot `.playwright-mcp/frozen_r2b/` in my own headless Chrome (GPU), mostly at
+1280×720, with UI passes at 1920×1080 and 1366×768. Scripts, plans, `*.out.json` results, screenshots and logs are in
+`.playwright-mcp/roundK2/` (`night2.mjs` plays one night per plan in `plans/`; `campaign2.mjs` plays a whole run).
 
 **How it was played**
-
-- **Real input for everything a player does:** pad clicks, build cards (wheel-scrolling the panel when a card was below
-  the fold), Upgrade, branch half-buttons, targeting, Sell, Repair, Trade, Disrupt, Start, speed buttons, zoom (+/−,
-  wheel), right-drag pan, arrows, Home, the hotkeys Q/W/E/N/F/P/Space/Shift+Space, salvage cards and the banner.
-- **Protocols were cast as a player would:** the hotkey, a mouse move to the enemy cluster on the board, then a click.
-- **Read-only instrumentation:** wrappers on `enemyReachedCore`, `spitAtCore`, `bossSlam`, `_kill` and
-  `protocols.cast`. Sweeps ran at sim speed ×2–4 (`debug.setSpeed`); feel passes ran at 1×, 2× and 3×.
-- **Volume:** ~110 debug nights:
-  - tall/wide ×18, placement ×12, Mortar ×4, boss ×19 (+1 at 1080p);
-  - Protocols ×9 (+12 with a fixed seed);
-  - maps ×6, readiness spread ×9, "what decides N4" ×10.
-- **Two full real runs from the title:** `KR2a` with research unlocks; `KR2b` with a fresh profile, Vine Snare only.
-  - Days were compressed as critic K did: carried loot set to 70/90/100/100/100/105 Scrap plus 1 Circuit, 1 Biofiber
-    and 1 Intel, objective completed, extract.
-  - Everything else was the real flow: briefing card, Head out, skill pick, Workbench, prep, pushes, lulls, salvage,
-    banners and Results.
-- **Caveat on seeds:** debug nights without `&seed=` roll a new jungle, so the danger path flips between runs. Same-plan
-  repeats therefore vary by up to ±15 HP. The Protocol and "what decides N4" sets use a fixed seed.
-- **Console:** 0 errors in the night.
-  - `KR2b`'s boot logged a WebGL `loseContext: context lost` plus 88 `object does not belong to this context` warnings
-    on the title screen. It ran 4 headless GPU browsers at once, so this is likely environmental, but worth a look.
+- **Real input for everything a player does:** pads, build cards (wheel-scrolling the panel), Upgrade, branches,
+  targeting, Sell, Repair, Trade, Disrupt, Start, speed buttons, zoom, pan, Q/W/E/N/F/P/Space, salvage, banners.
+  Protocols were cast with the hotkey, a mouse move to the enemy cluster, then a click.
+- **Read-only instrumentation** (`enemyReachedCore`, `spitAtCore`, `bossSlam`, `_kill`, `protocols.cast`). Sweeps
+  ran at ×2–4 sim speed; feel passes at 1×, 2× and 3×.
+- **100 scripted debug nights** plus UI probes: tall/wide 19, placement 12, Mortar 4, boss 20, Protocols 20, maps 6,
+  readiness 9, "what decides N4" 10.
+- **Two full real runs from the title,** `KR2a` (research unlocks) and `KR2b` (fresh profile). Days were compressed
+  as in round 1 (loot 70–105 Scrap + 1 C/B/I, objective done, extract); briefing, skill pick, Workbench, prep, pushes,
+  lulls, salvage, banners and Results were the real flow.
+- **Seeds:** debug nights without `&seed=` roll a new jungle and danger path (±15 HP between repeats). The Protocol and
+  night-4 sets use fixed seeds.
+- **Console:** 0 errors at night. `KR2b`'s boot logged a WebGL `context lost` plus 88 `object does not belong to this
+  context` warnings at the title (4 GPU browsers at once, probably environmental).
 
 ---
 
@@ -52,14 +40,14 @@ What holds it back now:
 1. **At 720p the side panel breaks in lulls,** exactly when the new systems need it:
    - the build list shrinks to 113 px, or 17 px with a coach hint docked, and then I could not build at all;
    - with Repair and the leak feed showing, "Call next push" ends off-screen (footer at y = 785 in a 720 px window).
-2. **The Protocols are one verb, not three:**
-   - Arc Discharge doesn't scale: 120 damage on night 4, under half a Crawler, for a Circuit;
-   - Flare spends the Intel you need elsewhere;
-   - Vine Snare on crowds gave no reliable gain with my bot. On the Colossus's charge it is the best play in the fight.
+2. **The Protocols pay in the wrong places.** On a fixed N5 board, Q + W + E added +18 Relay (36.5 vs 18.5 left).
+   - Almost all of that came from W + E burning 4 spare Circuits.
+   - Vine Snare on crowds is worth ≈ 0 (+2.5 and −6.5). On the Colossus's charge it is the best play in the fight.
+   - W per cast doesn't scale: 120 damage on night 4, under half a Crawler.
 3. **Lulls are a key press:** 3 of 20 lulls in two real runs had a purchase; "Call next push" pays +5–6 Scrap.
-4. **The night's own play moves outcomes less than the day's choices.** Nights 1–4 cost 0–9 in both real runs; the same
-   Scrap without night skills loses 50–89 on night 4. The tension sits on one night (N5) and rides on skill picks and
-   the area card.
+4. **The night's own play moves outcomes less than the day's choices.** Nights 1–4 cost 0–9 in both real runs.
+   Replaying a real night-4 build on one seed, 4 day-picked night skills cut the loss from 21 to 7.5; Snare on crowds
+   added 6.5. The tension sits on one night (N5) and rides on skill picks and the area card.
 5. **Small truthfulness bugs:**
    - a global speed threat is shown as "Comes down the North path ⚠";
    - "94" on the Relay bar reads as "34" at 720p;
@@ -136,13 +124,9 @@ Round 1: every Ruin Guard leaked in 8 of 8 night-5/6 builds.
 The Colossus died in all 19 of these runs, in the 1080p run, and in both real runs. In the real runs it died *before*
 reaching the plaza (0 slams).
 
-**The fight now has a shape:**
-1. It walks on-field into range.
-2. It roots, and Crawlers sprout.
-3. The red charge path is telegraphed (`BX_1080_boss_chargeWind_108.png`).
-4. At 60% it roars (`BX_1080_boss_roar_147.png`).
-5. It besieges with a slam ring (`BX_1080_boss_siege_169.png`: 772 HP left, dead 6 s later).
-6. It dies with a correct Results line.
+**The fight now has a shape:** it walks into range → roots while Crawlers sprout → telegraphs a red charge path
+(`BX_1080_boss_chargeWind_108.png`) → roars at 60% (`…_roar_147.png`) → besieges with a slam ring (`…_siege_169.png`:
+772 HP left, dead 6 s later) → dies with a correct Results line.
 
 **Counterplay is real:**
 - Both Snares in the 1080p run cancelled the charge: wind-up → walk within 0.7 s in the samples.
@@ -175,12 +159,9 @@ reaching the plaza (0 slams).
    15: three Crawlers got through with 3–8 of 45 HP left. That is the first forecast a new player sees.
 2. **The band is ×0.6–×1.4, too wide to plan with.** "Expect −33 to −84" is a coin-flip between "fine" and "the run
    is over".
-3. **It is too pessimistic on good boards.** All 7 misses on that side are strong layouts:
-   - `PL_center_v0`: −32 → 0;
-   - `KR2a`/`KR2b` N4: −13…−18 → 0–5;
-   - `RW_n3_typ`: −33 → 11.
-
-   But the real run's hardest night slipped past the top: `KR2b` N5 read −17 to −48 and lost 49.
+3. **It is too pessimistic on good boards.** All 7 misses on that side are strong layouts: `PL_center_v0` −32 → 0,
+   `KR2a`/`KR2b` N4 −13…−18 → 0–5, `RW_n3_typ` −33 → 11. But the real run's hardest night slipped past the top:
+   `KR2b` N5 read −17 to −48 and lost 49.
 4. **It never says why.** It reports South ●○○, not "South: Burrowers (bullets can't hit them)". An all-North night-2
    build read South ○○○ −35 correctly, then lost 54 there (`RW_n2_north`).
 
@@ -203,12 +184,9 @@ reaching the plaza (0 slams).
 - Both runs had exactly one hard night: N5, from Burrowers or Seed Carriers down the danger path.
 - Neither run ever needed the 12-second lull.
 
-Per night, from the real runs:
-- **Prep:** 3–6 builds or upgrades.
-- **Protocol casts:** 2–10, mostly Q.
-- **Plus:** 1 salvage pick and 1–2 presses of N.
-- **Lull purchases:** 3 of 20 lulls (40, 24 and 32 Scrap).
-- **Night length:** 47–214 s of game time; 16–71 s real at 3×.
+**Per night in the real runs:** 3–6 builds or upgrades in prep, 2–10 Protocol casts (mostly Q), 1 salvage pick and
+1–2 presses of N, so **6–18 meaningful clicks**. Lull purchases: 3 of 20 lulls. Nights last 47–214 s of game time
+(16–71 s real at 3×).
 
 **What decides night 4?** I replayed `KR2b`'s N4 build twice per row on one seed (`SW_*`). The build: 9 towers,
 Piercer L3, 627 Scrap, "Seed swarm".
@@ -239,27 +217,36 @@ The day's choices outweigh the night's play. Rogue Tower and Thronefall keep the
 
 ### 3.1 Relay Protocols
 
-**Vine Snare (Q) is a real verb.**
+**Measured value** (`PS_*`): the same night-5 board on 2 seeds × variants A/C, cast by hotkey and click at 2×.
+
+| Protocols | Relay left (A·777, A·4242, C·777, C·4242) | Mean |
+|---|---|---|
+| None | 30 · 34 · 10 · fell | 18.5 |
+| Vine Snare on crowds (6–7 casts) | 30 · 41 · 13 · fell | 21 |
+| Q + W + E (7 Q, 4 W, 1 E) | **48 · 52 · 21 · 25** | **36.5** |
+
+On night 6 the same Q/W/E policy scored 43.8 vs 45.5 with none (§1.5): Q spent on crowds forfeits the charge cancel.
+
+**Vine Snare (Q) pays only on the boss.**
 - It is free, roots for 2 s and recharges in 28 s, with 2 charges from N4.
-- It cancels the boss charge, and that save-or-spend decision is the best moment in the mode (§1.5).
+- On crowds it is worth +2.5 here and −6.5 on night 4 (`SW_*`). Seven 2-s roots on 3–5 enemies is a few percent of a
+  150-s night.
+- It cancels the boss charge. That save-or-spend decision is the best moment in the mode (+12, §1.5).
 - Aiming is clear: a green ring follows the mouse, and right-click cancels (`U16_aim.png`).
 
-**Arc Discharge (W) is a trap from night 3.**
-- It deals `40 + 20 × night` while enemy health is ×4.7–9.2.
-- Measured on night 4: 120 damage to a 268-HP Crawler (`U19_arccast.png`: 268 → 148).
-- It costs 1 Circuit + 10 Scrap. A Circuit is 35 Scrap at the exchange and half an Arc Spire's components.
-- The Relay zap deals 95 every 0.7 s for free.
-
-**Flare (E)** costs the 1 Intel per day you also want for Read or Disrupt. +25% inside 3 tiles for 6 s is worth ~40–60
-damage per covered tower; it only pays against Burrowers.
-
-**Measured value** (same N5 board, cast by hotkey and click at 2×, fixed seed): {{PS}}
+**Arc Discharge (W) and Flare (E) work, but only as a Circuit sink.**
+- W + E added **+15.5 Relay** and turned a fall into 25 left, for 4 spare Circuits, 40 Scrap and 1 Intel (≈ +4 Relay
+  per Circuit). On a real run's N3–N4 the Circuits go into Arc Spires, so W sits unused (`KR2b` never had one spare).
+- Per cast W doesn't scale: `40 + 20 × night` vs enemy health ×4.7–9.2. On night 4 it did 120 to a 268-HP Crawler
+  (`U19_arccast.png`), while the free Relay zap deals 95 every 0.7 s. E spends the Intel you want for Read or Disrupt.
 
 **Fix (`protocols.js`, `DefenseProtocols._resolve`):**
-- Arc Discharge damage = **30 × `healthMult(night)`**: N1 38, N4 222, N6 276, always ≈ 80% of a Crawler.
-- Flare costs 15 Scrap instead of Intel and also pins Burrowers to the surface.
+- **Snare:** rooted enemies take +25% damage while rooted, and the radius goes 1.6 → 2.0.
+  - **Target:** Q on crowds is worth ≥ +6 on N5.
+- **Arc Discharge:** costs 20 Scrap instead of a Circuit, and deals `25 × healthMult(night)` (N4 185, N6 230).
+  - This gives lull and bounty Scrap a use (§3.2).
+- **Flare:** costs 15 Scrap instead of Intel.
 - Update `READINESS.protocols`.
-- **Target:** casting W/E on N4–N6 is worth ≥ +10 Relay over not casting.
 
 ### 3.2 Pushes, lulls and "Call next push"
 
@@ -285,21 +272,17 @@ damage per covered tower; it only pays against Burrowers.
 - **The three layouts are distinct and readable at ×1** (`L_twin_1280`, `L_crossing_1280`, `L_ford_1280`).
   - Crossing's mid pads see both trails for 19–24 tiles; Ford's pad 4 sees 27.
   - The best pads differ per map, so placement re-opens per run.
-- **Map results** (`MP_*`, `PL_cover_*`): the same night-5 build (10 towers, 5 at L2, 640 Scrap, no Protocols) on each
-  map's best-coverage pads, variants 0 / 1 / 2. Relay left:
-  - Twin 55 / 10 / fell; Crossing 34 / 14 / 6; Ford fell / 11 / 48.
-  - The maps are balanced against each other (mean 18–22 left), so the `hpMult` 0.95 / 1.07 / 1.18 does its job.
-  - But the variant moves the result by up to 55 and the map by about 4. Crossing never fell, because its mid pads
-    cover both trails.
-  - Readiness put all 6 in band (predicted 72–93, actual 52–100).
+- **Map results** (`MP_*`, `PL_cover_*`; one night-5 build of 10 towers on each map's best pads, variants A/B/C):
+  Twin 55 / 10 / fell; Crossing 34 / 14 / 6; Ford fell / 11 / 48. The maps are balanced (mean 18–22 left; `hpMult`
+  works), but the variant moves the result by up to 55 and the map by ~4. Crossing never fell: its mid pads cover both
+  trails. Readiness put all 6 in band.
 - **Within a run the map is fixed and towers are permanent** (70% of the Scrap back, none of the components). So
   placement is solved on nights 1–2, and the nightly danger lane only says where tonight's extra group walks.
 - **Forward pads never paid** (§1.2). Give them a reason to exist: a "beacon lamp" (enemies passing take +15% damage
   for 4 s), or slots on chokes that see ≥ 12 tiles.
-- **A truthfulness bug.** Canopy Greenhouse's threat is a *global* speed modifier (`districts.js:42`, no extra group),
-  yet the panel says "Comes down the North path (Canopy Greenhouse lies north-west)" and North gets ⚠
-  (`KR2a_49_prep_n4.png`). Show the lane and the ⚠ only when `tonight.extraGroups.length` (`_renderPreview` and the
-  lane-tag `danger` line).
+- **A truthfulness bug.** Canopy Greenhouse's threat is a *global* speed modifier (`districts.js:42`), yet the panel
+  says "Comes down the North path" and North gets ⚠ (`KR2a_49_prep_n4.png`). Show the lane and ⚠ only when
+  `tonight.extraGroups.length` (`_renderPreview`, lane-tag `danger`).
 
 ### 3.4 Stipend, Trade, salvage, the Relay zap
 
@@ -316,11 +299,8 @@ damage per covered tower; it only pays against Burrowers.
 - On a struggling N4 board it dealt **20–36% of all damage** (2 300–3 460, from `zapHits`), more than any single tower.
 - On the real runs' sound boards it fired 0–11 times a night.
 - So it rescues thin or misplaced builds, and "Snare next to the Relay" is a secret best layout.
-- **Fix (`RELAY_ZAP`):**
-  - draw its 3-tile ring in prep;
-  - list "Relay zap: 2 980 damage" in the night summary;
-  - trim damage 13 → 10;
-  - sell 3 "Relay coil" ranks (40 / 60 / 80 Scrap, +2 damage and +0.3 range each) as the late Scrap sink.
+- **Fix (`RELAY_ZAP`):** draw its 3-tile ring in prep; list "Relay zap: 2 980 damage" in the night summary; trim damage
+  13 → 10; sell 3 "Relay coil" ranks (40 / 60 / 80 Scrap, +2 damage and +0.3 range each) as the late Scrap sink.
 
 ---
 
@@ -394,7 +374,7 @@ Also:
 
 | Round-1 item | Verdict |
 |---|---|
-| 1. An active verb (Relay Protocols) | **Partly.** Q is a real verb, and the boss-charge cancel matters. W doesn't scale; E competes for Intel |
+| 1. An active verb (Relay Protocols) | **Partly.** Q + W + E is worth +18 on N5, but Q only pays on the boss and W/E only as a spare-Circuit sink |
 | 2. Upgrades a good buy, L3 branches | **Fixed** (tall 34 / mid 36 / wide 24.5) |
 | 3. Killable boss, fair finale, true Results text | **Fixed** (22/22 kills, siege, conditional text). New: the boss can't threaten |
 | 4. Answers to tanks | **Fixed** |
@@ -419,8 +399,8 @@ Also:
 |---|---|---|---|
 | Strategic depth | 4 | **6** | Upgrades, branches, the Mortar and placement now matter (53 vs 0 Relay for the same towers). But the map is fixed per run, forward pads never pay, lulls carry no decisions, and the day outweighs the night |
 | Readability | 5 | **6** | 1080p is pixel-exact and gorgeous; clear lanes, the leak feed, per-path dots. 720p ×1 is small, "94" reads "34", the threat lane lies, towers are tiny vs enemies |
-| Tower / enemy design | 5 | **6.5** | Mortar, Piercer and Snare roles are real; tanks have counters. The zap is the hidden best tower; W and forward pads are dead weight |
-| Player agency | 2 | **5** | 2–10 casts a night, and saving Snare for the charge is a real decision. W/E are rarely worth it; the lull is a key press |
+| Tower / enemy design | 5 | **6.5** | Mortar, Piercer and Snare roles are real; tanks have counters. The zap is the hidden best tower; forward pads are dead weight |
+| Player agency | 2 | **5** | 6–12 casts a night are worth +18 on N5, and saving Snare for the charge is a real decision. But Q on crowds ≈ 0, W needs spare Circuits, the lull is a key press, and 4 day skill cards outweigh all of it (−13.5 on N4) |
 | Pacing / tension | 4 | **5** | Three shorter pushes and 3×, but a third of tails remain. Nights 1–4 cost 0–9 in real runs; one hard night (N5) |
 | Boss | 4 | **6.5** | Killable, telegraphed, an enrage beat and a siege, with counterplay on Q. It can't threaten (0–20 HP) and died before the plaza in both real runs |
 | UI (new axis) | — | **5** | Prep fits; lulls at 720p are broken; hints eat the panel |
@@ -434,7 +414,8 @@ Also:
    - **Target:** 4 cards and Call next push visible in every lull at 1280×720.
 2. **Give lulls a reason:** the next push's makeup shown only in lulls; kill crates; call-early at 1 Scrap/s (§3.2).
    - **Target:** a lull purchase in ≥ half the lulls of a real run.
-3. **Make W and E worth casting:** Arc Discharge 30 × `healthMult`; Flare for 15 Scrap that also pins Burrowers (§3.1).
+3. **Make every Protocol pay on its own:** Snare roots add +25% damage taken (radius 2.0); Arc Discharge for 20 Scrap,
+   `25 × healthMult`; Flare for 15 Scrap (§3.1). **Target:** Q on crowds ≥ +6 on N5; W castable on N3–N4 runs.
 4. **Re-centre difficulty on the night:** health +6% per night skill (cap +24%); `threatScale` 0.85 from N4 (§2).
    - **Target:** an engaged run loses 10–25 on N3–N4.
 5. **Make the Colossus dangerous:** slam 8, a tower stun at 50%, Ruin Guards in its enraged roots (§1.5).
@@ -443,17 +424,12 @@ Also:
 7. **Show and trim the Relay zap:** a prep ring, damage in the night summary, 13 → 10, "Relay coil" ranks as the Scrap
    sink (§3.4).
 8. **Readiness:** no "strong" above −2 (`strongLoss` 2), band [0.7, 1.3], the top leaker named per path (§1.6).
-9. **Truthfulness:**
-   - no lane or ⚠ for threats without an extra group;
-   - no "Relay patch" at full HP;
-   - dark, native-size Relay digits.
+9. **Truthfulness:** no lane or ⚠ for threats without an extra group; no "Relay patch" at full HP; dark, native-size
+   Relay digits.
 10. **Tower art 48×64 on 1.5-tile plinths** (critic G #12, round-1 #12).
 11. **Off-view arrows with counts** when zoomed in, so ×2 at 720p is playable (§4).
-12. **Small UI:**
-    - "→ 10% fewer enemies" overflow;
-    - Space should resume from the pause modal;
-    - the cold-start red wash on the plaza;
-    - the WebGL context-loss warnings at boot.
+12. **Small UI:** the "→ 10% fewer enemies" overflow; Space should resume from the pause modal; the cold-start red
+    wash on the plaza; the WebGL context-loss warnings at boot.
 
 ---
 
@@ -466,8 +442,8 @@ This is the round where the night became a tower defense.
 
 It isn't Kingdom Rush yet, for three reasons:
 1. **The 720p panel breaks in exactly the moments the new systems create** (lulls).
-2. **Two of the three Protocols and every lull are mostly decoration.**
+2. **Q on crowds and every lull are mostly decoration.** W/E pay only when Circuits are spare.
 3. **A competent run is decided before dusk,** by skills, research and the area card.
 
-Fix the panel, give the lull and W a reason, and pull the tension back into the night. Then this half of the pillar
+Fix the panel, give the lull and the Protocols a Scrap economy, and pull the tension back into the night. Then this half of the pillar
 holds.

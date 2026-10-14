@@ -980,8 +980,11 @@ export class Run {
     const tier = SALVAGE.tiers.find((t) => lost <= t.lost) || SALVAGE.tiers[SALVAGE.tiers.length - 1];
     const rng = makeRng(subSeed(this.seed, night, 'salvage'));
     const pool = { ...Object.fromEntries(Object.entries(SALVAGE.options).map(([k, o]) => [k, o.weight || 1])) };
-    // A tune-up needs a tower that hasn't had one.
+    // A tune-up needs a tower that hasn't had one; a Relay patch needs a Relay that isn't full (critic J2 §4).
     if (!this.towers.some((t) => !t.rangeMod)) delete pool.tune;
+    if (this.relayHp >= this.relayMax) delete pool.patch;
+    // After a bad night, repair and parts come up more often.
+    if (lost > SALVAGE.tiers[0].lost) for (const [k, m] of Object.entries(SALVAGE.badNight || {})) if (pool[k]) pool[k] *= m;
     const out = [];
     while (out.length < tier.picks && Object.keys(pool).length) {
       const k = rng.weighted(pool);
@@ -1086,10 +1089,11 @@ export class Run {
     this.bankRelics(result, game, summary);
     summary.dawnHp = this.dawnHp();
     // The goal: Research and its skill point count even if you went down (the work was done), but its night
-    // reward (the boon) only arrives if you got home.
+    // reward (the boon) only arrives if you got home — or if the goal itself ended at home (`objectiveSecured`:
+    // the drone took the engineer / the core, critic J2 C10).
     if (result.objectiveDone) {
       this.award(game, R.objective, 'Goal done', summary);
-      if (result.boon && result.extracted) this.addBoon(result.boon, summary, true);
+      if (result.boon && (result.extracted || result.objectiveSecured)) this.addBoon(result.boon, summary, true);
       else if (result.boon) summary.rewardLost = result.boon.text;
     }
     for (const o of result.optionals || []) {

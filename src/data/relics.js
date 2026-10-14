@@ -76,7 +76,7 @@ export const RELICS = {
   ironwood_grip: { name: 'Ironwood Grip', rarity: 'R', when: 'day', text: 'The heavy chop charges 40% faster.', fx: { chopCharge: 0.6 } },
   drone_tag: { name: 'Drone Tag', rarity: 'R', when: 'day', text: 'If you go down, the drone saves 60% of the loot you carry (relics are still lost).', fx: { droneShare: 0.6 } },
   second_wind: { name: 'Lifeline Idol', rarity: 'R', when: 'day', text: 'Once a day, a hit that would take you down leaves you at 1 health instead, untouchable for 1.5 s.', fx: { secondWind: true } },
-  pylon_coil: { name: 'Pylon Coil', rarity: 'R', when: 'night', text: 'Towers attack 4% faster for every beacon you have switched on (up to +20%).', fx: { beaconRate: 0.04, beaconRateMax: 0.2 } },
+  pylon_coil: { name: 'Beacon Coil', rarity: 'R', when: 'night', text: 'Towers attack 4% faster for every beacon you have switched on (up to +20%).', fx: { beaconRate: 0.04, beaconRateMax: 0.2 } },
   root_heart: { name: 'Root Heart', rarity: 'R', when: 'night', text: 'The Relay heals 1 health every 4 s during the attack.', fx: { relayRegen: 0.25 } },
   capacitor: { name: 'Overcharged Capacitor', rarity: 'R', when: 'night', text: 'Relay Protocols recharge 25% faster.', fx: { protocolCooldown: 0.75 } },
   signal_booster: { name: 'Signal Booster', rarity: 'R', when: 'night', text: 'Relay Protocols cover a 40% wider circle.', fx: { protocolRadius: 1.4 } },
@@ -140,6 +140,20 @@ export function drawRelic(rng, exclude = [], opts = {}) {
   }
   const pool = free.filter((k) => RELICS[k].rarity === rarity);
   return rng.pick(pool.length ? pool : free);
+}
+
+/**
+ * A relic that would do nothing for this run's build (critic J2 C12): Bramble Gloves with a Parang (its light
+ * slashes already cut brambles) or Cleaver, Tapir-hide Boots with Brush Dancer (ferns don't slow you), Seed Bank
+ * with neither Thorn Nest nor Snare Vine researched. Shrines, strongboxes and drops skip these while others are left
+ * (JungleRelics._exclude).
+ */
+export function relicDead(id, run, meta) {
+  const has = (s) => !!run?.hasSkill?.(s);
+  if (id === 'bramble_gloves') return run?.weapon === 'parang' || has('cleaver');
+  if (id === 'tapir_boots') return has('brush_dancer');
+  if (id === 'seed_bank') return !!(meta && run?.isTowerUnlocked) && !['thorn_nest', 'snare_vine'].some((k) => run.isTowerUnlocked(k, meta));
+  return false;
 }
 
 /**

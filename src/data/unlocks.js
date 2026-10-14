@@ -33,12 +33,12 @@ export const RESEARCH_TREE = {
   protocol_arc: {
     branch: 'blueprints', tier: 1, col: 2, cost: 100, icon: { key: 'icon_arc', glyph: 'ϟ', color: '#2ce8f5' },
     short: 'Arc Discharge', name: 'Protocol: Arc Discharge',
-    desc: 'A new night ability: click a spot and lightning strikes everything there (costs a Circuit and some Scrap each time).',
+    desc: 'A new night ability: click a spot and lightning strikes everything there (20 Scrap a cast; it hits harder every night).',
   },
   pulse_beacon: {
     branch: 'blueprints', tier: 2, col: 0, cost: 120, req: ['mortar_pod'], icon: { key: 'pulse_beacon' },
-    short: 'Pulse Beacon', name: 'Blueprint: Pulse Beacon',
-    desc: 'Adds the Pulse Beacon: a support tower that makes the towers around it shoot faster.',
+    short: 'Pulse Totem', name: 'Blueprint: Pulse Totem',
+    desc: 'Adds the Pulse Totem: a support tower that makes the towers around it shoot faster.',
   },
   salvage_logic: {
     branch: 'blueprints', tier: 2, col: 1, cost: 70, icon: { key: 'icon_salvage', glyph: '⟲', color: '#c0cbdc' }, refund: 0.9,
@@ -48,7 +48,7 @@ export const RESEARCH_TREE = {
   protocol_flare: {
     branch: 'blueprints', tier: 2, col: 2, cost: 150, req: ['protocol_arc'], icon: { key: 'icon_flare', glyph: '✹', color: '#feae34' },
     short: 'Flare', name: 'Protocol: Flare',
-    desc: 'A new night ability: light an area so tunnelling enemies can be shot and towers there hit harder (costs 1 Intel).',
+    desc: 'A new night ability: light an area so tunnelling enemies can be shot and towers there hit harder (15 Scrap a cast).',
   },
   // Towers still being built (critic J M8): hidden until `available` is flipped.
   sap_cannon: {
@@ -86,7 +86,7 @@ export const RESEARCH_TREE = {
   field_dressing: {
     branch: 'field', tier: 2, col: 0, cost: 65, req: ['field_kit'], icon: { key: 'pick_med' }, price: { scrap: 15 },
     short: 'Field Dressing', name: 'Field Dressing',
-    desc: 'Buy med kits at the morning briefing, 15 Scrap each (you can carry 2).',
+    desc: 'Buy med kits at the morning briefing for 15 Scrap each, no Biofiber (they leave the Workbench). You can carry 2.',
   },
   cartographer: {
     branch: 'field', tier: 2, col: 1, cost: 70, icon: { key: 'icon_map', glyph: '⌖', color: '#ead4aa' }, radius: 42,

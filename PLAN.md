@@ -155,8 +155,9 @@ Wave A — feel, look, sound
       **Thorn Stalker**, **machete throw (F)**, status effects, corner nudge, breakpoints, elite second move (critic I)
 - [x] Jungle visuals: value hierarchy (lit paths), per-district grades, golden-hour dusk + emissive night, world-anchored
       dithers, hand-drawn leaf frame, water waterline/ripples, effect palette, Feral palette swap, prop clearance (critic H)
-- [ ] Art: hand-made leaf frame, ripple/splash, spore pod/puffs, wordmark logo, unlock icons, panel frame; PixelLab
-      (last 10 of the 300 cap) Relay, pylon, four district hero ruins, area-boss sprites
+- [x] Art: hand-made leaf frame, ripple/splash, spore pod/puffs, wordmark logo, unlock icons, panel frame; PixelLab
+      (last 10 of the 300 cap) Relay, pylon, four district hero ruins, area-boss sprites. The PixelLab cap is now fully
+      used (300/300): new art is hand-made. The Pack Lord has no sprite of its own (the Feral Chief ×2)
 
 Wave B — the night becomes a game (critic K + J M1/M2)
 - [x] Night board: integer-scale pixel-exact night with zoom/pan camera, lanes clear of scenery, no enemy-on-enemy x-ray,
@@ -251,7 +252,48 @@ Wave C — the jungle gets content (critic J M3–M5, M7, N2, N4; critic L UX)
       health bars only on focus / big enemies, `icon_craft_<id>` on the Workbench, 9-slice `ui_panel_frame` on every
       `.panel`, titles ≤ 0.04 em, relic HUD icons at world texel scale, Codex object silhouettes.
       Not done: Data Center deep canopy keeps one trail median at ~50; the heat shimmer only shows in motion
-- [ ] Fresh critic round on the result
+- [x] Fresh critic round on the result: `critique/critic_H2` (art), `I2` (combat), `J2` (design), `K2` (tower defense).
+      Round 1 → round 2 scores: art env 6.5 → 7.5, night map 4.5 → 7, cohesion 5.5 → 6.5; combat depth 4 → 6, enemy
+      AI 4 → 6, traversal 5 → 7, responsiveness 7 → 8; design decisions 4 → 6, meta 3 → 6, variety 3 → 5.5, content
+      volume 3 → 5.5 (~50% of a $10–15 roguelite, was 15–20%); TD depth 4 → 6, agency 2 → 5, boss 4 → 6.5. Their bugs
+      and quick wins were fixed in a final pass (presentation polish, boss redesign, combat fixes, final fixes)
+- [x] Final fixes (critic J2 + K2 quick wins, no new systems): `pickMapKey` unsigned (maps ⅓ each, was Twin 67%);
+      bosses wake only when you step into the lair (6.5 tiles of its ☠) or hit it / its pack, lair props moved 10–12.5
+      tiles out, the Pack Lord and its pack hold the lair, goal sites near lairs picked last; the haul / escort reward
+      stands once the drone has it; speed-only dangers get no path line / ⚠; the glasshouse cistern is used up only when
+      it heals; salvage 3 picks clean / 2 otherwise, no Relay patch at full health; renames (Pulse Totem, Beacon Coil,
+      Tunnel Sight, intel drive, trapped mechanic), Heavy Spine line from data, Efficient Assembly toast. Economy: every
+      goal +20 Scrap, the skill point only from the goal (bonus tasks pay loot + Research), dawn health ≥ 75,
+      build-aware relic offers (`relicDead`), one med-kit shop (the Workbench's leaves with Field Dressing), the wave-cut
+      line on the preview. Night: 720p side panel (one-row Protocols, leak feed folded in lulls, no docked hints after
+      prep at 16:9, body min height: 4 cards + Call next push at 1280×720 / 1366×768 / 1080p), the lull shows the next
+      push, call-early 1 Scrap/s, Vine Snare +25% damage taken, Arc Discharge 20 Scrap / 25 × healthMult, Flare 15 Scrap,
+      Colossus slam 8, Relay zap range ring, readiness "strong" only ≤ −2 + the weakest path's top leaker, two-tone
+      Relay digits + a closed "9" glyph; HEALTH_MULT N4 7.4 → 6.8 (DESIGN §5 table)
+
+### Next (deferred from the round-2 critics — start here)
+Economy and pacing
+- [ ] A median-player economy: real players banked ~17–40 Scrap a day in critic runs vs the sim's 85; re-tune the
+      sim's "typical" profile against real-input runs, then the curve (critic J2 §11 A1–A2)
+- [ ] An act break at night 3: a Brood Mother mini-boss → relic pick of 3 + a skill point (J2 A3)
+- [ ] Re-centre difficulty on the night: a competent run is decided before dusk by skills/research/area (K2 #4:
+      health +6% per night skill, threatScale 0.85 from N4)
+Night
+- [ ] Forward pads worth a tower (beacon lamp or longer sightlines) (K2 #6); the Relay zap trimmed 13 → 10 with "Relay
+      coil" ranks as a Scrap sink (K2 #7)
+- [ ] Off-view arrows with counts when zoomed so ×2 at 720p is playable (K2 #11); a second board shape (3 lanes, or
+      the Relay not on the right) (J2 A6)
+- [ ] Build the three hidden research towers (Sap Cannon, Lure Totem, Bramble Wall) — art + mechanics — or hide tier 3
+Content and coherence
+- [ ] Six build-defining rare relics; build-aware shrine offers (J2 A7)
+- [ ] Late-run / Long Night days: respawning shrines and lairs (J2 A8); crew from escorted engineers (J2 A9)
+- [ ] Cut/merge for simplicity (J2 §11 B): Workbench as a night-prep tab, one wave-size cut per night, cut the survivor
+      bonus task (the escort goal covers it), Tune-up salvage option
+Art
+- [ ] Bosses: more animation (per-move silhouettes), the Pack Lord as its own larger sprite (it is the Feral Chief ×2)
+- [ ] Workbench/Codex/briefing postcards of each district's hero ruin (critic H2 §5); the Flooded platform hero ruin
+      reads as a broken wall
+- [ ] Listen pass on the synthesized audio by ear (levels were set by measurement only)
 
 ## Acceptance checklist
 
