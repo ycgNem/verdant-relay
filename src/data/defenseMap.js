@@ -36,27 +36,33 @@ export const FIELD = { w: 23, h: 15 };
 export const BUILD = {
   hideBelow: true,     // the tile right under (south of) a trail tile is blocked: a 2-tile-tall tower there hides the trail
   gap: 1,              // towers keep this many empty tiles between them (Chebyshev): their 48 × 64 art never overlaps
+  // A damage tower that would cover fewer than `barely` tiles of path asks first (Stage 9 round 2, critic P: casual builds
+  // put 4 of 13 towers where they covered 0–1 tiles): the ghost turns amber and it takes Shift+click or a second click.
+  barely: 3,
   // Reasons (one word or two, under the ghost) and their longer line (side panel / tooltip).
   words: {
-    off: 'Off the field', path: 'Path', hides: 'Hides path', plaza: 'Relay', tree: 'Tree', rock: 'Rocks',
-    water: 'Water', lamp: 'Lamp', taken: 'Taken', close: 'Too close', cost: "Can't afford",
+    off: 'Off the field', path: 'Path', hides: 'In front of path', plaza: 'Relay', tree: 'Tree', rock: 'Rocks',
+    water: 'Water', lamp: 'Lamp', taken: 'Taken', close: 'Too close', cost: "Can't afford", barely: 'Barely sees a path',
   },
   lines: {
     path: 'Enemies walk here: towers go beside the paths.',
-    hides: 'A tower here would hide the path behind it.',
+    hides: 'Right in front of a path: a tower here would hide the enemies walking behind it.',   // (critic Q: "Hides path" read as jargon)
     plaza: "The Relay's plaza stays clear.",
     tree: 'Blocked by a tree.',
     rock: 'Blocked by rocks.',
     water: 'Too wet to build on.',
     lamp: 'A lamp stands here.',
     close: 'Towers need a free tile between them.',
+    barely: 'This spot sees almost none of the paths. Shift+click (or click again) to build here anyway.',
   },
 };
 
 // Beacons light the lane mouths (Stage 9: the old "forward pads"): every beacon you switched on in the jungle lights
 // `tiles` more tiles of the lane facing it, from where it enters the field (up to `max` beacons a lane); enemies in
-// the light take ×(1 + bonus) damage from everything. The light is drawn as cyan pools along the trail.
-export const BEACON_LIGHT = { tiles: 5, max: 2, bonus: 0.15, from: 1, every: 1.5, color: '#2ce8f5' };
+// the light take ×(1 + bonus) damage from everything, and with `surface` Burrowers can't tunnel in it (bullets hit them
+// there). The light is drawn as cyan pools along the trail. Stage 9 round 2 (critic P: +15% on 5 tiles changed a night by
+// 1 Relay HP): 5 → 7 tiles, +15% → +35%, and the Burrower counter.
+export const BEACON_LIGHT = { tiles: 7, max: 2, bonus: 0.35, surface: true, from: 1, every: 1.5, color: '#2ce8f5' };
 
 /** Compass words → bearing in degrees (screen angle, see the header). */
 export const COMPASS_DEG = {
@@ -278,7 +284,7 @@ export const DEFENSE_VIEW = {
   // Placing a tower (Stage 9 build anywhere): the ghost (the tower's sprite on the tile under the cursor) tinted
   // `ok` / `bad`, a 1-tile dashed footprint, faint corner ticks on every free tile (`grid` opacity), and a dot every
   // `dotStep` tiles on each stretch of path the tower would cover (`dot` texels square).
-  build: { ok: '#63c74d', bad: '#e43b44', ghostOpacity: 0.85, grid: 0.6, gridTick: 3, dot: 4, dotStep: 0.5, cursorKeys: 9 },
+  build: { ok: '#63c74d', bad: '#e43b44', warn: '#feae34', ghostOpacity: 0.85, grid: 0.6, gridTick: 4, tick: '#d8ffc8', dot: 4, dotStep: 0.5, cursorKeys: 9 },
   // The footing under a built tower (hand-made `tower_footing`, its manifest "top" box centred on the tile; the rank
   // badge sits on its front face). Off / missing art: the tower stands on the bare ground.
   footing: 'tower_footing',

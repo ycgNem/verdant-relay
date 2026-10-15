@@ -232,6 +232,7 @@ export class ExploreEnemy {
     // Punish: an open creature takes x POISE.punish.mult from your blade (a riposte keeps its own; bosses have theirs).
     const punished = open && blade && !spec?.riposte && !this.lordOf;
     if (punished) dmg *= POISE.punish.mult;
+    if (blade) this._engage(0, true);   // you picked this fight: it's in it, whatever the brawl cap
     // Hitting it while it walks at you makes it hit back (POISE.counter); a Feral that can't, raises its guard.
     if (blade && this.state === 'chase' && !staggers) this._provoked(dx, dz, src);
     dmg = Math.round(dmg);
@@ -389,7 +390,7 @@ export class ExploreEnemy {
     this.alerted = true;
     if (this.state === 'idle') this.state = 'chase';
     if (!this.hidden) this.scene.fx.text({ x: this.x, z: this.z }, '!', { color: '#feae34', cls: 'big', y: this.vis.userData.vis.height + 0.35, life: 0.6 });
-    if (spread) this.scene.alertNear(this.x, this.z, 6, this);
+    if (spread) this.scene.alertNear(this.x, this.z, CONFIG.expedition.attackers.alertSpread ?? 6, this);
   }
 
   die() {
@@ -497,6 +498,14 @@ export class ExploreEnemy {
         this.face = toP;
         // Not allowed to attack yet (cooldown / no free token / choking): hold a slot round the player.
         const waiting = dist < A.holdDist + 1.2 && (this.cd > A.circleCd || choking || !this._tokenFree());
+        // The brawl cap (fix wave, critic O #1): only `attackers.engagedMax` creatures fight you at once; the rest hold
+        // off at `engageWait` tiles (a Feral may still throw its spear) and step in when a place frees up.
+        if (!this._engage(dist)) {
+          if (d.spear && !choking && dist > d.spear.min && this._wantSpear(dist, true) && this._spearFree()) { this._startWindup(toP, dist, 'spear'); break; }
+          if (d.speed > 0) { move = dist < A.engageWait + 1.5 ? this._circle(toP, dist, dt, A.engageWait) : this._pathTo(p.pos.x, p.pos.z); speed *= A.circleSpeed; }
+          this.stuckT = 0; this.bestD = Infinity;
+          break;
+        }
         if (d.attack === 'melee') {
           // Hit back (POISE.counter): you struck it as it came in - no cooldown or token cap.
           if (this.counterQ) {
@@ -763,6 +772,8 @@ export class ExploreEnemy {
   }
 
   _spearFree() {
+    // (fix wave: and at most one spear per `attackers.spearGap` s across the pack — waiting Ferals throw too now)
+    if (this._now() - (this.scene._lastSpear ?? -1e9) < (CONFIG.expedition.attackers.spearGap || 0)) return false;
     return !this.scene.enemies.some((e) => e !== this && !e.dead && e.mv === 'spear' && (e.state === 'windup' || e.state === 'attack'));
   }
 
@@ -777,13 +788,13 @@ export class ExploreEnemy {
     return { x: dx / l, z: dz / l };
   }
 
-  _wantSpear(dist) {
+  _wantSpear(dist, waiting = false) {
     const S = this.def.spear;
     const A = CONFIG.expedition.attackers;
     if (this.spearCd > 0 || this.cd > 0 || !this.los || dist > S.range || dist < S.min || !this._onScreen()) return false;
     const p = this.scene.player.pos;
     const inBrush = this.scene.world.brushAt(Math.floor(p.x), Math.floor(p.z)) > 0;
-    return this.stuckT > A.stuck || (inBrush && dist > S.brushDist);
+    return waiting || this.stuckT > A.stuck || (inBrush && dist > S.brushDist);
   }
 
   // ---------------------------------------------------------------- attack tokens
@@ -816,6 +827,27 @@ export class ExploreEnemy {
     return true;
   }
 
+  /**
+   * The brawl cap (CONFIG.expedition.attackers.engagedMax by night): is this creature one of those allowed to fight you
+   * now? Members leave when they die, calm down or drift `engageRelease` tiles off; a newcomer joins within `engageJoin`
+   * tiles while there is room. force: you hit it — it fights back whatever the count. Boss minions and the Pack Lord
+   * are never capped.
+   */
+  _engage(dist, force = false) {
+    if (this.minion || this.lordOf) return true;
+    const A = CONFIG.expedition.attackers;
+    if (!A.engagedMax) return true;
+    const sc = this.scene, p = sc.player.pos;
+    const pool = (sc._engaged ||= new Set());
+    for (const e of pool) {
+      if (e.dead || !e.alerted || e.state === 'idle' || e.hidden || Math.hypot(e.x - p.x, e.z - p.z) > A.engageRelease) pool.delete(e);
+    }
+    if (pool.has(this)) return true;
+    const max = A.engagedMax[Math.max(0, Math.min(A.engagedMax.length - 1, (this.game.run?.night || 1) - 1))];
+    if (force || (dist <= A.engageJoin && pool.size < max)) { pool.add(this); return true; }
+    return false;
+  }
+
   _dropToken() {
     if (!this.token) return;
     this.token = false;
@@ -827,7 +859,7 @@ export class ExploreEnemy {
    * degrees off where they aim (Skitters: `backArc`, right behind) — orbiting round to it rather than backing off
    * (critic I #2). The slot follows the aim at `slotTurn` rad/s and swaps sides now and then.
    */
-  _circle(toP, dist, dt) {
+  _circle(toP, dist, dt, holdAt = null) {
     const A = CONFIG.expedition.attackers;
     const p = this.scene.player;
     this.slotT -= dt;
@@ -845,7 +877,7 @@ export class ExploreEnemy {
     const da = wrapA(this.slotA - cur);
     let tang = Math.max(-1, Math.min(1, da * 1.5));
     if (Math.abs(da) < 0.15) tang = 0.2 * this.strafeSign;
-    const hold = A.holdDist;
+    const hold = holdAt ?? A.holdDist;
     const radial = dist < hold - 0.3 ? -1 : dist > hold + 0.4 ? 0.8 : 0;
     // (toP.z, -toP.x) walks round the player in the direction that increases `cur`.
     const mx = toP.z * tang + toP.x * radial, mz = -toP.x * tang + toP.z * radial;
@@ -1036,7 +1068,7 @@ export class ExploreEnemy {
         damage: spear ? this.spearDamage : this.damage, source: d.name, owner: this,
       });
       sc.fx.burst({ x: ox, y: 0.1, z: oz }, { color: spear ? '#a8763e' : '#feae34', count: 4, speed: 1.5, up: 1, life: 0.2, size: 0.07 });
-      if (spear) { this.spearCd = d.spear.cooldown; sfxAt(this.game, this.x, this.z, 'spear_throw', 'lunge'); }
+      if (spear) { this.spearCd = d.spear.cooldown; sc._lastSpear = this._now(); sfxAt(this.game, this.x, this.z, 'spear_throw', 'lunge'); }
       else this.game.sfx.playAt('enemy_shot', this.x, this.z);
       this.stateT = 0;
     } else if (CHARGES[mv]) {
@@ -1063,7 +1095,7 @@ export class ExploreEnemy {
     const dx = p.pos.x - this.x, dz = p.pos.z - this.z, d = Math.hypot(dx, dz) || 1e-4;
     if (!p.dead && d < S.radius + p.r * 0.5) {
       const dmg = Math.round(S.damage * nightTune('enemyDamage', this.night) * CONFIG.expedition.elite.damageMult);
-      if (p.hurt(dmg, dx / d, dz / d, this.def.name, 'stomp')) { this.landed = true; this._pool().hitAt = this._now(); p.kb.x += (dx / d) * S.knock; p.kb.z += (dz / d) * S.knock; }
+      if (p.hurt(dmg, dx / d, dz / d, this.def.name, 'stomp', this)) { this.landed = true; this._pool().hitAt = this._now(); p.kb.x += (dx / d) * S.knock; p.kb.z += (dz / d) * S.knock; }
     }
     for (let i = 0; i < 18; i++) {
       const a = (i / 18) * Math.PI * 2;
@@ -1078,7 +1110,8 @@ export class ExploreEnemy {
   /** After a lunge: sometimes a Feral thrusts again (critic I §9C), otherwise recover. */
   _afterLunge(toP, dist, playerTarget) {
     const T = this.def.thrust2;
-    if (this.mv === 'lunge' && T && playerTarget && this.night >= T.fromNight && Math.random() < T.chance) {
+    const ch = Array.isArray(T?.chance) ? T.chance[Math.min(T.chance.length - 1, Math.max(0, this.night - 1))] : T?.chance;   // (by night)
+    if (this.mv === 'lunge' && T && playerTarget && this.night >= T.fromNight && Math.random() < ch) {
       this._startWindup(toP, dist, 'thrust2');
       return;
     }
@@ -1092,7 +1125,7 @@ export class ExploreEnemy {
       const kind = CHARGES[this.mv] ? 'charge' : 'melee';
       if (p.tryDeflect?.(this, kind, this.x, this.z)) { this.hitDone = true; return; }
       const dmg = this.mv === 'thrust2' ? Math.round(this.damage * this.def.thrust2.damage) : this.damage;
-      if (p.hurt(dmg, this.aimDir.x, this.aimDir.z, this.def.name, this.mv)) {
+      if (p.hurt(dmg, this.aimDir.x, this.aimDir.z, this.def.name, this.mv, this)) {
         this.hitDone = true;
         this.landed = true;
         this._pool().hitAt = this._now();
@@ -1313,7 +1346,7 @@ export class ExploreEnemy {
     this.atkAnimSpeed = 1.2;
     this.atkAnimT = 0.4;
     if (!p.dead && Math.hypot(p.pos.x - at.x, p.pos.z - at.z) < d.ring + p.r * 0.5) {
-      if (p.hurt(this.damage, 0, 0, d.name, 'erupt')) { p.root?.(d.root); this._pool().hitAt = this._now(); }
+      if (p.hurt(this.damage, 0, 0, d.name, 'erupt', this)) { p.root?.(d.root); this._pool().hitAt = this._now(); }
     }
     fx.burst({ x: at.x, y: -0.2, z: at.z }, { color: '#5a4430', color2: '#8f563b', count: 18, speed: 3, up: 3.2, life: 0.55, size: 2 / 32, gravity: 9 });
     fx.burst({ x: at.x, y: 0.2, z: at.z }, { color: '#c23a3a', color2: '#2a5628', count: 12, speed: 2.6, up: 2.6, life: 0.6, size: 2 / 32, aspect: 2, gravity: 5, drag: 2 });

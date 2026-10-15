@@ -20,7 +20,9 @@ export const MAP_MARKERS = {
   // Stage 9: rivers are crossed on bridges — a little plank-bridge glyph (BRIDGE cells) in plank colours.
   ford: { color: '#e4a672', core: '#733e39', shape: 'bridge', size: 1.5, label: 'Bridge (the way across)' },
   // Area boss lair (src/entities/AreaBoss.js): a pixel skull, from day 3 until it is killed.
-  boss: { color: '#ff4a4a', core: '#ffe0d0', shape: 'skull', size: 1.6, label: 'Area boss' },
+  boss: { color: '#ff4a4a', core: '#ffe0d0', shape: 'skull', size: 1.3, label: 'Area boss' },   // (under the quest ◆, critic Q)
+  // The quest's pulse on the big map (not in the legend): a hollow diamond round the ◆, blinking in two steps.
+  objective_ring: { color: '#fee761', shape: 'diamond', size: 1.4, hollow: true },
   // Relics & lore (src/scenes/JungleRelics.js): strongboxes, shrines and relics on the ground (a four-point star);
   // hidden caches the Scavenger's Compass finds; data logs you have walked past.
   relic: { color: '#fee761', core: '#ffffff', shape: 'star', size: 1.5, label: 'Relic (strongbox / shrine)' },
@@ -265,7 +267,12 @@ export class JungleMap {
           edge = true;
         }
       }
-      drawMarker(g, m.type, px, py, unit, { a: m.a, scale: edge ? 0.8 : 1, dim: m.dim });
+      // The quest ◆ is the biggest thing on the maps (critic Q: 7 px dots next to big boss skulls): ×2 on the big map
+      // with a blinking ring, ×1.3 on the minimap.
+      const quest = m.type === 'objective';
+      const k = quest ? (rim?.box ? MAP_VIEW.questBig : MAP_VIEW.questMini) : 1;
+      if (quest && rim?.box && Math.floor(time * 2.5) % 2 === 0) drawMarker(g, 'objective_ring', px, py, unit, { scale: k * 1.7 });
+      drawMarker(g, m.type, px, py, unit, { a: m.a, scale: (edge ? 0.8 : 1) * k, dim: m.dim });
     }
   }
 

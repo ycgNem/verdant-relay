@@ -626,7 +626,7 @@ export class Run {
   }
 
   /** Night kills' Scrap bounty multiplier (Salvage King). */
-  bountyMult() { return this.skillMult('bountyMult'); }
+  bountyMult() { return this.skillMult('bountyMult') * (this.tonight?.provoked ? DEFENSE.provoke?.bounty ?? 1 : 1); }
 
   /** Fresh Ideas (research): can the skill cards be re-rolled now (once a night, with a point to spend)? */
   canRerollSkills(meta) {
@@ -916,7 +916,27 @@ export class Run {
    * Wave-size multiplier actually used tonight: every cut stacks, floored at CONFIG.waveSizeFloor; Overgrowth
    * "Swarming" then grows the result (so the cuts keep their full −20% room).
    */
-  waveCountMult() { return Math.max(CONFIG.waveSizeFloor ?? 0, this.tonight.enemyCount ?? 1) * this.mod('enemyCount'); }
+  waveCountMult() {
+    return Math.max(CONFIG.waveSizeFloor ?? 0, this.tonight.enemyCount ?? 1) * this.mod('enemyCount')
+      * (this.tonight.provoked ? DEFENSE.provoke?.enemies ?? 1 : 1);
+  }
+
+  /** Why Provoke can't be used now, or null (DEFENSE.provoke: from its night, once a night). */
+  provokeBlocked() {
+    const P = DEFENSE.provoke;
+    if (!P) return 'Off';
+    if (this.night < P.fromNight) return `From night ${P.fromNight}`;
+    if (this.tonight.provoked) return 'Already provoked tonight';
+    return null;
+  }
+
+  /** Dare a bigger wave tonight: DEFENSE.provoke.enemies × its size, +scrap now, kill bounties × bounty. */
+  provoke() {
+    if (this.provokeBlocked()) return false;
+    this.tonight.provoked = true;
+    this.add({ scrap: DEFENSE.provoke.scrap });
+    return true;
+  }
 
   /** True when tonight's stacked wave cuts reach (or would pass) the floor. */
   waveCutCapped() { return (this.tonight.enemyCount ?? 1) <= (CONFIG.waveSizeFloor ?? 0) + 1e-6; }
@@ -931,6 +951,10 @@ export class Run {
     const st = CONFIG.relay.stipend;
     const stipend = st ? st[Math.max(0, Math.min(st.length - 1, this.night - 1))] : 0;
     if (stipend > 0) { this.add({ scrap: stipend }); notes.push(`Relay stipend: +${stipend} Scrap`); }
+    // …and from night 3 a Circuit and a Biofiber (CONFIG.relay.stipendParts).
+    const sp = CONFIG.relay.stipendParts;
+    const parts = sp ? sp[Math.max(0, Math.min(sp.length - 1, this.night - 1))] : 0;
+    if (parts > 0) { this.add({ circuits: parts, biofiber: parts }); notes.push(`Relay stipend: +${parts} Circuit${parts > 1 ? 's' : ''} and +${parts} Biofiber`); }
     // Last night's salvage pick (a free upgrade waits for this prep).
     if (this.salvage?.freeUpgrades) {
       t.freeUpgrades += this.salvage.freeUpgrades;

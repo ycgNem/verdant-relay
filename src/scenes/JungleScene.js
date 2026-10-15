@@ -40,7 +40,7 @@ import { Shots } from '../entities/ExploreShots.js';
 import { SporePods } from '../entities/SporePods.js';
 import { Forage } from '../entities/Forage.js';
 import { JungleMap, MAP_MARKERS, drawMarker } from '../ui/JungleMap.js';
-import { MAP_VIEW, HUD, TEXT_LANE } from '../data/hud.js';
+import { MAP_VIEW, HUD, TEXT_LANE, QUEST } from '../data/hud.js';
 import { DEFAULT_KEYS } from '../data/controls.js';
 import { el, button, bar, toast, modal, fmtTime, resChip, resIcon, resIconHtml, setToastsPaused, showBanner, pinWhole, snapLine, snapBox } from '../ui/ui.js';
 import { showHint } from '../ui/hints.js';
@@ -472,9 +472,15 @@ export class JungleScene {
     this.game.sfx.play('goal_done');
     // QUEST COMPLETE + the reward, a burst, the tracker flashes (JungleQuest.complete).
     if (this.quest) this.quest.complete();
-    else this._banner('QUEST COMPLETE', this.objDef.rewardAtDelivery ? 'The drone has it: the reward is yours' : 'Head home to claim the reward');
+    else this._banner('QUEST COMPLETE', this._rewardSafe() ? 'The drone has it: the reward is yours' : 'Head home to claim the reward');
     for (const it of this.interactables) if (it.kind === 'primary') it.done = true;
   }
+
+  /**
+   * Is the quest's night reward already safe once it's done (fix wave, critic R / Q: losing it on the way home read as a
+   * betrayal)? Goals the drone takes at delivery, and any quest on nights up to CONFIG.expedition.keepRewardThrough.
+   */
+  _rewardSafe() { return !!this.objDef?.rewardAtDelivery || this.game.run.night <= (X().keepRewardThrough ?? 0); }
 
   /**
    * +1 skill point for this trip. The goal (bonus tasks no longer do: OPTIONAL.skillPoint) gives at most
@@ -1050,7 +1056,7 @@ export class JungleScene {
     for (const s of this.data.sites) {
       if (s.type !== 'camp' || Math.floor(s.x / C) !== cx || Math.floor(s.z / C) !== cz) continue;
       const cs = first ? FIRST_DAY.campSize : POP.campSize;
-      const m = rng.int(cs[0], cs[1]) + (run.night >= 3 ? 1 : 0);
+      const m = rng.int(cs[0], cs[1]) + (run.night >= (POP.campGrowFrom ?? 3) ? 1 : 0);
       // From DAY_CREATURES.chief.fromNight a Feral Chief leads the camp (its aura speeds the Ferals up).
       const chief = EXPLORE_ENEMIES.feral_chief && run.night >= DAY_CREATURES.chief.fromNight;
       for (let i = 0; i < m; i++) {
@@ -1315,8 +1321,8 @@ export class JungleScene {
         lost.length ? el('div', {}, el('p.bad', 'Carried loot lost:'), el('div.resrow', {}, lost)) : el('p.muted', 'You weren\'t carrying anything.'),
         kept.length ? el('div', {}, el('p.good', 'The drone salvaged:'), el('div.resrow', {}, kept)) : null,
         this.relicsCtl?.lostLines(),   // relics you carried are lost (never salvaged)
-        this.objectiveDone ? el('p', {}, el('span.good', this.objDef.rewardAtDelivery ? 'Your quest keeps its skill point and its reward (the drone already has it).' : 'Your quest still earns its skill point'),
-          this.objDef.rewardAtDelivery ? null : el('span.bad', this.objDef.boon ? ', but its reward tonight needed you home.' : '.')) : null,
+        this.objectiveDone ? el('p', {}, el('span.good', this._rewardSafe() ? 'Your quest keeps its skill point and its reward (the drone already has it).' : 'Your quest still earns its skill point'),
+          this._rewardSafe() ? null : el('span.bad', this.objDef.boon ? ', but its reward tonight needed you home.' : '.')) : null,
         el('p', `You start tomorrow with ${dawn} health. Everything stored at base, and your towers, are safe.`));   // the consequence: body text (critic M P2-5)
       // Keys too (critic L §2.3): Enter / Space / E / Esc, after a short guard so a key mashed in the fight can't skip it.
       const ov = modal(this.game.ui, 'You went down', body, [button('Back to base', () => this._finish('died'), { cls: 'primary', hotkey: 'Enter' })], { guard: 0.6, extraKeys: [this.game.input.keyFor('interact')] });
@@ -1375,6 +1381,9 @@ export class JungleScene {
     run.storeWorld(this.state);
     const extracted = kind === 'extracted';
     const salvaged = extracted ? null : this._salvage();
+    // A quest you didn't finish but came home from still earns its skill point from night failedQuestPointFrom (fix wave,
+    // critic R: a hard day used to cost the point too, and the run spiralled).
+    if (extracted && !this.objectiveDone && run.night >= (X().failedQuestPointFrom ?? 99)) this._grantSkillPoint({ quiet: true });
     const result = {
       district: this.district,
       extracted,
@@ -1385,7 +1394,7 @@ export class JungleScene {
       objectiveDone: this.objectiveDone,
       // A goal finished by handing something to the drone at home (escort, haul) is already home: its reward stands
       // even if you go down afterwards (critic J2 C10).
-      objectiveSecured: !!(this.objectiveDone && this.objDef.rewardAtDelivery),
+      objectiveSecured: !!(this.objectiveDone && this._rewardSafe()),
       objective: this.objKey,
       objectiveName: this.objDef.name,
       boon: this.objectiveDone ? this.objDef.boon : null,
@@ -1455,8 +1464,8 @@ export class JungleScene {
     return [
       el(carried ? 'p.bad' : 'p.muted', !carried ? 'You carry nothing, so nothing is lost.'
         : saved ? `What you carry is lost, except what the drone saves (${saved}).` : 'Everything you carry is lost.'),
-      this.objectiveDone && this.objDef.boon ? el('p.small', {}, el('span.good', this.objDef.rewardAtDelivery ? 'The quest keeps its skill point and its reward (the drone already has it).' : 'The quest keeps its skill point'),
-        this.objDef.rewardAtDelivery ? null : el('span.bad', ', but its reward tonight needs you home.')) : null,
+      this.objectiveDone && this.objDef.boon ? el('p.small', {}, el('span.good', this._rewardSafe() ? 'The quest keeps its skill point and its reward (the drone already has it).' : 'The quest keeps its skill point'),
+        this._rewardSafe() ? null : el('span.bad', ', but its reward tonight needs you home.')) : null,
       this.relicsCtl?.lostLines(),
       el('p.muted.small', `You start tomorrow with ${run.dawnHp(CONFIG.expedition.deathReturnHp)} health. Stored resources and towers are safe.`),
     ];
@@ -1753,23 +1762,31 @@ export class JungleScene {
     }
   }
 
+  /** True when a live creature is alerted (after you) within `r` tiles. */
+  _threatWithin(r) {
+    const p = this.player.pos;
+    return this.enemies.some((e) => !e.dead && e.alerted && Math.abs(e.x - p.x) < r && Math.abs(e.z - p.z) < r && Math.hypot(e.x - p.x, e.z - p.z) < r);
+  }
+
   _updateInteract(dt) {
     const pl = this.player;
     const input = this.game.input;
     // Overlapping prompts: Relay / pylons beat objectives beat containers (DAY.interactRank), nearest
     // first within a rank — unless you stand right on top of a lower-ranked one (point-blank exception).
-    let best = null, bd = Infinity, br = Infinity, near = null, nd = Infinity;
+    let best = null, bd = Infinity, br = Infinity, near = null, nd = Infinity, threat = null;
     for (const it of this.interactables) {
       if (it.done || it.hidden?.()) continue;
       const d = Math.hypot(it.x - pl.pos.x, it.z - pl.pos.z);
       if (d > 4) continue;
       if (it.walkOver && d < 0.75 && it.enabled()) { this._complete(it); continue; }
       if (d > it.radius) continue;
-      const r = DAY.interactRank[it.kind] ?? 1;
+      // (a data log waits until nothing is after you: its text box would cover the fight)
+      if (it.kind === 'lore' && (threat ??= this._threatWithin(DAY.interactLoreCalm))) continue;
+      const r = it.kind === 'primary' && !it.enabled() ? DAY.interactLockedRank : DAY.interactRank[it.kind] ?? 1;
       if (r < br || (r === br && d < bd)) { best = it; bd = d; br = r; }
       if (d < nd) { near = it; nd = d; }
     }
-    if (near && near !== best && nd <= DAY.interactPointBlank && bd - nd >= DAY.interactPointBlankLead) best = near;
+    if (near && near !== best && best?.kind !== 'primary' && nd <= DAY.interactPointBlank && bd - nd >= DAY.interactPointBlankLead) best = near;
     const ht = this.holdTarget;
     if (ht && !ht.done && input.isDown('KeyE') && Math.hypot(ht.x - pl.pos.x, ht.z - pl.pos.z) <= ht.radius + X().holdGrace) best = ht;
     if (this.holdTarget && this.holdTarget !== best) {
@@ -2301,43 +2318,82 @@ export class JungleScene {
     return best;
   }
 
-  /** River wayfinding: when the straight line to the goal crosses deep water, the bridge to use (this._ford) or null. */
+  /**
+   * River wayfinding (critic Q fix 2: the straight-line test sent players to a bridge on the wrong bank): a whole-map
+   * walk field from the quest target (deep water and solid props block; brush doesn't, you can cut it), with bridge
+   * decks and without. The "cross at the bridge" hint (this._ford) shows only when the shortest walk you → target goes
+   * over a deck and walking round on land is impossible or much longer (QUEST.ford.landSlack); it points at the first
+   * deck on that walk.
+   */
   _updateFord(ot) {
+    const F = QUEST.ford;
     this._fordT = (this._fordT || 0) - 1;
     if (this._fordT > 0) return;
-    this._fordT = 15;   // frames
+    this._fordT = F.every;   // frames
     this._ford = null;
-    if (!ot || this.objectiveDone) return;
-    const p = this.player.pos, W = this.data.size, deep = this.data.deep, ford = this.data.ford;
-    if (!deep || !ford) return;
-    const len = Math.hypot(ot.x - p.x, ot.z - p.z), n = Math.ceil(len * 2);
-    let crosses = false;
-    for (let i = 1; i < n && !crosses; i++) {
-      const x = Math.floor(p.x + ((ot.x - p.x) * i) / n), z = Math.floor(p.z + ((ot.z - p.z) * i) / n);
-      if (x >= 0 && z >= 0 && x < W && z < W && deep[z * W + x]) crosses = true;
+    const deck = this.data.ford;
+    if (!ot || this.objectiveDone || !deck || !this.data.bridges?.length) return;
+    const W = this.data.size, gx = Math.floor(ot.x), gz = Math.floor(ot.z);
+    // The two fields, rebuilt when the target moves (an escort's way home, a roaming Alpha) at most every F.refield s.
+    let fd = this._fordField;
+    if (!fd || ((Math.abs(fd.gx - gx) > F.move || Math.abs(fd.gz - gz) > F.move) && this.time - fd.at > F.refield)) {
+      fd = this._fordField = { gx, gz, at: this.time, all: this._walkField(gx, gz, false), land: this._walkField(gx, gz, true) };
     }
-    if (!crosses) return;
-    // The bridge with the shortest walk you → its middle → goal (a pond with no crossing nearby: walk round it).
-    if (this.data.bridges?.length) {
-      let best = null, bd = len * 2.5;
-      for (const b of this.data.bridges) {
-        const x = (b.x0 + b.x1) / 2, z = (b.z0 + b.z1) / 2;
-        const d = Math.hypot(x - p.x, z - p.z) + Math.hypot(ot.x - x, ot.z - z);
-        if (d < bd) { bd = d; best = { x, z }; }
+    const at = (f, x, z) => (x < 0 || z < 0 || x >= W || z >= W ? -1 : f[z * W + x]);
+    // Start from the player's tile (or a walkable neighbour: standing against a prop).
+    let px = Math.floor(this.player.pos.x), pz = Math.floor(this.player.pos.z);
+    if (at(fd.all, px, pz) < 0) {
+      let best = null;
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) { const d = at(fd.all, px + dx, pz + dz); if (d >= 0 && (!best || d < best[2])) best = [px + dx, pz + dz, d]; }
+      if (!best) return;   // (no walk to it at all: nothing to point at)
+      [px, pz] = best;
+    }
+    const dAll = at(fd.all, px, pz), dLand = at(fd.land, px, pz);
+    if (dLand >= 0 && dLand <= dAll * F.landSlack) return;   // a land route about as short: no bridge needed
+    // Walk the field downhill to the target; the first deck tile on the way is the bridge to use.
+    for (let n = 0; n < 4 * W; n++) {
+      const i = pz * W + px;
+      if (deck[i]) {
+        const br = this.data.bridges.find((q) => px >= Math.floor(q.x0) && px <= Math.ceil(q.x1) && pz >= Math.floor(q.z0) && pz <= Math.ceil(q.z1));
+        this._ford = br ? { x: (br.x0 + br.x1) / 2, z: (br.z0 + br.z1) / 2 } : { x: px + 0.5, z: pz + 0.5 };
+        return;
       }
-      this._ford = best;
-      return;
+      const here = fd.all[i];
+      if (here <= 0) return;
+      let nx = -1, nz = -1, nd = here;
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) { const d = at(fd.all, px + dx, pz + dz); if (d >= 0 && d < nd) { nd = d; nx = px + dx; nz = pz + dz; } }
+      if (nx < 0) return;
+      px = nx; pz = nz;
     }
-    const pad = 30;
-    const x0 = Math.max(0, Math.floor(Math.min(p.x, ot.x) - pad)), x1 = Math.min(W - 1, Math.ceil(Math.max(p.x, ot.x) + pad));
-    const z0 = Math.max(0, Math.floor(Math.min(p.z, ot.z) - pad)), z1 = Math.min(W - 1, Math.ceil(Math.max(p.z, ot.z) + pad));
-    let best = null, bd = len * 2.5;
-    for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
-      if (!ford[z * W + x]) continue;
-      const d = Math.hypot(x + 0.5 - p.x, z + 0.5 - p.z) + Math.hypot(ot.x - x - 0.5, ot.z - z - 0.5);
-      if (d < bd) { bd = d; best = { x: x + 0.5, z: z + 0.5 }; }
+  }
+
+  /**
+   * Steps to tile (gx, gz) from every tile (8-way, no corner cutting; −1 = no walk), over the whole map: deep water and
+   * solid props block, brush doesn't (it can be cut). `noDecks`: bridge decks block too (is there a land route?).
+   */
+  _walkField(gx, gz, noDecks) {
+    const W = this.data.size, w = this.world, deck = this.data.ford;
+    const dist = new Int32Array(W * W).fill(-1), q = new Int32Array(W * W);
+    const open = (x, z) => x >= 0 && z >= 0 && x < W && z < W && !w.deep[z * W + x] && !w.objGrid[z * W + x] && !(noDecks && deck[z * W + x]);
+    let h = 0, t = 0;
+    // Seed the target's tile (its own prop may sit on it) and its open neighbours.
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const x = gx + dx, z = gz + dz;
+      if (x < 0 || z < 0 || x >= W || z >= W || (dx || dz) && !open(x, z)) continue;
+      if (dist[z * W + x] < 0) { dist[z * W + x] = dx || dz ? 1 : 0; q[t++] = z * W + x; }
     }
-    this._ford = best;
+    while (h < t) {
+      const i = q[h++], x = i % W, z = (i - x) / W, d = dist[i] + 1;
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dz) continue;
+        const nx = x + dx, nz = z + dz;
+        if (!open(nx, nz) || dist[nz * W + nx] >= 0) continue;
+        if (dx && dz && (!open(x + dx, z) || !open(x, z + dz))) continue;
+        dist[nz * W + nx] = d;
+        q[t++] = nz * W + nx;
+      }
+    }
+    return dist;
   }
 
   _coachNext() {

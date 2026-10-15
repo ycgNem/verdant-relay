@@ -524,4 +524,22 @@
   .df-side .df-rd-line > .df-rd-k { display: none; }
   .df-side .df-rd-line > .df-meter { margin-left: 0; }
   .df-side .df-rd-lanes .df-rd-lane > .bad { display: none; }
+  .df-bbhead .df-bbname { display: none; }   /* (the cards carry the names; it truncated, critic P) */
 }
+.df-bbkeys { white-space: nowrap; }
+/* Stage 9 round 2 (critics P / Q): the tower's short name on its build card. */
+.df-bname { max-width: 100%; overflow: hidden; text-overflow: clip; white-space: nowrap; color: var(--text); line-height: 1; }
+.df-side .btn.df-bcard.disabled .df-bname { color: var(--muted); }
+.df-bbhow { line-height: 1.2; text-align: center; }
+.df-actsrow { flex: none; display: flex; flex-direction: column; gap: round(calc(var(--u) * 4), 1px); }
+.df-actsrow:empty { display: none; }
+.df-actsrow .df-prepacts { gap: round(calc(var(--u) * 4), 1px); }
+.df-rd-counter { color: var(--amber); line-height: 1.2; margin: round(calc(var(--u) * 1), 1px) 0; }
+.df-placetag.warn { color: var(--amber); border-color: var(--amber); }
+/* The build bar's how-to line steps aside while a coach hint (the same advice) is docked above it. */
+.df-side:has(.df-hintdock .hint) .df-bbhow { display: none; }
+/* Between pushes the next push's list may shrink further, so Call next push always fits (critic P, 720p lull). */
+.df-side:not(.df-inprep) .df-body { min-height: round(calc(var(--u) * 40), 1px); }
+.df-actsrow .btn { padding-top: round(calc(var(--u) * 2), 1px); padding-bottom: round(calc(var(--u) * 2), 1px); min-height: 0; line-height: 1.15; }
+/* While a coach hint is docked (it times out), the wave preview may shrink to make room for it above the build bar. */
+.df-side:has(.df-hintdock .hint) .df-body { min-height: round(calc(var(--u) * 40), 1px); }

@@ -58,7 +58,7 @@ export const TIPS = {
     bramble: 'Thorny bramble: hold <b>right-click</b> for a heavy chop',
     throw: '{throw}: throw your machete. It flies through plants and comes back',
     med: 'Hurt? {med} uses a med kit (+{heal} health)',
-    beacon: '<b>Beacons</b> are a way home: hold {interact} to switch this one on',
+    beacon: '<b>Beacons</b> are a way home, and at night they light the path facing them: hold {interact} to switch this one on',
     sunset: 'Sunset in 1:00. After dark the jungle hunts you: <b>head home</b>',
   },
 };
@@ -126,7 +126,7 @@ export const READINESS = {
   },
   protocolUse: 0.6, protocolReach: 9,
   lossScale: 0.54,   // (Stage 9 build anywhere + harder nights: 0.65 × 0.83, 108 sim runs / 979 nights)
-  band: [0.6, 1.4],
+  band: [0.6, 1.5],   // (1.4 → 1.5, critic Q: a newcomer's nights 1–2 landed 1–2 above the band's top)
   dots: [0.05, 0.2, 0.5],
   weakShare: 0.5,    // (Stage 9: at 0.35 a typical build read weak on ~1 night in 3; 0.5 still flags every sim fall)
   strongLoss: 2, strongShare: 0,   // (critic K2 #8: never "strong" with a predicted loss worse than −2)

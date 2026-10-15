@@ -55,7 +55,8 @@ export const CONFIG = {
     maxMeds: 2,
     medHeal: 25,
     medCooldown: 0.6,
-    medTime: 0.7,        // s to apply a med kit (Stage 9: walking slowly, a hit or a roll stops it and keeps the kit)
+    medTime: 0.7,
+    medBuffer: 0.45,     // a Q pressed mid-swing / chop / throw / roll waits this long and heals once you're free        // s to apply a med kit (Stage 9: walking slowly, a hit or a roll stops it and keeps the kit)
     aimAssist: 0.1,      // radians: shots snap to an enemy this close to the aim line
     shotHeight: 0.55,    // world height of bullets / aim plane
   },
@@ -71,7 +72,9 @@ export const CONFIG = {
     deathReturnHp: 35,       // player HP after a failed expedition (going down, abandoning, quitting mid-day)
     deathFloorAfter: 15,     // seconds into the day before the salvage Scrap floor applies (abandoning at once earns nothing)
     nightlyHeal: 25,         // player HP recovered each night…
-    dawnHpFloor: 75,         // …and you wake with at least this much, whether you got home or went down (Run.dawnHp; 60 → 75, critic J2 #1)
+    dawnHpFloor: 90,         // …and you wake with at least this much, whether you got home or went down (Run.dawnHp; 60 → 75, critic J2 #1; 75 → 90, Stage 9 fix wave: a hurt day mustn't spiral)
+    keepRewardThrough: 3,    // a quest done before you go down keeps its night reward on nights up to this (Stage 9 fix wave)
+    failedQuestPointFrom: 3, // from this night a quest you didn't finish but came home from still earns its skill point
     maxSkillPoints: 1,       // skill points one trip can earn (from its goal; bonus tasks pay loot instead, critic J2 #1); area bosses add one each on top (skills.js)
     quickExtraction: 0.75,   // hold-time multiplier with the Quick Extraction skill
     packRatMagnet: 1.5,      // magnet radius multiplier with Pack Rat I
@@ -106,10 +109,10 @@ export const CONFIG = {
     // Expedition difficulty by night (index = night - 1; the last entry repeats). Night 1–2 are a
     // gentle on-ramp: fewer, weaker enemies and lightly guarded objectives; nights 4–6 stay tense.
     byNight: {
-      enemyHp:      [0.85, 0.92, 1.0, 1.1, 1.2, 1.3],   // exploration enemy HP multiplier
-      enemyDamage:  [0.7, 0.85, 1.0, 1.05, 1.1, 1.15], // exploration enemy damage multiplier
+      enemyHp:      [0.85, 0.92, 1.0, 1.05, 1.1, 1.15], // exploration enemy HP multiplier (fix wave: was …1.1, 1.2, 1.3 — late days ran long)
+      enemyDamage:  [0.7, 0.8, 0.9, 0.92, 0.95, 1.0],  // exploration enemy damage multiplier (fix wave: was …1.0, 1.05, 1.1, 1.15)
       enemyWindup:  [1.2, 1.1, 1.0, 1.0, 1.0, 1.0],     // × creature wind-ups (Stage 9: day 1 telegraphs are slower — it teaches)
-      extraEnemies: [-0.4, -0.1, 0.5, 0.85, 1.2, 1.5],  // extra enemies per room (fractional = chance; negative removes)
+      extraEnemies: [-0.4, -0.1, 0.25, 0.45, 0.65, 0.8], // extra enemies per room (v1 rooms; the jungle's density is POP.byNight)
       rangedCap:    [1, 1, 2, 2, 3, 3],                 // Spitters + Rival Scavengers per room
       chargerCap:   [1, 1, 1, 1, 2, 2],                 // Razorbacks per room (the elite room has none besides the elite)
       objectiveCap: [3, 3, 4, 4, 5, 5],                 // enemies in the objective room, guards included
@@ -118,8 +121,8 @@ export const CONFIG = {
       holdSpawns:   [2, 3, 3, 4, 4, 5],                 // max enemies summoned during an objective / event hold
       eliteHp:      [1.8, 2.0, 2.1, 2.2, 2.4, 2.6],     // elite HP multiplier (× the night's enemyHp)
       eliteSupport: [1, 1, 1, 2, 2, 2],                 // light enemies (Crawlers / Skitters) beside the elite
-      deathSalvage: [0.35, 0.3, 0.1, 0, 0, 0],          // share of carried loot the drone recovers when you go down…
-      deathScrapFloor: [20, 20, 12, 0, 0, 0],           // …but always at least this much Scrap (one early death shouldn't decide a run)
+      deathSalvage: [0.35, 0.3, 0.25, 0.2, 0.2, 0.2],   // share of carried loot the drone recovers when you go down…
+      deathScrapFloor: [20, 20, 15, 15, 15, 10],        // …but always at least this much Scrap (fix wave, critic R: one bad day mustn't decide a run)
       exploreRooms: [[4, 6], [5, 7], [6, 9]],           // [min, max] exploration rooms (nights 1–2 smaller)
       optionalRooms: [[1, 2], [2, 3], [2, 3]],          // [min, max] optional rooms
       containerScrap: [1.2, 1.1, 1, 1, 1, 1],           // container Scrap multiplier (smaller early maps pay a bit more)
@@ -158,6 +161,11 @@ export const CONFIG = {
     attackers: {
       max: [2, 2, 2, 3, 3, 3], gap: 0.4, afterHit: 0.5, release: 0.3, holdDist: 2.4, circleSpeed: 0.75, predict: 1.0,
       circleCd: 0.3, flank: [120, 180], backArc: [150, 180], slotTurn: 2.2, hopBack: 0.7,
+      // The brawl cap (fix wave, critic O #1: fights snowballed to 10–19 creatures): at most engagedMax[night − 1]
+      // creatures fight you at once — one joins within `engageJoin` tiles while there's room, leaves past
+      // `engageRelease`; the rest circle `engageWait` tiles out (a Feral may throw). alertSpread: tiles an alerted
+      // creature's call reaches (6 → 4).
+      engagedMax: [3, 3, 4, 4, 4, 5], engageJoin: 6, engageWait: 5.5, engageRelease: 11, alertSpread: 4, spearGap: 2.5,
       stuck: 1.5, hackEvery: 0.8,
     },
     camera: { dist: 12.4, lookAhead: 2.2, follow: 7 },   // pitch / scale: CONFIG.pixel
@@ -169,7 +177,10 @@ export const CONFIG = {
   // fullRepairScrap: an engineer's free repair on a full Relay is paid out as this much Scrap instead.
   // stipend: Scrap the Relay pays at the start of each night's prep (index = night − 1; the last entry
   // repeats), so income follows the difficulty curve and one bad day doesn't end the run (critic J M6).
-  relay: { hp: 100, repairScrap: 25, repairAmount: 15, fullRepairScrap: 15, stipend: [0, 10, 15, 20, 25, 30] },
+  // Stage 9 round 2 (critics P / R: real players bank far less than the old sim's 85 a day): 10/15/20/25/30 → 15/25/35/45/55.
+  // stipendParts: Circuits and Biofiber (each) it adds too, by night (Stage 9 round 2, critic R: components, not Scrap,
+  // kept real players off level 3; a typical run had 0–3 of each by night 5).
+  relay: { hp: 100, repairScrap: 25, repairAmount: 15, fullRepairScrap: 15, stipend: [0, 15, 25, 35, 45, 55], stipendParts: [0, 0, 1, 1, 1, 1] },
   sellRefund: 0.7,
   // Each tower of a type you already own makes the next one of that type cost this much more Scrap
   // (keeps one-tower spam from beating upgrades and mixed builds). Stage 7 sim: with level-2 upgrades now
@@ -283,6 +294,11 @@ export const POISE = {
   flinch: { time: 0.28 },
   guardColor: '#c0cbdc', guardTint: '#a8b8d8',   // a Feral's raised guard: block sparks / text, and its body tint while it holds
 };
+
+// "What got you" on the "You went down" screen (Player.deathNote): the killer is the last direct blow within
+// `blowWindow` s of the end (bleed / spore ticks only finish you off); `brawlCount`+ different creatures hurting you
+// within `brawlWindow` s turns the tip into a brawl lesson (fix wave, critic O #4).
+export const DEATH_NOTE = { blowWindow: 3, brawlWindow: 15, brawlCount: 4 };
 
 // Status effects on the player (critic I §9F). sap: standing in a Spitter's puddle slows you, and a roll that starts
 // in one costs `rollCost` more stamina. bleed: a Bramble Crawler's bite (EXPLORE_ENEMIES.crawler.bleed s) takes `dps`

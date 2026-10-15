@@ -149,7 +149,7 @@ export class SummaryScene {
     if (earned) got.push(el('span.sum-chip', { style: { '--c': RESEARCH.color }, title: `Research Data, kept forever: spend it on new gear in Collection (from the title screen).\n${resTip}` },
       el('span.glyph', { style: { color: RESEARCH.color } }, RESEARCH.glyph), el('b.good', `+${earned}`), el('span.lbl', 'Research'),
       firstSum ? el('span.muted', ' (kept forever)') : null));
-    if (x.bonusScrap) got.push(el('span.sum-chip', { title: 'Bonus Scrap from your goal / bonus tasks' }, resIcon('scrap'), el('b.amber', `+${x.bonusScrap}`), el('span.lbl', 'bonus Scrap')));
+    if (x.bonusScrap) got.push(el('span.sum-chip', { title: 'Bonus Scrap from your quest / bonus tasks' }, resIcon('scrap'), el('b.amber', `+${x.bonusScrap}`), el('span.lbl', 'bonus Scrap')));
     const lostKeys = extracted ? [] : RESOURCE_KEYS.filter((k) => Math.floor(carried[k] || 0) - Math.floor(salvaged?.[k] || 0) > 0);
     const rows = [];
     rows.push(el('div.sum-row', {}, el('span.sum-k', extracted ? 'You got' : 'Saved'),
@@ -181,7 +181,7 @@ export class SummaryScene {
     }
     if (x.rewardLost) {
       rows.push(el('div.sum-row.no', {}, el('span.sum-k.bad', 'Reward'),
-        el('div', {}, el('s.muted', x.rewardLost), el('div.small.bad', 'Lost: the goal\'s reward needs you to get home. Its skill point still counts.'))));
+        el('div', {}, el('s.muted', x.rewardLost), el('div.small.bad', 'Lost: the quest\'s reward needs you to get home. Its skill point still counts.'))));
     }
     const extras = [...(x.optionals || []).map((o) => o.name || OPTIONAL[o.key]?.name || o.key), ...(x.events || []).map((e) => e.name || EVENTS[e.key]?.name || e.key)];
     if (extras.length) rows.push(el('div.sum-row', {}, el('span.sum-k', 'Bonus'), el('span', extras.map((n) => `✓ ${n}`).join('   '))));

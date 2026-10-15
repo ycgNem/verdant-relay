@@ -48,7 +48,7 @@ export const DISTRICTS = {
     finds: 'More med kits',
     bonusText: 'Today: med kits turn up in containers 2.5 times as often.',
     loot: { scrap: 1, circuits: 1, biofiber: 1, intel: 1, med: 2.5 },
-    enemies: { feral: 4, skitter: 3, crawler: 2 },
+    enemies: { feral: 3, skitter: 3, crawler: 4 },   // (Stage 9 fix wave, critic O #1: Feral share 44% → 30%)
     look: { floor: '#733e39', floorAlt: '#5a6988' },
     nightThreat: { short: 'Extra Skitters attack tonight', text: 'You were followed: an extra pack of Skitters attacks tonight.', extraGroup: { type: 'skitter', count: 8 } },
   },
@@ -59,7 +59,7 @@ export const DISTRICTS = {
     finds: 'Intel ×2, Circuits +50%',
     bonusText: 'Today: twice the Intel and 50% more Circuits from every container (less Biofiber).',
     loot: { scrap: 1, circuits: 1.5, biofiber: 0.7, intel: 2, med: 1 },
-    enemies: { feral: 3, razorback: 2, skitter: 2 },
+    enemies: { feral: 2, razorback: 2, skitter: 2, crawler: 1 },   // (Stage 9 fix wave: Feral share 43% → 29%)
     minNight: 2,
     look: { floor: '#8b9bb4', floorAlt: '#3a4466' },
     nightThreat: { short: 'A Razorback attacks tonight', text: 'Security logs traced you: a Razorback attacks tonight.', extraGroup: { type: 'razorback', count: 1 } },

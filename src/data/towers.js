@@ -38,6 +38,7 @@ export const BIG_SIZE = 1.0;   // enemies this size or larger count as "big" (Ra
 export const TOWERS = {
   scrap_turret: {
     name: 'Scrap Turret',
+    short: 'Turret',   // (the build bar's card label)
     role: 'Single target',
     line: 'Shoots one enemy at a time. A solid all-rounder.',
     pips: { damage: 2, speed: 2, range: 2 },
@@ -58,6 +59,7 @@ export const TOWERS = {
   },
   thorn_nest: {
     name: 'Thorn Nest',
+    short: 'Nest',   // (the build bar's card label)
     role: 'Rapid',
     line: 'Sprays thorns up close. Great against fast enemies.',
     pips: { damage: 1, speed: 3, range: 1 },
@@ -78,6 +80,7 @@ export const TOWERS = {
   },
   arc_spire: {
     name: 'Arc Spire',
+    short: 'Spire',   // (the build bar's card label)
     role: 'Chain',
     line: 'Lightning that jumps between enemies in a group.',
     pips: { damage: 2, speed: 1, range: 2 },
@@ -98,6 +101,7 @@ export const TOWERS = {
   },
   mortar_pod: {
     name: 'Mortar Pod',
+    short: 'Mortar',   // (the build bar's card label)
     role: 'Splash',
     line: 'Lobs shells far away that hit a whole group.',
     pips: { damage: 2, speed: 1, range: 3 },
@@ -119,6 +123,7 @@ export const TOWERS = {
   },
   snare_vine: {
     name: 'Snare Vine',
+    short: 'Snare',   // (the build bar's card label)
     role: 'Slow',
     line: 'Slows every enemy near it, so other towers hit more.',
     pips: { slow: 2, speed: 1, range: 1 },
@@ -139,6 +144,7 @@ export const TOWERS = {
   },
   pulse_beacon: {
     name: 'Pulse Totem',   // (not "beacon": that is the jungle's switch-on pylons, critic J2 C6; the key stays)
+    short: 'Totem',   // (the build bar's card label)
     role: 'Support',
     line: 'Makes the towers around it shoot faster.',
     pips: { boost: 2, range: 2 },

@@ -351,6 +351,13 @@ PixelLab: up to 500 more generations for this stage (balance 2275.9 at the start
       name + count / line, workbench footer stock as icon + number, summary card 650 wide, title menu clear of its
       hotkey chips, big map footer wraps (shots `.playwright-mcp/text9/before_*` / `after_*`)
 - [ ] Critic round on a frozen build + fixes
+  - [x] Night fix wave (critics P / Q / R): curve 1.6 / 4.4 / 6.2 / 10.2 / 11.9 / 16.5 with night 5 trimmed to ~36
+        enemies, Colossus ×5 and 7 slams of 6, stipend 15–55 + a Circuit and a Biofiber from N3, Relay zap 16, beacons
+        +35% on 7 tiles and Burrowers surface in the light, Provoke (a dare from N2 while the defense looks strong); sim
+        re-run on the critics' incomes (typical 64% wins, median reaches N5, newcomer out on N4; DESIGN §5); 720p panel:
+        Read / Disrupt / trades above the build bar, Call next push always fits, the build hint above the bar, names on
+        the build cards, "Barely sees a path" asks first, brighter free-tile ticks, no slab decals, "In front of path",
+        the surcharge in the card tooltip, a plain "tougher every night" line, the weakest path's counter
 
 ### Next (deferred from the round-2 critics — start here)
 Economy and pacing

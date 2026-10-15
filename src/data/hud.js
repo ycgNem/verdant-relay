@@ -10,6 +10,8 @@ export const MAP_VIEW = {
   bigZoomMax: 12,        // device px per tile, most zoomed in
   bigZoomMinFit: true,   // most zoomed out = the whole jungle fits the canvas
   panSpeed: 520,         // keyboard pan speed, device px per second
+  questBig: 2,           // the quest ◆ × this on the big map (with a blinking ring), critic Q
+  questMini: 1.3,        // … and on the minimap
 };
 
 export const HUD = {
@@ -47,6 +49,10 @@ export const QUEST = {
   arrow: { size: 25, glow: 2, scale: 2, dirs: 8, margin: 2, bob: 2, gap: 2 },
   mark: { lift: 0.3, near: 1.6 },
   orbit: { minDist: 22, calm: 8, radius: 44, size: 13 },
+  // "cross at the bridge" (JungleScene._updateFord, critic Q): rechecked every `every` frames; the walk fields from the
+  // target rebuilt when it moves more than `move` tiles (at most every `refield` s); no hint when a land-only route is at
+  // most `landSlack` × the shortest walk.
+  ford: { every: 15, move: 3, refield: 1, landSlack: 1.3 },
   beam: {
     w: 3.2, h: 2, steps: 4, power: 1.2, color: '#feae34', strength: 0.45,
     beam: true, beamW: 12, beamH: 128, beamY: 1.4, beamStrength: 0.95, pulse: 3,

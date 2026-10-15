@@ -282,15 +282,24 @@ export class BriefingScene {
         el('div', {}, el('b.amber', `${run.skillPoints}`), run.skillPoints === 1 ? ' unspent skill point' : ' unspent skill points'),
         sbtn(game, 'Spend points', () => this.openSkills(), { cls: 'primary', hotkey: 'P' }))
       : null;
-    const side = el('div.side.panel.ui-block', {},
+    // The attack preview scrolls on its own (a "more below" tag while it does); the skills and the spend button stay
+    // pinned under it, never cut off (critic Q: at 1080p the attack panel pushed the skill list out of the panel).
+    const more = el('div.side-more', '▾ more below');
+    const top = el('div.side-top', {},
       el('h3', 'Tonight\'s attack'),
       this.attackPanel(),
       this.medKitShop(),
       run.towers.length ? el('div.small', {}, el('span.muted', 'Towers at your base: '), el('b', String(run.towers.length))) : null,
       run.weapon !== 'machete' && weapon ? el('div.small', {}, el('span.muted', 'Weapon: '), el('b', weapon.name)) : null,
-      run.skills.length || run.skillPoints ? el('h3', 'Skills') : null,
+      more);
+    const skills = run.skills.length || run.skillPoints ? el('div.side-skills', {},
+      el('h3', 'Skills'),
       run.skills.length ? el('div.skill-tags', {}, run.skills.map(skillTag)) : null,
-      spend);
+      spend) : null;
+    const side = el('div.side.panel.ui-block.side-split', {}, top, skills);
+    const moreCheck = () => top.classList.toggle('more', top.scrollHeight - top.clientHeight - top.scrollTop > 2);
+    top.addEventListener('scroll', moreCheck);
+    requestAnimationFrame(moreCheck);
 
     const beginReason = `Pick an area first (${keysHint})`;
     const begin = sbtn(game, el('span', {}, 'Head out ', el('span.arrow', '▶')), () => this.begin(), {
@@ -394,7 +403,7 @@ export class BriefingScene {
       el(`div.dc-line.dc-threat${threat.cleared ? '.dc-cleared' : ''}`, {}, el('span.dc-k.bad', 'Danger'), el('span', {}, threat.short || threat.text,
         threat2 ? el('div.small', `+ ${threat2.short || threat2.text} (Restless jungle)`) : null)),
       // An area boss still alive here (from night 3, src/data/bosses.js): optional, marked ☠ on the map.
-      run.bossAlive?.(k) ? el('div.dc-line.dc-boss', { title: BOSSES[k].intro }, el('span.dc-k', 'Boss'), el('span', {}, el('b', `☠ ${BOSSES[k].name}`),
+      run.bossAlive?.(k) ? el('div.dc-line.dc-boss', { title: `${BOSSES[k].intro}\nOptional. Kill it: a rare relic, and no danger from here at night` }, el('span.dc-k', 'Boss'), el('span', {}, el('b', `☠ ${BOSSES[k].name}`),
         el('div.small.muted', 'Optional. Kill it: a rare relic, and no danger from here at night'))) : null,
       this.details ? el('div.dc-details', {},
         el('div.dc-env', d.env),

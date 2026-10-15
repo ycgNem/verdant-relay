@@ -154,7 +154,7 @@ export const BOSSES = {
     // fewer than `max` live, `cap` in the whole fight) and the Lord itself is × speed2 faster.
     // hpK: × BOSS.hp (it brings a pack: a shorter fight); thrust2: its double-thrust chance per lunge; windup:
     // its lunge wind-up (s; a boss-readable beat: an elite Feral's is 0.8); damageK: × its lunge damage.
-    hpK: 0.75, thrust2: 0.35, windup: 1.0, damageK: 0.65,   // (damageK 0.85 → 0.65, Stage 9: the Feral Chief's damage 14 → 19)
+    hpK: 0.75, thrust2: 0.35, windup: 1.0, damageK: 0.6,   // (damageK 0.85 → 0.6, Stage 9: the Feral Chief's damage 14 → 19; its pack is tougher too)
     pack: 2, packType: 'feral',
     cry: { every: [9, 7], windup: 0.9, radius: 6, speed: 1.3, time: 5, summon2: 1, max: 4, cap: 3 },
     speed2: 1.2,

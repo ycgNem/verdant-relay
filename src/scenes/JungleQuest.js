@@ -310,10 +310,15 @@ export class JungleQuest {
       const r = n.getBoundingClientRect();
       return { l: r.left - st.left, t: r.top - st.top, r: r.right - st.left, b: r.bottom - st.top };
     })].map((r) => ({ l: r.l - pad, t: r.t - pad, r: r.r + pad, b: r.b + pad }));
-    const qa = this._edge(this.edges.quest, hidden || o.cc || !o.ot ? null : o.ot, rects, `${Math.round(o.ot?.d || 0)} m`);
+    // One arrow at a time: when the quest's target is home (lead him / carry it home) and the cyan Home arrow is up,
+    // only the Home arrow shows (critic Q: two arrows, same target).
+    const homeArrow = !hidden && o.homeNow && ex.d > 6;
+    const homes = [sc.relayPos, ...sc.data.pylons.filter((py) => sc.state.pylons.has(py.id))];
+    const questHome = !!o.ot && homes.some((q) => Math.hypot(o.ot.x - q.x, o.ot.z - q.z) < 4);
+    const qa = this._edge(this.edges.quest, hidden || o.cc || !o.ot || (homeArrow && questHome) ? null : o.ot, rects, `${Math.round(o.ot?.d || 0)} m`);
     const rc = this._edge(this.edges.crate, hidden ? null : o.cc, qa ? [...rects, qa] : rects,
       o.cc ? `Crate ${Math.round(Math.hypot(o.cc.x - sc.player.pos.x, o.cc.z - sc.player.pos.z))} m` : '');
-    this._edge(this.edges.home, !hidden && o.homeNow && ex.d > 6 ? ex : null, [...rects, qa, rc].filter(Boolean), `${ex.name} ${Math.round(ex.d)} m`);
+    this._edge(this.edges.home, homeArrow ? ex : null, [...rects, qa, rc].filter(Boolean), `${ex.name} ${Math.round(ex.d)} m`);
     this._updateOrbit(hidden || o.cc || onScreen ? null : o.ot, rects);
     this._updateBeams(tg);
   }
@@ -424,20 +429,23 @@ export class JungleQuest {
       if (b.l < 0 || b.t < 0 || b.r > sw || b.b > sh) return true;
       return avoid.some((r) => !(b.r <= r.l || b.l >= r.r || b.b <= r.t || b.t >= r.b));
     };
-    const slide = (vert) => {
+    // The smallest shift that clears every box: along the edge, or straight in from it (critic Q: a target due south
+    // slid 300 px along the bottom edge to a far corner; now it sits just above the tracker, on its true bearing).
+    const slide = (axes) => {
       const b0 = box(), cands = [];
-      for (const r of avoid) cands.push(vert ? r.t - b0.b : r.l - b0.r, vert ? r.b - b0.t : r.r - b0.l);
-      cands.sort((p, q) => Math.abs(p) - Math.abs(q));
-      const d = cands.find((c) => !hit(b0, c, vert));
-      if (d == null) return false;
+      for (const vert of axes) for (const r of avoid) cands.push([vert ? r.t - b0.b : r.l - b0.r, vert], [vert ? r.b - b0.t : r.r - b0.l, vert]);
+      cands.sort((p, q) => Math.abs(p[0]) - Math.abs(q[0]));
+      const c = cands.find(([d, vert]) => !hit(b0, d, vert));
+      if (!c) return false;
+      const [d, vert] = c;
       if (vert) { y += d; by += d; } else { x += d; bx += d; }
       return true;
     };
-    if (hit(box(), 0, side) && !slide(side)) {
+    if (hit(box(), 0, side) && !slide([side, !side])) {
       // A crowded stretch of edge (top-left: the panel and a banner): go to its nearer corner, then along the other edge.
       const sx = x, sy = y, sbx = bx, sby = by;
       if (side) { const d = (y < cy ? m : sh - m) - y; y += d; by += d; } else { const d = (x < cx ? m : sw - m) - x; x += d; bx += d; }
-      if (!slide(!side)) { x = sx; y = sy; bx = sbx; by = sby; }
+      if (!slide([!side])) { x = sx; y = sy; bx = sbx; by = sby; }
     }
     E.arr.style.transform = `translate(${Math.round(x - half)}px, ${Math.round(y - half)}px)`;
     E.badge.style.transform = `translate(${Math.round(bx - E.bw / 2)}px, ${Math.round(by - E.bh / 2)}px)`;

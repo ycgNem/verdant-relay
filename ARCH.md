@@ -273,7 +273,15 @@ Module functions (import from `../core/Assets.js`):
   `charge`, `stomp`, `spear`, `bolt`, `glob`, `erupt`, `burst`…), logged in `player.hurtLog` (`{src, how, dmg,
   swinging}`, bleed ticks too); a landed hit cancels swing / chop / charge / throw / heal and sets `flinchT`
   (`POISE.flinch`, no attacks). `player.deathNote()` → `{ line, tip, wounds }` for the "You went down" modal.
-  Med kits: `useMed()` enters state `heal` for `CONFIG.player.medTime` s (a hit or a roll cancels it, the kit is kept).
+  Med kits: `useMed()` enters state `heal` for `CONFIG.player.medTime` s (a hit or a roll cancels it, the kit is kept);
+  pressed while not free it sets `medQ` (`medBuffer` s) and heals on the first free frame. Fix wave: `ExploreEnemy._engage(dist,
+  force)` — the brawl cap, a scene-wide `sc._engaged` set capped by `attackers.engagedMax[night]` (members leave dead /
+  calm / past `engageRelease`; a blade hit force-joins; boss minions and the Pack Lord are never capped); outside it a
+  creature circles at `engageWait` (`_circle(toP, dist, dt, holdAt)`) and a Feral may spear (`_wantSpear(dist, true)`,
+  `sc._lastSpear` + `attackers.spearGap`). `Player.hurt(…, who)` logs the attacker (`who`) and `t` (`scene.dayT`) for
+  `deathNote()` (`DEATH_NOTE`: last direct blow, brawl lesson). `JungleScene._rewardSafe()`: a done quest's reward
+  survives going down (`rewardAtDelivery`, or nights ≤ `expedition.keepRewardThrough`); `_finish` grants a failed-but-
+  extracted quest its skill point from `expedition.failedQuestPointFrom`.
 - `Ambience(scene3d, world).update(dt, cx, cz, dusk)`: pollen, falling leaves, fireflies (emissive, drawn over the
   foliage), light shafts.
 - Persistent state: `run.world` (`run.worldState(size, cell)` decodes it, `run.storeWorld(state)` stores it; bitsets in base64).
@@ -357,8 +365,9 @@ Module functions (import from `../core/Assets.js`):
 - **Scene hooks** (`DefenseScene`): `this.map`, `laneForDistrict(key)` (the lane facing that area: region angle from
   `worldForRun` → `laneForAngle`; stored as `this.dangerLane`, read by `_waveOpts()` → `buildWave({ dangerLane })`),
   `_beaconLanes()` (per lane, the switched-on beacons facing it, ≤ `BEACON_LIGHT.max`), `_beaconLit()` / `this._lit` (per
-  lane the lit `[d0, d1]` lane distance from the field edge, or null), `beaconMult(e)` (×(1 + bonus) in `damage()` for a
-  non-boss enemy in the light; DefenseForecast counts it too), `_laneTiles(lane?)`. Waves pick a lane with `lane % lanes.length`.
+  lane the lit `[d0, d1]` lane distance from the field edge, or null), `inBeaconLight(e)`, `beaconMult(e)` (×(1 + bonus) in
+  `damage()` for a non-boss enemy in the light), `surfacesHere(e)` (with `BEACON_LIGHT.surface` a Burrower can't tunnel in
+  the light: `DefenseEnemy` checks it; DefenseForecast counts both), `_laneTiles(lane?)`. Waves pick a lane with `lane % lanes.length`.
   Leaks: `_noteLeak(src, dmg, count, lane)` feeds `nightStats`, the in-wave feed (`_leaks`, `DEFENSE_VIEW.leakRows`) and
   `run.lastNight = { night, leaks: { type: { count, damage } } }` (Run.finish → Results "What got through");
   `leakSummaryText(night)` is the banner line.
@@ -374,10 +383,21 @@ Module functions (import from `../core/Assets.js`):
   (`_pickTower()`, screen-space over the sprite). `_pickType(type)` (bar / 1–6), `_cancelPlacing()`, `_build(type, x, y,
   keep)` (Shift = keep placing; else the new tower is selected; `ground.setTowers` clears plants over it), `_select(t)`,
   `_cycleTower(dir)` (Tab), `_moveCursorKeys(dt)`, `arrowsTaken()` (NightCamera skips its arrow pan while placing),
-  `_updatePlacing()` per frame (ghost tint, range, dots, `placeTag` "Covers 12 tiles · North" / the red reason).
-  Side panel: the **build bar** `buildBar` (`_renderBuildBar` once per tower list, `_refreshBuildBar` in place: tiles
-  with `_towerIcon(type)` — a whole-number portrait crop — hotkey, price; title = hovered / picked name via `_barLabel`),
-  shown in prep / lulls unless a tower is selected; `sideMode` 'preview' | 'placing' (`_renderPlacing`) | 'tower'.
+  `_updatePlacing()` per frame (ghost tint, range, dots, `placeTag` "Covers 12 tiles · North" / the red reason / amber
+  "Barely sees a path"). Coverage: `_pathCover(x, z, stats, fn)`, `_coverFor(type, tx, ty)` (tiles per lane, cached),
+  `_barelySees(type, tx, ty)` (a damage tower under `BUILD.barely` tiles); mouse / Enter builds go through
+  `_tryBuildAt(type, x, y, shift)`, which asks first on a barely-sees tile (toast; Shift or the same click again builds).
+  Side panel (top to bottom): head, `hintDock` (in the wave preview it docks here, just above the actions and the build
+  bar; `_floatHintIfCramped()` floats it over the board's bottom-left when the footer would leave the panel), body
+  (scroller; `_fitBody` stops it after a whole block, a path's title or a whole chip row), leak feed, protocol bar,
+  `actsRow` (prep: Intel Read / Disrupt, Scrap trades, Provoke; one-line buttons), the **build bar** `buildBar`
+  (`_renderBuildBar` once per tower list, `_refreshBuildBar` in place: cards with `_towerIcon(type)` — a whole-number
+  portrait crop — hotkey, `TOWERS[type].short` name, price; tooltip with the surcharge line; a how-to line under the
+  cards on nights 1–2 with fewer than 2 towers), footer. The bar shows in prep / lulls unless a tower is selected;
+  `sideMode` 'preview' | 'placing' (`_renderPlacing`) | 'tower'. The side carries `.df-inprep` in prep (lulls let the
+  body shrink further so Call next push fits at 720p). `_provoke()` (DEFENSE.provoke: the button shows in prep while
+  readiness reads "Looks strong"; rebuilds the wave like `_sabotage()`). The readiness footer names the weakest path's
+  top leaker and its `DEFENSE_ENEMIES[type].counter` line.
 - **NightCamera(scene, fit, bounds):** integer zoom k (`ks` = the allowed steps, `kDefault`), internal res = floor(window / k)
   rounded to even through `game.setInternalRes`; the board viewport is `DEFENSE_VIEW.view` (UI units, panel on the right).
   Default k = the largest that fits `fit` (the field), or 2 when only 1 fits, the day scale is ≥ 3 and 2 shows ≥
@@ -489,8 +509,11 @@ Module functions (import from `../core/Assets.js`):
   `tweak({...})` overrides data in the game's own module instances. `campaign.mjs N profiles workers tag` runs workers
   and prints the per-night table; `tallwide.mjs`, `onelane.mjs`, `calib.mjs` (forecast vs outcome), `ui.mjs` (real-input
   UI pass with screenshots). Stage 9 copy for build anywhere: `.playwright-mcp/build9/sim/` (`chooseTile`: every free
-  tile per `_placeCheck`, scored by path coverage weighted toward the less-covered lane; the newcomer picks among the
-  10 free tiles nearest the Relay; `night(cfg)` towers are `[type, [x, y] | -1, level, branch]`), plus `t3.mjs` (real
+  tile per `_placeCheck`, scored by path coverage weighted toward the less-covered lane (lit beacon tiles count
+  ×(1 + bonus)); the newcomer picks among the 10 free tiles nearest the Relay that don't barely see a path; profiles
+  newcomer / median / typical / strong with `scrap1` (day 1) and `scrap` (later days), `beacon` (chance a day switches
+  one on), `provoke`; `TWEAK` also takes `beacon`, `zap` and `variants: { night: [groups A, B, C] }`; `night(cfg)`
+  towers are `[type, [x, y] | -1, level, branch]`), plus `t3.mjs` (real
   mouse / keyboard placement with screenshots), `grid.mjs` (each map's free-tile ASCII grid), `save.mjs` (old pad saves).
 
 ## Screen-space lighting (`src/core/PostFx.js`)
@@ -617,6 +640,8 @@ Fields: `seed night phase relayHp relayMax playerHp meds weapon res{scrap,circui
   `spec.onHit?.(target)` per thing struck and cuts brush out to `spec.cutRange || spec.range`.
 - Relay: `repairAmount()`, `repairCost()` (prorated), `repair()`, `beginPrep()` (one-time per-night bonuses; returns notes), `emergencyPatch()`.
 - Intel (night prep): `decryptCost()`, `decrypt(game)` → Research; `sabotageCost()`, `sabotageBlocked()`, `sabotage()` → wave −10% once per night.
+- Provoke (night prep, `DEFENSE.provoke`): `provokeBlocked()`, `provoke()` → `tonight.provoked` (+Scrap now; `waveCountMult()` × enemies,
+  `bountyMult()` × bounty). `beginPrep()` also pays `CONFIG.relay.stipendParts` (a Circuit and a Biofiber each night from night 3).
 - Wave size: `waveCountMult()` = `tonight.enemyCount` floored at `CONFIG.waveSizeFloor` (0.8); `waveCutCapped()`.
 - Expedition: `applyExpedition(result, game)` with
   `{ district, extracted, died, carried:{…}, objectiveDone, objectiveSecured, objectiveFailed, boon, optionals:[{key,name,flag?,research?}], events:[{key,name,flag?}], bossesKilled:[area], weather, skillPointsEarned, medsLeft, playerHp, kills, relics:[id] }`.
@@ -719,7 +744,9 @@ markers over on-screen targets, the orbit pointer, `PixelGlow` light pool + beam
 `diamondCanvas`, `chevronCanvas`; 1-texel ink outline, top-left bevel, cached canvases shown at `--tx`). `--qh` on
 `game.ui` = the tracker's top (the prompt and bottom hints sit above it). `--tx` on `hud.root` =
 the world's texel size in CSS px (HUD pixel icons scale by it); `--hudfade` = `JUICE.hudFade.opacity`. River wayfinding:
-`_updateFord(target)` sets `this._ford` (the middle of the best bridge: a `ford` marker — the plank-bridge glyph — on
+`_updateFord(target)` sets `this._ford` from two whole-map walk fields to the target (`_walkField(gx, gz, noDecks)`:
+steps from every tile, deep water / props block, brush doesn't; with and without bridge decks), only when the shortest
+walk goes over a deck and land is impossible or > `QUEST.ford.landSlack` × longer — the first deck down that walk (the middle of the bridge: a `ford` marker — the plank-bridge glyph — on
 both maps, the tracker's "cross at the bridge").
 DefenseScene `_readiness()` (→ `READINESS`) drives the "Your defense" line and `_tryStartWave()`'s confirm.
 `ui.shownResources(res)` / `resRow` hide zero currencies (Scrap always shows); `resChip(k, n, {short})` = icon + number.

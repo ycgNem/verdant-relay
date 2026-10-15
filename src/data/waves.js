@@ -13,12 +13,12 @@
 // authored. Fewer, tougher enemies from night 2 (a leak costs its own Relay damage however weak the defense,
 // so a thin build's worst case stays bounded while a good one still feels the tanks), and the Relay's own zap
 // (RELAY_ZAP, below) gives every defense the same flat backstop. Total wave HP (no district threat), variant A:
-// N1 ≈ 790, N2 ≈ 2700, N3 ≈ 8900 (tank-heavy: Razorbacks), N4 ≈ 13700, N5 ≈ 24100 (Ruin Guards, 1 per group),
-// N6 ≈ 19900 support + the 6120-HP Colossus (1020 × BOSS_HP 6), then × the map's hpMult (defenseMap.js:
+// N1 ≈ 840, N2 ≈ 2800, N3 ≈ 9200 (tank-heavy: Razorbacks), N4 ≈ 15200, N5 ≈ 23500 (Ruin Guards, 1 per group),
+// N6 ≈ 22800 support + the 5100-HP Colossus (1020 × BOSS_HP 5), then × the map's hpMult (defenseMap.js:
 // Twin Paths 0.95, Crossing 1.07, Ford 1.18).
 // Relay damage per leak: Crawler 5, Skitter 3, Razorback 9, Spitter 4 (+ up to 8 × 2 sap), Burrower 6,
 // Seed Carrier 6, Seedling 1, Ruin Guard 10. The Colossus never "leaks": it besieges the Relay from the plaza
-// (8 per slam every 3 s, at most 8 slams) until it is killed.
+// (6 per slam every 3 s, at most 7 slams) until it is killed.
 //
 // Balance (Stage 7 sim of the real DefenseScene, .playwright-mcp/nightmech/campaign.mjs, 36 full runs per
 // profile over the three maps; table in DESIGN §5), mean Relay HP lost per night:
@@ -41,7 +41,17 @@
 //   newcomer 0/36 · −13 / −32 / −70 (18/36 hold) / −58 · falls N3 17, N4 18, N5 1
 //   typical  26/36 (72%; 25/36 in a second batch) · 0 / −7 / −9 / −23 / −38 / −75 · boss killed 10/32
 //   strong   34/36 · 0 / −3 / −4 / −10 / −28 / −25
-export const HEALTH_MULT = [1.5, 4.3, 6.0, 9.2, 10.8, 14.4];
+// Stage 9 round 2 (critics P / Q / R on real-input runs: nights 1–3 a cakewalk, a wall at N5, no real typical run won;
+// real players bank ~45–65 Scrap a day, not the sim's 85). The sim's incomes now follow the critics (typical 55–65 a day
+// after the guided day + ~0.7 C / B, median 35–55, newcomer 25–45; beacons switched on some days) and the night got:
+// N5 45 → 36 enemies, Colossus ×6 → ×5 with 7 slams of 6, the stipend 15 / 25 / 35 / 45 / 55 + a Circuit and a Biofiber
+// from N3, the Relay zap 13 → 16, beacons +35% on 7 tiles (Burrowers surface), and this curve (was [1.5, 4.3, 6.0, 9.2,
+// 10.8, 14.4]). 36 runs per profile (DESIGN §5):
+//   newcomer 0/36 · −8 / −26 / −60 / −64 · falls N3 6, N4 26, N5 4          (old tuning, same incomes: N3 13, N4 23)
+//   median    5/36 · 0 / −14 / −24 / −41 / −59 / −63 · reaches N5 34/36       (old: 0/36)
+//   typical  23/36 (64%) · 0 / −8 / −15 / −30 / −41 / −54 · boss killed 16/32  (old: 8/36)
+//   strong   36/36 (takes Provoke whenever it reads strong) · 0 / −1 / −2 / −6 / −8 / −8
+export const HEALTH_MULT = [1.6, 4.4, 6.2, 10.2, 11.9, 16.5];
 
 /** Enemy health multiplier for a night (past night 6: ×1.2 per extra night, for the Long Night). */
 export function healthMult(night) {
@@ -75,9 +85,13 @@ export const DEFENSE = {
   // Late-game Scrap sink (critic K §2.3): in prep (not lulls), trade `scrap` Scrap for 1 Circuit or 1 Biofiber,
   // at most `max` times a night from night `fromNight`, shown once you hold at least `showAt` Scrap.
   exchange: { scrap: 35, max: 2, showAt: 60, fromNight: 2, gives: ['circuits', 'biofiber'] },
+  // Provoke (Stage 9 round 2, critic P #2): a dare for a defense that already looks strong. In prep from `fromNight`, once
+  // a night and for good: `enemies` × tonight's wave size, `scrap` Scrap at once, kill bounties × `bounty`. The button
+  // shows only while the readiness check reads "Looks strong"; the forecast counts the bigger wave.
+  provoke: { fromNight: 2, enemies: 1.25, scrap: 30, bounty: 1.5 },
   // The Long Night (endless mode, nights past 6): health ×hpGrowth a night, counts ×(1 + countGrowth ×
   // nights past 6), a Colossus every `bossEvery` nights (its health × bossHp × that night's growth).
-  longNight: { hpGrowth: 1.2, countGrowth: 0.1, bossEvery: 3, bossHp: 6.0 },
+  longNight: { hpGrowth: 1.2, countGrowth: 0.1, bossEvery: 3, bossHp: 5.0 },
   // End-of-night banner: with bannerWait it stays until a click / Enter / Space (accepted after bannerMinTime s);
   // without, it auto-advances after endBanner / defeatBanner seconds.
   bannerWait: true,
@@ -100,7 +114,7 @@ export const DEFENSE = {
 // 2–4 tower build and little to a 9-tower one, which lets the early nights bite a good build without
 // crushing a thin one. `hint` shows once in night prep (meta.hints.relay_zap).
 export const RELAY_ZAP = {
-  range: 3, cooldown: 0.7, damage: 13, damageType: 'energy', spitters: true,
+  range: 3, cooldown: 0.7, damage: 16, damageType: 'energy', spitters: true,   // (13 → 16, Stage 9 round 2: thin builds hold night 3)
   color: '#2ce8f5', originY: 3.4,
   // Its reach on the board (critic K2): a dashed ring of `dashes` dashes while you hover the Relay, and for `ringShow`
   // s after its first bolt each night (DefenseScene._buildZapRing / _updateBoard).
@@ -133,7 +147,7 @@ export const SALVAGE = {
 
 // Shorthand for authoring: g(push, at, lane, type, count, gap, extra).
 const g = (push, at, lane, type, count, gap, extra = {}) => ({ push, at, lane, type, count, gap, ...extra });
-const BOSS_HP = { hpMult: 6.0 };   // N6 Colossus: 1020 × 6 = 6120 (instead of that night ×14.4); = DEFENSE.longNight.bossHp
+const BOSS_HP = { hpMult: 5.0 };   // N6 Colossus: 1020 × 5 = 5100 (instead of the night's own multiplier); = DEFENSE.longNight.bossHp
 
 // WAVE_VARIANTS[night − 1] = [A, B, C]: { key, name, groups }. Lane 0 = the first map lane (North on the
 // default map), lane 1 the second; a 3-lane map takes them % 3.
@@ -204,22 +218,23 @@ export const WAVE_VARIANTS = [
       g(2, 0, 1, 'razorback', 1, 1), g(2, 2, 0, 'spitter', 2, 1.8), g(2, 5, 1, 'skitter', 3, 0.45),
     ] },
   ],
-  // ---- Night 5: Ruin Guards (one per group: tanks decide this night, critic K).
+  // ---- Night 5: Ruin Guards (one per group: tanks decide this night, critic K). Stage 9 round 2 (critics P / R: a cliff,
+  // 45 / 40 / 50 enemies after N4's ~26): the Crawler and Skitter groups trimmed to 36 / 34 / 38.
   [
     { key: 'A', name: 'Ruin Guard march', groups: [
-      g(0, 0, 0, 'crawler', 8, 0.8), g(0, 2, 1, 'crawler', 8, 0.8), g(0, 8, 0, 'ruin_guard', 1, 4),
-      g(1, 0, 1, 'burrower', 5, 1.1), g(1, 3, 1, 'seed_carrier', 4, 1.6), g(1, 6, 0, 'skitter', 10, 0.4), g(1, 8, 1, 'ruin_guard', 1, 1),
-      g(2, 0, 0, 'ruin_guard', 1, 1), g(2, 2, 0, 'spitter', 3, 1.5), g(2, 4, 1, 'crawler', 4, 0.8),
+      g(0, 0, 0, 'crawler', 6, 0.8), g(0, 2, 1, 'crawler', 6, 0.8), g(0, 8, 0, 'ruin_guard', 1, 4),
+      g(1, 0, 1, 'burrower', 5, 1.1), g(1, 3, 1, 'seed_carrier', 4, 1.6), g(1, 6, 0, 'skitter', 6, 0.4), g(1, 8, 1, 'ruin_guard', 1, 1),
+      g(2, 0, 0, 'ruin_guard', 1, 1), g(2, 2, 0, 'spitter', 3, 1.5), g(2, 4, 1, 'crawler', 3, 0.8),
     ] },
     { key: 'B', name: 'Guards and tunnels', groups: [
-      g(0, 0, 1, 'crawler', 6, 0.8), g(0, 2, 0, 'burrower', 4, 1.1), g(0, 6, 1, 'ruin_guard', 1, 1),
-      g(1, 0, 0, 'ruin_guard', 1, 1), g(1, 2, 1, 'burrower', 4, 1.1), g(1, 5, 0, 'crawler', 6, 0.8), g(1, 8, 1, 'skitter', 10, 0.4),
+      g(0, 0, 1, 'crawler', 5, 0.8), g(0, 2, 0, 'burrower', 4, 1.1), g(0, 6, 1, 'ruin_guard', 1, 1),
+      g(1, 0, 0, 'ruin_guard', 1, 1), g(1, 2, 1, 'burrower', 4, 1.1), g(1, 5, 0, 'crawler', 5, 0.8), g(1, 8, 1, 'skitter', 6, 0.4),
       g(2, 0, 1, 'razorback', 1, 1), g(2, 2, 0, 'ruin_guard', 1, 1), g(2, 4, 1, 'seed_carrier', 3, 1.6), g(2, 6, 0, 'spitter', 3, 1.5),
     ] },
     { key: 'C', name: 'Swarm night', groups: [
-      g(0, 0, 0, 'crawler', 8, 0.7), g(0, 2, 1, 'crawler', 8, 0.7), g(0, 6, 0, 'skitter', 7, 0.4),
-      g(1, 0, 1, 'ruin_guard', 1, 1), g(1, 2, 0, 'seed_carrier', 5, 1.5), g(1, 4, 1, 'burrower', 4, 1.1), g(1, 8, 0, 'crawler', 6, 0.7),
-      g(2, 0, 0, 'ruin_guard', 1, 1), g(2, 2, 1, 'skitter', 7, 0.4), g(2, 4, 0, 'spitter', 3, 1.5),
+      g(0, 0, 0, 'crawler', 6, 0.7), g(0, 2, 1, 'crawler', 6, 0.7), g(0, 6, 0, 'skitter', 4, 0.4),
+      g(1, 0, 1, 'ruin_guard', 1, 1), g(1, 2, 0, 'seed_carrier', 4, 1.5), g(1, 4, 1, 'burrower', 4, 1.1), g(1, 8, 0, 'crawler', 5, 0.7),
+      g(2, 0, 0, 'ruin_guard', 1, 1), g(2, 2, 1, 'skitter', 4, 0.4), g(2, 4, 0, 'spitter', 3, 1.5),
     ] },
   ],
   // ---- Night 6: the Canopy Colossus in the last push, after two thin support pushes.

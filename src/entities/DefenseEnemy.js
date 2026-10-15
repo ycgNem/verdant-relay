@@ -288,10 +288,10 @@ export class DefenseEnemy {
     // A besieging boss never walks into the Relay: it stops on the plaza (see _bossUpdate 'siege').
     if (this.boss && this.def.siege) this.dist = Math.min(this.dist, this.lane.total - this.def.siege.stopAt);
 
-    // Burrowers are underground for the configured stretch of their route.
+    // Burrowers are underground for the configured stretch of their route (not in a beacon's light: BEACON_LIGHT.surface).
     if (this.def.burrow) {
       const f = this.dist / this.lane.total;
-      const under = f >= this.def.burrow[0] && f < this.def.burrow[1];
+      const under = f >= this.def.burrow[0] && f < this.def.burrow[1] && !scene.surfacesHere?.(this);
       if (under !== this.burrowed) this._setBurrowed(under);
       if (under) {
         this._dirtT = (this._dirtT || 0) - dt;

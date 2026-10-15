@@ -110,7 +110,7 @@ export class Bloater extends ExploreEnemy {
     const sc = this.scene, p = sc.player, fx = sc.fx;
     const dx = p.pos.x - this.x, dz = p.pos.z - this.z, d = Math.hypot(dx, dz) || 1e-4;
     p.nearMiss?.((px, pz) => Math.hypot(px - this.x, pz - this.z) < SPORES.radius + p.r * 0.5);   // rolled out of the burst: perfect
-    if (!p.dead && d < SPORES.radius + p.r * 0.5) p.hurt(this.burstDamage, dx / d, dz / d, this.def.name, 'burst');
+    if (!p.dead && d < SPORES.radius + p.r * 0.5) p.hurt(this.burstDamage, dx / d, dz / d, this.def.name, 'burst', this);
     sc.spores?.cloudAt?.(this.x, this.z);
     fx.burst({ x: this.x, y: 0.4, z: this.z }, { color: SPORES.color, color2: '#ffffff', count: 22, speed: 3.2, up: 2.6, life: 0.6, size: 2 / 32, gravity: 2 });
     fx.ring({ x: this.x, z: this.z }, { color: SPORES.color, radius: SPORES.radius, life: 0.35 });

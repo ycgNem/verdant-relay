@@ -53,3 +53,26 @@
 }
 .dc-obj .dc-reward { color: #8ce06a; }
 .dc-rk { color: #fee761; }
+
+/* ---- briefing side panel (critic Q): tonight's attack scrolls on its own, the skills + spend button stay pinned below */
+.side.side-split { overflow-y: hidden; }
+.side-split .side-top { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: round(calc(var(--u) * 4), 1px); }
+.side-split .side-top > h3:first-child { margin-top: 0; }
+.side-split .side-skills { flex: none; border-top: 1px solid var(--panel-edge); }
+.side-split .side-skills h3 { margin-top: round(calc(var(--u) * 4), 1px); }
+.side-more {
+  display: none; position: sticky; bottom: 0; margin-top: auto; text-align: right; color: var(--amber);
+  background: #181425; padding: 0 round(calc(var(--u) * 4), 1px);
+}
+.side-top.more .side-more { display: block; }
+/* The skills block takes at most 55% of the panel: its chips scroll inside it, the spend box always shows. */
+.side-split .side-skills { flex: 0 0 auto; max-height: 55%; min-height: 0; display: flex; flex-direction: column; }
+.side-split .side-skills .skill-tags { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+.side-split .side-skills .points-box { flex: none; }
+/* Short screens (1024×600, the wider body font): the area cards' text fits — tighter lines, and the boss's
+   "Optional. Kill it: …" line moves to the tooltip (the card keeps "☠ name"). */
+@media (max-height: 660px) {
+  .district-card .dc-body { gap: round(calc(var(--u) * 4), 1px); padding-top: round(calc(var(--u) * 6), 1px); padding-bottom: round(calc(var(--u) * 6), 1px); }
+  .dc-line.dc-boss .small { display: none; }
+  .dc-line.dc-obj { padding-top: round(calc(var(--u) * 2), 1px); padding-bottom: round(calc(var(--u) * 2), 1px); }
+}

@@ -188,7 +188,7 @@ export class Shots {
             if ((p.pos.x - s.x) ** 2 + (p.pos.z - s.z) ** 2 < r * r) {
               // A deflect (critic I §9A) knocks a bolt or spear out of the air.
               if (p.tryDeflect?.(s.owner || null, 'shot', s.x0, s.z0)) this._impact(s, '#ffffff', false);
-              else if (p.hurt(s.damage, s.dx, s.dz, s.source, s.kind)) this._impact(s, '#e43b44', true);
+              else if (p.hurt(s.damage, s.dx, s.dz, s.source, s.kind, s.owner)) this._impact(s, '#e43b44', true);
               else if (!p.dodging) this._impact(s, null, true);
               // A dodge passes straight through the shot.
             }
@@ -290,7 +290,7 @@ export class Shots {
           const o = L.owner && !L.owner.dead ? L.owner : null;
           const bx = o ? o.x : L.x, bz = o ? o.z : L.z;
           this.lob({ x: p.pos.x, z: p.pos.z, tx: bx, tz: bz, time: 0.45, apex: 1.1, y0: 0.6, radius: L.radius, damage: DEFLECT.glob, team: 'player', source: 'deflect' });
-        } else p.hurt(L.damage, dx / dl, dz / dl, L.source, 'glob');
+        } else p.hurt(L.damage, dx / dl, dz / dl, L.source, 'glob', L.owner);
       }
       const fx = sc.fx;
       fx.burst({ x: L.tx, y: 0, z: L.tz }, { color: '#ff4d8d', color2: '#b55088', count: 12, speed: 2.2, up: 2.2, life: 0.4, size: 2 / 32, y: 0.1 });

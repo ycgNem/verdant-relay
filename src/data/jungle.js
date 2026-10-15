@@ -211,9 +211,14 @@ export const DAY = {
   // Relay / pylons, then objectives, then containers. Exception (so a crate right next to a pylon is still
   // reachable): standing within interactPointBlank of a lower-ranked one that is at least
   // interactPointBlankLead closer than the winner picks it instead.
-  interactRank: { extract: 0, pylon: 0, primary: 1, optional: 1, event: 1, container: 2, forage: 3, forage_hint: 4 },
+  // The quest wins E (critic Q fix 4: at Platform 7 E opened a strongbox, a crate, a data log and a chest first): a
+  // quest step you can do now ranks just under the Relay / beacons and never loses to the point-blank exception; a
+  // step not yet open ranks `lockedRank` (last). Strongboxes, shrines and data logs come after bonus tasks.
+  interactRank: { extract: 0, pylon: 0, primary: 0.5, optional: 1, event: 1, relic: 1.5, shrine: 1.5, lore: 1.5, container: 2, forage: 3, forage_hint: 4 },
+  interactLockedRank: 5,
   interactPointBlank: 0.8,
   interactPointBlankLead: 0.6,
+  interactLoreCalm: 8,       // a data log can't be read (its text box would cover the fight) with a creature after you this close
   pylonHold: 2.5,
   pylonReveal: 22,           // activating a pylon maps this radius around it
   startOffset: [2.4, 1.4],   // where the day starts relative to the Relay Core
@@ -335,10 +340,11 @@ export const SPORE_LOOK = { puffs: 8, ring: [0.34, 0.66], height: [0.05, 0.4], d
 export const POP = {
   safeRadius: 18,            // no wild spawns this close to the Relay
   base: 0.7, far: 2.4,       // expected enemies per chunk at danger 0 / 1
-  byNight: [0.65, 0.8, 1, 1.12, 1.25, 1.4],
+  byNight: [0.65, 0.8, 0.92, 0.95, 1.0, 1.05],   // (Stage 9 fix wave, critic R #3: was …1, 1.12, 1.25, 1.4 — days 3–6 were a grind)
   targetRegion: 1.2,         // today's district is busier
   group: [1, 3],
-  campSize: [2, 3],          // ferals at a camp (+1 from night 3)
+  campSize: [2, 3],          // ferals at a camp (+1 from night campGrowFrom)
+  campGrowFrom: 4,           // (fix wave, critic Q #1: was night 3 — a 5-Feral camp on day 3 snowballed)
   spawnRadius: 2,            // chunks around the player whose wildlife is live
   despawnDist: 46,           // tiles: un-alerted wildlife this far away goes back into the bush
   minSpawnDist: 15,          // never pop in closer than this to the player (view half-diagonal ≈ 11.5 tiles + look-ahead + margin)
@@ -473,8 +479,9 @@ export const ATMOS = {
   // the outline, so the player's x-ray never prints over a creature (critic I #3; enemy silhouettes in turn skip the
   // player's stencil-masked texels, Assets.js).
   // One colour language (simplicity pass): cyan = you / home, red = danger. Enemies must out-shine the player:
-  // the player's silhouette is a calm mid cyan, hostiles a hot red (brighter still once they've spotted you).
-  silhouette: { player: '#4fb8c8', enemy: '#ff2e2e', enemyDim: '#e04434', fill: 0.2, playerFill: 0, inner: 0.75 },
+  // the player's silhouette is a calm mid cyan, hostiles a pale bone (brighter once they've spotted you) — Stage 9 fix
+  // wave (critic O #6): solid red is the commit flash now ("red flash = roll"), so occluded creatures aren't red.
+  silhouette: { player: '#4fb8c8', enemy: '#f0dcb4', enemyDim: '#b8a080', fill: 0.2, playerFill: 0, inner: 0.75 },
   // Player readability (critic G #1): foliage/trunk/ruin cards never cover the player's own texels or its
   // 1-texel outline (stencil mask, Assets.js), so the player is always drawn whole. The outline is dark on
   // open ground and turns `cover` only while a card in front ACTUALLY overlaps the player (critic H #10,

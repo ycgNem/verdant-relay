@@ -3,7 +3,8 @@
 //
 // Each lane is sampled every READINESS.sample tiles. A tower covers the samples within its range (that
 // coverage is what decides most nights: a tower beside the Relay sees ~8 tiles of path, a central one ~18 of
-// two). Enemies in a beacon's light at a lane mouth (BEACON_LIGHT, scene._lit) take its bonus damage.
+// two). Enemies in a beacon's light at a lane mouth (BEACON_LIGHT, scene._lit) take its bonus damage, and Burrowers
+// can't tunnel there.
 // Enemies walk their lane at their real speeds (district speed, lane slows, Snare slows where snares cover
 // the path — slows multiply time in range, they are not "+6 DPS"), Burrowers can't be shot by bullets while
 // underground, Spitters plant and lob sap, Seed Carriers burst unless a blast tagged them, tanks resist, the
@@ -37,6 +38,11 @@ export function forecastNight(scene) {
     for (let i = 0; i < n; i++) if (Math.hypot(xs[i] - scene.corePos.x, zs[i] - scene.corePos.z) <= spit.range) { stopI = i; break; }
     return { li, lane, n, xs, zs, on, slow, stopI, speed: scene.enemySpeedMult(li), lost: 0, threat: 0, covered: 0, by: {} };
   });
+  // A beacon's light (scene._lit, BEACON_LIGHT): bonus damage there, and Burrowers can't tunnel in it.
+  const litAt = (e) => {
+    const lit = scene._lit?.[e.L.li];
+    return !!lit && !e.def.boss && e.d >= lit[0] && e.d <= lit[1];
+  };
 
   // Towers: coverage per lane (sample flags) and per-attack numbers.
   const towers = [];
@@ -160,7 +166,7 @@ export function forecastNight(scene) {
           const zapSpit = tw.zap && RELAY_ZAP.spitters && e.def.spit && i >= e.L.stopI && !tw.cov[e.L.li][i];
           if (!tw.cov[e.L.li][i] && !zapSpit) continue;
           const f = e.d / e.L.lane.total;
-          if (tw.kind === 'bullet' && e.def.burrow && f >= e.def.burrow[0] && f < e.def.burrow[1]) continue;
+          if (tw.kind === 'bullet' && e.def.burrow && f >= e.def.burrow[0] && f < e.def.burrow[1] && !(BEACON_LIGHT.surface && litAt(e))) continue;
           const score = (tw.rule === 'strongest' ? e.hp : e.d) - (zapSpit ? 1e6 : 0);
           if (score > best) { best = score; target = e; }
         }
@@ -168,8 +174,7 @@ export function forecastNight(scene) {
         tw.cd += 1 / tw.rate;
         const hurt = (e, amt, type) => {
           if (e.dead || amt <= 0) return;
-          const lit = scene._lit?.[e.L.li];
-          if (lit && !e.def.boss && e.d >= lit[0] && e.d <= lit[1]) amt *= 1 + BEACON_LIGHT.bonus;
+          if (litAt(e)) amt *= 1 + BEACON_LIGHT.bonus;
           const res = s.pierce ? 1 : e.def.resist?.[type] ?? 1;
           const big = s.bigBonus && (e.def.size || 0) >= BIG_SIZE ? s.bigBonus : 1;
           if (type === 'blast') e.blast = t;

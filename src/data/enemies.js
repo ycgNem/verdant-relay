@@ -5,6 +5,7 @@
 // coreDamage is dealt once when the enemy reaches the core (it is then removed). With coreDamageMin
 // (boss) the damage scales from coreDamageMin at 0 health left to coreDamage at full health.
 // note: one line shown in the wave preview / first-sighting toast. color: icon colour in the UI.
+// counter: what beats it, said under the readiness check when it is the weakest path's top leaker (Stage 9 round 2).
 // gap: default seconds between spawns when the enemy arrives as an extra (district threat) group.
 // slowResist: fraction of every slow that is ignored. rootImmune: snare roots don't apply (the Vine Snare
 // protocol still holds a boss for its bossRoot time). size ≥ BIG_SIZE (towers.js) = "big": Piercer bonus,
@@ -17,18 +18,22 @@ export const DEFENSE_ENEMIES = {
   crawler: {
     name: 'Bramble Crawler', role: 'Basic', hp: 38, speed: 1.5, coreDamage: 5, bounty: 0.5, size: 0.7,
     note: 'Steady and numerous.', color: '#3e8948', gap: 1.1,
+    counter: 'Crawlers come in numbers: more towers covering that path.',
   },
   skitter: {
     name: 'Skitter', role: 'Fast', hp: 18, speed: 3.0, coreDamage: 3, bounty: 0.5, size: 0.5,
     note: 'Very fast and fragile. Slows and rapid fire stop it.', color: '#b55088', gap: 0.5,
+    counter: 'Skitters are fast: a Snare Vine or rapid fire stops them.',
   },
   razorback: {
     name: 'Razorback', role: 'Tank', hp: 180, speed: 0.9, coreDamage: 9, bounty: 1.5, size: 1.0,
     note: 'Slow, armoured, very high health. Hits the Relay hard.', color: '#b86f50', gap: 3,
+    counter: 'Razorbacks are tanks: upgrade towers, or slow them with a Snare Vine.',
   },
   spitter: {
     name: 'Spitter', role: 'Ranged', hp: 52, speed: 1.3, coreDamage: 4, bounty: 1, size: 0.75,
     note: 'Stops near the Relay and lobs sap at it (up to 8 globs) until killed. Cover the Relay.', color: '#ff4d8d', gap: 2.2,
+    counter: 'Spitters stop near the Relay to spit: a tower there must reach them.',
     // Stops once it is this close to the core (tiles), then lobs sap after a visible wind-up.
     // After `shots` globs its sap sac is empty and it withers away (no bounty).
     spit: { range: 5.5, windup: 0.9, every: 3.4, damage: 2, flight: 0.8, shots: 8 },
@@ -36,12 +41,14 @@ export const DEFENSE_ENEMIES = {
   burrower: {
     name: 'Burrower', role: 'Ambusher', hp: 58, speed: 1.6, coreDamage: 6, bounty: 1, size: 0.7,
     note: 'Tunnels under part of its route. Bullet towers can\'t hit it there; arcs, mortars and snares can.', color: '#e4a672', gap: 1.4,
+    counter: 'Bullets can\'t hit Burrowers underground: use an Arc Spire or a Snare Vine (or a beacon\'s light).',
     // Underground for this fraction of its route: bullet towers can't target it there.
     burrow: [0.2, 0.55],
   },
   seed_carrier: {
     name: 'Seed Carrier', role: 'Swarm', hp: 70, speed: 1.2, coreDamage: 6, bounty: 1, size: 0.85,
     note: 'Bursts into 3 Seedlings when it dies, unless a blast (Mortar) hit it in its last 3 seconds.', color: '#feae34', gap: 2,
+    counter: 'Seed Carriers burst into Seedlings: a Mortar hit stops it, or more towers near the Relay.',
     // Bursts into seedlings on death unless a hit of `unlessDamageType` landed within its last `blastTag` s.
     onDeath: { spawn: 'seedling', count: 3, unlessDamageType: 'blast', blastTag: 3 },
   },
@@ -52,11 +59,12 @@ export const DEFENSE_ENEMIES = {
   ruin_guard: {
     name: 'Ruin Guard', role: 'Elite', hp: 190, speed: 1.0, coreDamage: 10, bounty: 2, size: 1.05,
     note: 'Its shield halves kinetic damage (Turrets, Thorns). Use arcs, mortars or Piercer turrets.', color: '#0099db', gap: 4,
+    counter: 'Ruin Guard shields halve Turret and Thorn damage: use Arc Spires.',
     resist: { kinetic: 0.5 },   // shield halves kinetic damage
   },
   colossus: {
     name: 'Canopy Colossus', role: 'Boss', hp: 1020, speed: 0.55, coreDamage: 40, coreDamageMin: 15, bounty: 0, size: 2.2, boss: true,
-    note: 'Boss. Walks, roots itself to spawn a Crawler, then winds up and charges (a Vine Snare cancels the charge). At 60% health it roars and enrages: it charges faster and Skitters sprout too. On the plaza it stops and slams the Relay (8 damage every 3 s) until it is killed.', color: '#ff0044', gap: 1,
+    note: 'Boss. Walks, roots itself to spawn a Crawler, then winds up and charges (a Vine Snare cancels the charge). At 60% health it roars and enrages: it charges faster and Skitters sprout too. On the plaza it stops and slams the Relay (6 damage every 3 s, 7 slams at most) until it is killed.', color: '#ff0044', gap: 1,
     slowResist: 0.5, rootImmune: true,
     // Phase loop: approach -> rooted (telegraph, then spawns crawlers) -> charge (wind-up, then fast).
     // rootSpawn crawlers appear when it roots; the charge covers speed × chargeMult × charge tiles.
@@ -77,7 +85,8 @@ export const DEFENSE_ENEMIES = {
     // The finale (critic K #3): `stopAt` tiles before the end of its lane it stops on the plaza and slams the
     // Relay — a `windup` s ring telegraph, then `damage` — every `every` s until it is killed. After
     // `maxSlams` it collapses, spent (the night ends without a kill). No leak, no 15–40 damage walk-in.
-    siege: { stopAt: 2.5, every: 3, windup: 0.8, damage: 8, maxSlams: 8 },   // (damage 5 → 8, critic K2 #5: it couldn't threaten)
+    siege: { stopAt: 2.5, every: 3, windup: 0.8, damage: 6, maxSlams: 7 },   // (5 → 8, critic K2 #5; Stage 9 round 2, critic R: 8 × 8 slams
+    // cost a near-fixed ~60 Relay HP whatever the build, so 6 × 7: a build that kills it sooner pays less)
   },
 };
 
@@ -125,12 +134,15 @@ export const EXPLORE_ENEMIES = {
     track: 0.5, lead: 0.9, creep: 0.35, podTrigger: true, size: 0.8, drop: 0.55, burst: ['#a22633', '#3a4466'],
     poise: 0.5, recover: 0.8,
     guard: { hits: 2, window: 1.0, time: 0.8, break: 1.0, cooldown: 3.5, arc: 100 },
-    thrust2: { chance: 0.4, fromNight: 2, delay: 0.45, damage: 0.8, lunge: 2.0, track: 0.35 },
+    // (fix wave, critic O #2: track 0.35 → 0.15 so it flashes ≥ 0.4 s before it lands, like the first; chance by night)
+    thrust2: { chance: [0, 0.2, 0.3, 0.4], fromNight: 2, delay: 0.45, damage: 0.8, lunge: 2.0, track: 0.15 },
     spear: { windup: 0.9, width: 0.3, speed: 11, damage: 15, range: 7, min: 2.5, cooldown: 3.5, brushDist: 4, lead: 0.8, lock: 0.45 },
   },
   crawler: {
-    name: 'Bramble Crawler', brush: 'through', hp: 34, speed: 2.4, detect: 7, attack: 'melee', damage: 13, windup: 0.7, cooldown: 1.2, reach: 1.5, lunge: 2.4, lungeTime: 0.24,
-    track: 0.5, lead: 0.9, creep: 0.3, bleed: 3, podTrigger: true, size: 0.7, drop: 0.25, burst: ['#3e8948', '#63c74d'],
+    // (fix wave, critic O #3: hp 34 → 56 so a face-traded combo (54) no longer kills one from night 3 and its counter-bite
+    // lands; track 0.5 → 0.42: 0.45 s from its flash to the bite)
+    name: 'Bramble Crawler', brush: 'through', hp: 56, speed: 2.4, detect: 7, attack: 'melee', damage: 11, windup: 0.7, cooldown: 1.2, reach: 1.5, lunge: 2.4, lungeTime: 0.24,
+    track: 0.42, lead: 0.9, creep: 0.3, bleed: 3, podTrigger: true, size: 0.7, drop: 0.25, burst: ['#3e8948', '#63c74d'],
     poise: 0.3, recover: 0.7,
   },
   skitter: {

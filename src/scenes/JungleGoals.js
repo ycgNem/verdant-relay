@@ -681,9 +681,13 @@ export class Goals {
       n.puffT -= dt;
       if (d < G.puffRange && n.puffT <= 0) {
         n.puffT = G.puffEvery;
-        sc.fx.ringTele({ x: n.x, z: n.z }, { radius: SPORES.radius, color: SPORES.color, color2: SPORES.color2, time: G.puffFuse, fade: 0.05 });
+        // The puff lands on you, a tile beyond where you stand (critic R #6: on the nest itself, popping a nest meant
+        // standing in its spores) — step in toward the nest, out of the ring, and the nest is free to hit.
+        const k = (Math.max(d, 1.2) + 1) / Math.max(d, 1e-3);
+        const at = { x: n.x + (pl.x - n.x) * k, z: n.z + (pl.z - n.z) * k };
+        sc.fx.ringTele(at, { radius: SPORES.radius, color: SPORES.color, color2: SPORES.color2, time: G.puffFuse, fade: 0.05 });
         this.game.sfx.playAt('spore_nest_puff', n.x, n.z);
-        sc.later(G.puffFuse, () => { if (!n.popped) sc.spores?.cloudAt?.(n.x, n.z); });
+        sc.later(G.puffFuse, () => { if (!n.popped) sc.spores?.cloudAt?.(at.x, at.z); });
       }
       if (Math.random() < dt * 2) sc.fx.burst({ x: n.x, y: 0.8, z: n.z }, { color: SPORES.color, count: 1, speed: 0.4, up: 0.8, life: 0.9, size: 2 / 32, gravity: -0.3 });
       n.barT = (n.barT || 0) - dt;

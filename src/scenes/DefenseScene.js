@@ -725,11 +725,17 @@ export class DefenseScene {
     return this._lit;
   }
 
-  /** Damage multiplier for an enemy standing in a beacon's light (BEACON_LIGHT.bonus; not the boss), else 1. */
-  beaconMult(e) {
+  /** True while an enemy stands in a beacon's light (not the boss). Burrowers surface there (BEACON_LIGHT.surface). */
+  inBeaconLight(e) {
     const L = this._lit?.[e.laneIndex];
-    return L && e.dist >= L[0] && e.dist <= L[1] && !e.boss ? 1 + BEACON_LIGHT.bonus : 1;
+    return !!L && e.dist >= L[0] && e.dist <= L[1] && !e.boss;
   }
+
+  /** A Burrower can't tunnel here: it is in a beacon's light (BEACON_LIGHT.surface). */
+  surfacesHere(e) { return !!BEACON_LIGHT.surface && this.inBeaconLight(e); }
+
+  /** Damage multiplier for an enemy standing in a beacon's light (BEACON_LIGHT.bonus; not the boss), else 1. */
+  beaconMult(e) { return this.inBeaconLight(e) ? 1 + BEACON_LIGHT.bonus : 1; }
 
   _addVisual(key, x, z, opts) {
     const v = this.game.assets.makeVisual(key, opts);
@@ -899,11 +905,13 @@ export class DefenseScene {
     tex.magFilter = tex.minFilter = THREE.NearestFilter;
     tex.generateMipmaps = false;
     this._gridTex = tex;
-    this.gridMat = this._track(new THREE.MeshBasicMaterial({ map: tex, color: V.ok, transparent: true, opacity: V.grid, depthWrite: false }));
+    // Drawn over the grass tufts (critic P: dark 1-texel ticks vanished on the jungle floor at x1): pale 2-texel ticks
+    // with an ink edge, no depth test, under the footprint and the ghost.
+    this.gridMat = this._track(new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: V.grid, depthWrite: false, depthTest: false }));
     this.grid = new THREE.Mesh(this._track(new THREE.PlaneGeometry(W, H)), this.gridMat);
     this.grid.rotation.x = -Math.PI / 2;
     this.grid.position.set(W / 2, 0.03, H / 2);
-    this.grid.renderOrder = -1;
+    this.grid.renderOrder = 38;
     this.grid.userData.pxSnap = true;
     this.grid.visible = false;
     this.three.add(this.grid);
@@ -959,21 +967,26 @@ export class DefenseScene {
 
   /** Free-tile ticks: small corner marks on every tile a tower could go on now (ignoring price). */
   _drawGrid() {
+    const V_TICK = DEFENSE_VIEW.build.tick;
     const key = this.towers.map((t) => `${t.rec.x},${t.rec.y}`).join('|');
     if (key === this._gridKey) return;
     this._gridKey = key;
     const c = this._gridCanvas, g = c.getContext('2d'), k = DEFENSE_VIEW.build.gridTick;
     g.clearRect(0, 0, c.width, c.height);
-    g.fillStyle = '#ffffff';
-    for (let y = 0; y < this.map.height; y++) for (let x = 0; x < this.map.width; x++) {
-      if (!this._placeCheck(x, y, null).ok) continue;
-      const X = x * 32, Y = y * 32;
-      // four L-shaped corner ticks, k texels long, one texel in from the tile's edge
-      for (const [cx, cy, sx, sy] of [[X + 1, Y + 1, 1, 1], [X + 30, Y + 1, -1, 1], [X + 1, Y + 30, 1, -1], [X + 30, Y + 30, -1, -1]]) {
-        g.fillRect(sx > 0 ? cx : cx - k + 1, cy, k, 1);
-        g.fillRect(cx, sy > 0 ? cy : cy - k + 1, 1, k);
+    const free = [];
+    for (let y = 0; y < this.map.height; y++) for (let x = 0; x < this.map.width; x++) if (this._placeCheck(x, y, null).ok) free.push([x * 32, y * 32]);
+    // four L-shaped corner ticks, k texels long and 2 thick, two texels in from the tile's edge; an ink edge first
+    const tick = (X, Y, o, w) => {
+      for (const [cx, cy, sx, sy] of [[X + 2, Y + 2, 1, 1], [X + 29, Y + 2, -1, 1], [X + 2, Y + 29, 1, -1], [X + 29, Y + 29, -1, -1]]) {
+        const x0 = sx > 0 ? cx : cx - k + 1, y0 = sy > 0 ? cy : cy - k + 1;
+        g.fillRect(x0 - o, (sy > 0 ? cy : cy - 1) - o, k + 2 * o, w);
+        g.fillRect((sx > 0 ? cx : cx - 1) - o, y0 - o, w, k + 2 * o);
       }
-    }
+    };
+    g.fillStyle = '#181425';
+    for (const [X, Y] of free) tick(X, Y, 1, 4);
+    g.fillStyle = V_TICK;
+    for (const [X, Y] of free) tick(X, Y, 0, 2);
     this._gridTex.needsUpdate = true;
   }
 
@@ -990,6 +1003,59 @@ export class DefenseScene {
     if (m) { m.transparent = true; m.opacity = DEFENSE_VIEW.build.ghostOpacity; }
     this.three.add(this.ghost);
     return this.ghost;
+  }
+
+  /** Walk the path a tower at (x, z) with stats `st` would cover (every build.dotStep tiles): fn(point, lane index). */
+  _pathCover(x, z, st, fn) {
+    const step = DEFENSE_VIEW.build.dotStep;
+    const r2 = st.range * st.range, m2 = (st.minRange || 0) ** 2;
+    const p = new THREE.Vector3();
+    this.lanes.forEach((lane, li) => {
+      for (let d = 0; d <= lane.total; d += step) {
+        lane.pointAt(d, p);
+        if (p.x < 0) continue;
+        const d2 = (p.x - x) ** 2 + (p.z - z) ** 2;
+        if (d2 <= r2 && d2 >= m2) fn(p, li);
+      }
+    });
+  }
+
+  /** Tiles of each lane a `type` tower on tile (tx, ty) would cover (cached per tile and range). */
+  _coverFor(type, tx, ty) {
+    const st = this._previewStats(type);
+    const key = `${tx},${ty},${st.range},${st.minRange || 0},${st.kind}`;
+    this._covCache ||= new Map();
+    let cov = this._covCache.get(key);
+    if (!cov) {
+      cov = this.lanes.map(() => 0);
+      if (st.kind !== 'support') this._pathCover(tx + 0.5, ty + 0.5, st, (p, li) => { cov[li] += DEFENSE_VIEW.build.dotStep; });
+      this._covCache.set(key, cov);
+    }
+    return cov;
+  }
+
+  /** A damage tower here would cover fewer than BUILD.barely tiles of path (it asks before building: _tryBuildAt). */
+  _barelySees(type, tx, ty) {
+    if (!BUILD.barely || this._previewStats(type).kind === 'support') return false;
+    return this._coverFor(type, tx, ty).reduce((a, v) => a + v, 0) < BUILD.barely;
+  }
+
+  /**
+   * A build from the mouse or Enter: on a tile that barely sees a path it asks first (the tag is amber, a toast says
+   * why); Shift+click, or the same click again, builds there anyway (critic P #5).
+   */
+  _tryBuildAt(type, x, y, shift) {
+    if (!shift && this._placeCheck(x, y, type).ok && this._barelySees(type, x, y)) {
+      const k = `${type}|${x},${y}`;
+      if (this._barelyAsk !== k) {
+        this._barelyAsk = k;
+        this.game.sfx.play('error');
+        toast(this.game.ui, BUILD.lines.barely, 'amber', 2.6);
+        return false;
+      }
+    }
+    this._barelyAsk = null;
+    return this._build(type, x, y, shift);
   }
 
   /**
@@ -1010,7 +1076,10 @@ export class DefenseScene {
     if (!showAt) { this.placeTag.style.display = 'none'; this._place = null; return false; }
     const chk = this._placeCheck(c.x, c.y, this.placing);
     this._place = chk;
-    const col = chk.ok ? V.ok : V.bad;
+    const st = this._previewStats(this.placing);
+    // A damage tower that would barely see a path (BUILD.barely tiles) shows amber and asks first (_tryBuildAt).
+    const barely = chk.ok && this._barelySees(this.placing, c.x, c.y);
+    const col = !chk.ok ? V.bad : barely ? V.warn : V.ok;
     const x = c.x + 0.5, z = c.y + 0.5;
     this.ghostMark.position.set(x, 0.035, z);
     this.ghostMarkMat.color.set(col);
@@ -1018,46 +1087,39 @@ export class DefenseScene {
     g.visible = true;
     g.position.set(x, 0, z);
     const m = g.userData.vis.body?.material;
-    if (m) m.color.set(chk.ok ? '#d8ffd0' : '#ff9a9a');
-    const st = this._previewStats(this.placing);
+    if (m) m.color.set(!chk.ok ? '#ff9a9a' : barely ? '#ffe0a0' : '#d8ffd0');
     this._showRange(x, z, st, col, chk.ok);
     // Path it would cover: a dot every dotStep tiles of lane inside its range (and outside a Mortar's minimum).
-    const key = `${c.x},${c.y},${st.range},${st.minRange || 0},${col}`;
+    const key = `${c.x},${c.y},${st.range},${st.minRange || 0}`;
     if (key !== this._dotKey) {
       this._dotKey = key;
-      const r2 = st.range * st.range, m2 = (st.minRange || 0) ** 2;
-      const mtx = new THREE.Matrix4(), rot = new THREE.Matrix4().makeRotationX(-Math.PI / 2), p = new THREE.Vector3();
+      const mtx = new THREE.Matrix4(), rot = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
       let i = 0;
-      const cover = this.lanes.map(() => 0);
       if (st.kind !== 'support') {
-        this.lanes.forEach((lane, li) => {
-          for (let d = 0; d <= lane.total; d += V.dotStep) {
-            lane.pointAt(d, p);
-            if (p.x < 0) continue;
-            const d2 = (p.x - x) ** 2 + (p.z - z) ** 2;
-            if (d2 > r2 || d2 < m2) continue;
-            cover[li] += V.dotStep;
-            mtx.copy(rot).setPosition(p.x, 0.045, p.z);
-            this.dots.setMatrixAt(i++, mtx);
-          }
+        this._pathCover(x, z, st, (p) => {
+          mtx.copy(rot).setPosition(p.x, 0.045, p.z);
+          this.dots.setMatrixAt(i++, mtx);
         });
       }
       this.dots.count = i;
       this.dots.instanceMatrix.needsUpdate = true;
-      this.dotMat.color.set(col);
-      this._cover = cover;
     }
-    // The tag: the reason in red, else the tiles of path it covers (per path when it sees more than one).
-    const cover = this._cover || [];
-    const seen = this.lanes.map((l, li) => [l.short, Math.round(cover[li] || 0)]).filter(([, n]) => n > 0);
+    this.dotMat.color.set(col);
+    // The tag: the reason in red, else the tiles of path it covers (per path when it sees more than one); amber when
+    // it barely sees a path.
+    const cover = this._coverFor(this.placing, c.x, c.y);
+    const seen = this.lanes.map((l, li) => [l.short, Math.round(cover[li] || 0)]).filter(([, k]) => k > 0);
     const boosts = st.kind === 'support' ? this.towers.filter((t) => t.def.kind !== 'support' && Math.hypot(t.pos.x - x, t.pos.z - z) <= st.range + 0.01).length : 0;
+    const tiles = (k) => `${k} tile${k === 1 ? '' : 's'}`;
     const txt = !chk.ok ? chk.word
       : st.kind === 'support' ? `Boosts ${boosts} tower${boosts === 1 ? '' : 's'}`
-      : !seen.length ? 'Covers no path'
-      : seen.length === 1 ? `Covers ${seen[0][1]} tiles · ${seen[0][0]}` : `Covers ${seen.map(([sh, n]) => `${sh} ${n}`).join(' · ')}`;
+      : !seen.length ? `${BUILD.words.barely} · covers none`
+      : barely ? `${BUILD.words.barely} · covers ${tiles(Math.floor(cover.reduce((a, v) => a + v, 0)))}`
+      : seen.length === 1 ? `Covers ${tiles(seen[0][1])} · ${seen[0][0]}` : `Covers ${seen.map(([sh, k]) => `${sh} ${k}`).join(' · ')}`;
     const n = this.placeTag;
     if (n.textContent !== txt) { n.textContent = txt; this._ptW = 0; }
     n.classList.toggle('bad', !chk.ok);
+    n.classList.toggle('warn', barely);
     n.style.display = '';
     if (!this._ptW) { this._ptW = n.offsetWidth; this._ptH = n.offsetHeight; }
     const tp = this.game.project(new THREE.Vector3(x, 0, z + 0.72), this.camera);
@@ -1311,7 +1373,10 @@ export class DefenseScene {
     // Build bar (prep and lulls): one card per tower (icon, hotkey, name, price), kept out of the panel's re-renders
     // like the protocol bar (_renderBuildBar / _refreshBuildBar). Pick one, then click the board to place it.
     this.buildBar = el('div.df-buildbar', { style: { display: 'none' } });
-    this.side = el('div.df-side.panel.ui-block', {}, this.sideHead, this.hintDock, this.sideBody, this.leakFeed, this.protoBar, this.buildBar, this.sideFoot);
+    // Prep actions (Intel Read / Disrupt, Scrap trades) sit just above the build bar, out of the scroller (critic P: under
+    // "▾ more" nobody found Disrupt at 720p).
+    this.actsRow = el('div.df-actsrow');
+    this.side = el('div.df-side.panel.ui-block', {}, this.sideHead, this.hintDock, this.sideBody, this.leakFeed, this.protoBar, this.actsRow, this.buildBar, this.sideFoot);
     // Fade the bottom edge while more content sits below the scroll fold.
     this.sideBody.addEventListener('scroll', () => this._sideMore());
 
@@ -1581,16 +1646,17 @@ export class DefenseScene {
     head.replaceChildren();
     body.replaceChildren();
     foot.replaceChildren();
+    this.actsRow.replaceChildren();
+    this.side.classList.toggle('df-inprep', this.phase === 'prep');
     this._refreshBuildBar(true);
     if (mode === 'placing') this._renderPlacing(head, body);
     else if (mode === 'tower') this._renderTower(t, head, body);
     else this._renderPreview(head, body);
-    // The coach hint docks under the paths in the wave preview (critic M2 P0-1: the night-6 boss hint pushed both
-    // paths and Start Wave out of the panel), under the title otherwise.
-    // Preview: after the paths, the danger, the rewards and the night-1 zap line (QA 8 P2-1). A selected tower: at the
-    // end of its details (QA 8 P1-2: the Colossus hint pushed Upgrade / Sell below the fold).
-    const lanes = mode === 'preview' ? body.querySelectorAll(':scope > .df-lane, :scope > .df-threat1, :scope > .df-boons, :scope > .df-zapline') : [];
-    if (lanes.length) lanes[lanes.length - 1].after(this.hintDock);
+    // The coach hint: in the wave preview it docks just above the prep actions and the build bar, out of the scroller
+    // (critic Q, Stage 9 round 2: inside it, under the paths, the build hint sat below the fold at 720p and 1080p).
+    // A selected tower: at the end of its details (QA 8 P1-2: the Colossus hint pushed Upgrade / Sell below the fold).
+    // Placing: under the title.
+    if (mode === 'preview') { if (this.hintDock.nextSibling !== this.actsRow) this.side.insertBefore(this.hintDock, this.actsRow); }
     else if (mode === 'tower') body.append(this.hintDock);
     else if (this.hintDock.parentNode !== this.side || this.hintDock.nextSibling !== body) this.side.insertBefore(this.hintDock, body);
     // "▾ more" pinned to the body's bottom edge while content sits below the fold (_sideMore).
@@ -1620,6 +1686,7 @@ export class DefenseScene {
     if (!b?.isConnected) return;
     this._watchSide();
     b.style.flex = ''; b.style.height = ''; b.style.marginBottom = '';
+    this._floatHintIfCramped();
     const H = b.clientHeight;
     if (b.scrollHeight <= H + 1) { this._sideMore(); return; }
     const cs = this._moreCue && getComputedStyle(this._moreCue, '::before');
@@ -1637,8 +1704,15 @@ export class DefenseScene {
     for (const c of b.children) {
       consider(c);
       // Rows inside a tall block (a hint's lines, the "Also tonight" list) count too, so one long block can't empty the
-      // view; never inside a path, which shows whole or not at all.
-      if (c !== this._moreCue && !c.classList.contains('df-lane') && c.getBoundingClientRect().bottom - top > room) {
+      // view. A path may stop after its title or a whole row of enemy chips (Stage 9 round 2, critic P: stopping only
+      // after whole paths left a 60–110 px blank band above the build bar at 720p), never through a chip.
+      if (c !== this._moreCue && c.classList.contains('df-lane') && c.getBoundingClientRect().bottom - top > room) {
+        const pad = Math.ceil(parseFloat(getComputedStyle(c).paddingBottom) || 0);
+        for (const cc of c.querySelectorAll(':scope > *, :scope > * > *')) {
+          const bot = Math.ceil(cc.getBoundingClientRect().bottom - top) + pad;
+          if (bot <= room && bot > cut) cut = bot;
+        }
+      } else if (c !== this._moreCue && c.getBoundingClientRect().bottom - top > room) {
         for (const cc of c.querySelectorAll(':scope > *, :scope > * > *')) consider(cc);
         // …and its text lines (a hint is one paragraph): the bottom of each line box, plus the block's padding.
         const pad = Math.ceil(parseFloat(getComputedStyle(c).paddingBottom) || 0);
@@ -1660,6 +1734,23 @@ export class DefenseScene {
     b.style.height = `${hgt}px`;
     b.style.marginBottom = `${H - hgt}px`;
     this._sideMore();
+  }
+
+  /**
+   * A docked hint that pushes the footer (Start Wave, Call next push) out of the panel floats over the board's
+   * bottom-left corner instead (Stage 9 round 2: with the hint docked above the build bar, a 720p prep with Intel, trades
+   * and a patch button had no room for it).
+   */
+  _floatHintIfCramped() {
+    const dock = this.hintDock;
+    if (!dock?.firstChild || !this.side?.isConnected) return;
+    const sideB = this.side.getBoundingClientRect().bottom - (parseFloat(getComputedStyle(this.side).paddingBottom) || 0);
+    if (this.sideFoot.getBoundingClientRect().bottom <= sideB + 1) return;
+    for (const n of [...dock.children]) {
+      n.classList.remove('docked');
+      Object.assign(n.style, { left: 'round(calc(var(--u) * 12), 1px)', bottom: 'round(calc(var(--u) * 10), 1px)' });
+      this.game.ui.append(n);
+    }
   }
 
   /** Re-fit the body (one per frame) when the side panel or its docked hint changes size. */
@@ -1724,12 +1815,15 @@ export class DefenseScene {
         onmouseleave: () => { if (this.hoverType === type) this.hoverType = null; this._barLabel(); },
       },
       el('span.df-bicon', {}, this._towerIcon(type, 24), i < 6 ? el('span.df-hk', String(i + 1)) : null),
+      el('span.df-bname', TOWERS[type].short || TOWERS[type].name),   // (critics P / Q: names were hover-only)
       el('span.df-bcost'));
       card.dataset.type = type;
       return card;
     });
     const cols = types.length <= 4 ? Math.max(1, types.length) : 3;
-    this.buildBar.replaceChildren(head, el(`div.df-bgrid.c${cols}`, {}, this._barCards));
+    // How to build, under the cards while you have fewer than 2 towers (it used to close the wave preview, below the fold).
+    this._barHow = el('div.small.muted.df-bbhow', 'Pick a tower, then click free ground beside a path.');
+    this.buildBar.replaceChildren(head, el(`div.df-bgrid.c${cols}`, {}, this._barCards), this._barHow);
     this._barKey = null;
     this._barLabel();
   }
@@ -1754,6 +1848,7 @@ export class DefenseScene {
     if (this.buildBar.style.display !== (show ? '' : 'none')) this.buildBar.style.display = show ? '' : 'none';
     if (!show) return;
     this.buildBar.classList.toggle('df-nudge', first);
+    this._barHow.style.display = this.towers.length < 2 && !this.placing && this.night <= 2 ? '' : 'none';
     for (const card of this._barCards) {
       const type = card.dataset.type;
       const cost = run.buildCost(type);
@@ -1768,7 +1863,9 @@ export class DefenseScene {
       card.querySelector('.df-bcost').replaceChildren(sc, ...(Object.keys(comp).length ? [costLine(comp, run.res)] : []));
       this._barLabel();
       card.classList.toggle('df-surch', sur > 0);   // (price raised by the towers of that type you own: amber, why in the tooltip)
-      const notes = (sur ? `<div class="amber">+${sur} Scrap: you own ${run.towerCount(type)} (each ${TOWERS[type].name} raises the next one's price, so mixing types pays)</div>` : '')
+      // The repeat-build surcharge, said before it bites too (critic Q: a red "57" with no reason).
+      const notes = (sur ? `<div class="amber">+${sur} Scrap: you own ${run.towerCount(type)} (each ${TOWERS[type].name} raises the next one's price, so mixing types pays)</div>`
+        : CONFIG.towerSurcharge ? `<div class="muted">Each ${TOWERS[type].name} you own adds +${CONFIG.towerSurcharge} Scrap to the next one's price.</div>` : '')
         + (ok ? '' : `<div class="bad">${run.missing(cost)}</div>`);
       card.dataset.tip = this._towerTip(type, notes);
     }
@@ -1923,7 +2020,7 @@ export class DefenseScene {
     const why = this._place && !this._place.ok ? this._place.line : '';
     if (why) body.append(el('div.small.bad.df-placewhy', why));
     const lit = this._beaconLanes().map((l, li) => (l.length ? this.lanes[li].short : null)).filter(Boolean);
-    if (lit.length) body.append(el('div.small.df-beaconline', {}, el('span.df-zapglyph', 'ϟ '), `Beacon light at the ${lit.join(' and ')} path mouth: enemies in it take +${Math.round(BEACON_LIGHT.bonus * 100)}% damage.`));
+    if (lit.length) body.append(el('div.small.df-beaconline', {}, el('span.df-zapglyph', 'ϟ '), `Beacon light at the ${lit.join(' and ')} path mouth: enemies in it take +${Math.round(BEACON_LIGHT.bonus * 100)}% damage${BEACON_LIGHT.surface ? ', and Burrowers surface there' : ''}.`));
   }
 
   _renderTower(t, head, body) {
@@ -2158,13 +2255,15 @@ export class DefenseScene {
 
     // Modifiers
     const mods = [];
-    if (night > 1) mods.push(`Enemies are tougher every night (+${Math.round((this.hpMult - 1) * 100)}% health tonight)`);
+    // (critic Q: "+470% health tonight" alarmed and said nothing; a plain comparison with night 1 instead.)
+    if (night > 1) mods.push(`Enemies get tougher every night: about ${Math.max(2, Math.round(this.hpMult / healthMult(1)))}× night 1's health`);
     const t = tn;
     if (t.enemyCount !== 1) {
       const wm = Math.max(CONFIG.waveSizeFloor ?? 0, t.enemyCount);
       const capped = t.enemyCount <= (CONFIG.waveSizeFloor ?? 0) + 1e-6;
       mods.push(`${Math.round(Math.abs(1 - wm) * 100)}% ${wm < 1 ? 'fewer' : 'more'} enemies${capped ? ` (−${Math.round((1 - CONFIG.waveSizeFloor) * 100)}% is the most)` : ''}`);
     }
+    if (t.provoked) mods.push(`Provoked: ${Math.round((DEFENSE.provoke.enemies - 1) * 100)}% more enemies, kills pay +${Math.round((DEFENSE.provoke.bounty - 1) * 100)}% Scrap`);
     if (t.enemySpeed !== 1) mods.push(`Enemies move ${Math.round(Math.abs(t.enemySpeed - 1) * 100)}% ${t.enemySpeed > 1 ? 'faster' : 'slower'}`);
     if (t.laneSlow) mods.push(`${(this.lanes[t.laneSlow.lane]?.name || 'Path').replace(/lane/i, 'path')}: enemies ${Math.round((1 - t.laneSlow.mult) * 100)}% slower`);
     if (t.towerRate !== 1) mods.push(`Towers attack ${Math.round((t.towerRate - 1) * 100)}% faster`);
@@ -2181,9 +2280,8 @@ export class DefenseScene {
     }
     // Beacons switched on in the jungle light their path's mouth (BEACON_LIGHT): say it once here, plainly.
     const lit = this._beaconLanes().map((l, li) => (l.length ? this.lanes[li].short : null)).filter(Boolean);
-    if (lit.length && !inWave) body.append(el('div.small.df-beaconline', { title: `Every beacon you switched on in the jungle lights ${BEACON_LIGHT.tiles} tiles of the path facing it, where it enters the clearing (up to ${BEACON_LIGHT.max} beacons a path). Towers there hit harder.` },
-      el('span.df-zapglyph', 'ϟ '), `Your beacons light the ${lit.join(' and ')} path mouth: enemies in the light take +${Math.round(BEACON_LIGHT.bonus * 100)}% damage.`));
-    if (!inWave) body.append(el('div.small.muted.df-note', 'Pick a tower below, then click free ground beside a path to build it. Click a tower to upgrade it.'));
+    if (lit.length && !inWave) body.append(el('div.small.df-beaconline', { title: `Every beacon you switched on in the jungle lights ${BEACON_LIGHT.tiles} tiles of the path facing it, where it enters the clearing (up to ${BEACON_LIGHT.max} beacons a path). Towers there hit harder${BEACON_LIGHT.surface ? ', and Burrowers can\'t tunnel through the light, so bullets hit them' : ''}.` },
+      el('span.df-zapglyph', 'ϟ '), `Your beacons light the ${lit.join(' and ')} path mouth: enemies there take +${Math.round(BEACON_LIGHT.bonus * 100)}% damage${BEACON_LIGHT.surface ? ' and Burrowers can\'t hide' : ''}.`));
   }
 
   _renderFoot(foot) {
@@ -2201,11 +2299,12 @@ export class DefenseScene {
       const sReason = run.sabotageBlocked();
       const cut = Math.round((1 - I.sabotageWave) * 100);
       acts.append(el('div.df-intel', {},
-        button(el('span', {}, 'Read ', costLine(dCost, run.res), el('span.df-arrow', ` → +${I.decryptResearch} Research`)), () => this._decrypt(), {
+        // One line each (Stage 9 round 2: above the build bar now, so they must stay short); the effect is in the tooltip.
+        button(el('span', {}, 'Read ', costLine(dCost, run.res), null), () => this._decrypt(), {
           disabled: !!dReason, cls: 'df-half',
           title: `Read Intel: spend ${I.decryptCost} Intel for ${I.decryptResearch} Research (kept forever; spend it on new gear in Collection).${dReason ? ` ${dReason}.` : ''}`,
         }),
-        button(el('span', {}, 'Disrupt ', costLine(run.sabotageCost(), run.res), el('span.df-arrow', ` → −${cut}% enemies`)), () => this._sabotage(), {
+        button(el('span', {}, 'Disrupt ', costLine(run.sabotageCost(), run.res), null), () => this._sabotage(), {
           disabled: !!sReason, cls: 'df-half',
           title: `Disrupt the attack: spend ${I.sabotageCost} Intel for ${cut}% fewer enemies tonight (once per night).${sReason ? ` ${sReason}.` : ''}`,
         })));
@@ -2219,15 +2318,21 @@ export class DefenseScene {
         el('span', {}, costLine({ scrap: X.scrap }, run.res), el('span.df-arrow', '→'), costLine({ [k]: 1 })),
         () => this._exchange(k), { cls: 'df-half', title: `Trade ${X.scrap} Scrap for 1 ${k === 'circuits' ? 'Circuit' : 'Biofiber'} (${run.exchangeLeft()} trade${run.exchangeLeft() === 1 ? '' : 's'} left tonight).` }))));
     }
-    if (acts.childNodes.length) {
-      const body = this.sideBody;
-      const at = this.hintDock.parentNode === body ? this.hintDock.nextSibling
-        : [...body.querySelectorAll(':scope > .df-lane, :scope > .df-threat1, :scope > .df-boons, :scope > .df-zapline')].pop()?.nextSibling;
-      body.insertBefore(acts, at || this._moreCue || null);
+    // Provoke (DEFENSE.provoke): a dare, offered only while the defense already looks strong (critic P #2).
+    const PV = DEFENSE.provoke;
+    if (PV && this.phase === 'prep' && this.sideMode === 'preview' && !run.provokeBlocked() && this.towers.length && this._readiness().level === 'strong') {
+      const more = Math.round((PV.enemies - 1) * 100), bty = Math.round((PV.bounty - 1) * 100);
+      acts.append(button(el('span', {}, `Provoke: +${more}% enemies, `, el('span.good', `+${PV.scrap} Scrap`)), () => this._provoke(), {
+        cls: 'df-wide df-provoke',
+        title: `A dare for a strong defense: ${more}% more enemies tonight. You get ${PV.scrap} Scrap now and kills pay ${bty}% more Scrap. Once a night; it can't be undone.`,
+      }));
     }
+    if (acts.childNodes.length) this.actsRow.append(acts);
     // Repair and Emergency Patch: side by side as half buttons when both show (keeps the footer short
     // so the wave preview above keeps its room), full width otherwise. Repairs work in prep and lulls.
-    const patchOn = run.hasSkill('emergency_patch') && (prep || DEFENSE.emergencyPatchInWave) && ['prep', 'wave', 'lull'].includes(this.phase);
+    // (Not in prep while the Relay is full: a disabled button there only took the room Start Wave needs at 720p.)
+    const patchOn = run.hasSkill('emergency_patch') && (prep || DEFENSE.emergencyPatchInWave) && ['prep', 'wave', 'lull'].includes(this.phase)
+      && !(prep && run.relayHp >= run.relayMax);
     const damaged = run.relayHp < run.relayMax;   // Repair shows only when there is something to repair
     const halves = this.canBuild && patchOn && damaged;
     const pair = halves ? el('div.df-intel') : foot;
@@ -2291,6 +2396,9 @@ export class DefenseScene {
           ? el('div.df-rd-lane', { title: r.lanes.map((l) => `${l.short} ${dots(l.dots)}`).join(' · ') + `\n${laneTip(worst)}` },
             `${worst.short} `, el(`b.df-rd-dots.d${worst.dots}`, dots(worst.dots)), el('span.bad', ` ${leakName(worst.top, true)}`))
           : el('div', {}, r.lanes.map((l, i) => el('span.df-rd-lane', { title: laneTip(l) }, i ? ' · ' : '', `${l.short} `, el(`b.df-rd-dots.d${l.dots}`, dots(l.dots))))),
+        // …and what beats it (critic P #6: "Burrowers" alone left 7 Circuits unspent; DEFENSE_ENEMIES[type].counter).
+        worst && r.level !== 'strong' && this.towers.length && DEFENSE_ENEMIES[worst.top === 'sap' ? 'spitter' : worst.top]?.counter
+          ? el('div.df-rd-counter', DEFENSE_ENEMIES[worst.top === 'sap' ? 'spitter' : worst.top].counter) : null,
         el('div.muted', expect)));
       foot.append(button(el('span', {}, armed ? '▶ Start anyway' : '▶ Start Wave'), () => this._tryStartWave('button'), { hotkey: armed ? 'Shift+Space' : 'Space', cls: `primary big df-wide df-start${armed ? ' df-armed' : ''}` }));
     } else if (this.phase === 'lull') {
@@ -2486,6 +2594,22 @@ export class DefenseScene {
     run.save('prep');
     game.sfx.play('sabotage');
     toast(game.ui, `Sabotage: ${before - this.wave.total} fewer enemies tonight`, 'good', 2.4);
+    this.sideDirty = true;
+    this._refreshTop(true);
+  }
+
+  /** Provoke: a bigger wave tonight for Scrap now and richer kills (DEFENSE.provoke; the forecast counts it). */
+  _provoke() {
+    const run = this.run;
+    const game = this.game;
+    if (this.phase !== 'prep') return;
+    const why = run.provokeBlocked();
+    if (why || !run.provoke()) { game.sfx.play('error'); toast(game.ui, why || 'Can\'t provoke now', 'bad'); return; }
+    const before = this.wave.total;
+    this.wave = buildWave(run, this._waveOpts());
+    run.save('prep');
+    game.sfx.play('sabotage');
+    toast(game.ui, `Provoked: ${this.wave.total - before} more enemies tonight, +${DEFENSE.provoke.scrap} Scrap`, 'amber', 2.6);
     this.sideDirty = true;
     this._refreshTop(true);
   }
@@ -3536,7 +3660,7 @@ export class DefenseScene {
     if (prep && inp.wasPressed('KeyR')) this._repair();
     if (this.placing) {
       this._moveCursorKeys(dt);
-      if ((inp.wasPressed('Enter') || inp.wasPressed('NumpadEnter')) && this.cursor) this._build(this.placing, this.cursor.x, this.cursor.y, shift);
+      if ((inp.wasPressed('Enter') || inp.wasPressed('NumpadEnter')) && this.cursor) this._tryBuildAt(this.placing, this.cursor.x, this.cursor.y, shift);
     } else if (inp.wasPressed('Tab')) {
       this._cycleTower(shift ? -1 : 1);
     }
@@ -3564,7 +3688,7 @@ export class DefenseScene {
         // A click on a tower (its sprite, or the tile it stands on) selects it; anywhere else tries to build.
         const on = tile && this._towerAt(tile.x, tile.y);
         if (on || (t && !(tile && this._placeCheck(tile.x, tile.y).ok))) this._select(on || t);
-        else if (tile) this._build(this.placing, tile.x, tile.y, shift);
+        else if (tile) this._tryBuildAt(this.placing, tile.x, tile.y, shift);
         else this._cancelPlacing();
       } else if (t) {
         this._select(t === this.selTower ? null : t);

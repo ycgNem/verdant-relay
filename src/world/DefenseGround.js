@@ -168,6 +168,8 @@ export function buildDefenseGround(game, map, { seed, laneTiles, pads = [], towe
 
   // ---- ground texture (4 × 4 baked chunks)
   const baker = new TerrainBaker(world, game.assets, game.assets.terrainArt || null);
+  // No square slab / brick decals on the night field: since build anywhere they read as the old build pads (critic P).
+  for (const k of Object.keys(baker.decals || {})) baker.decals[k] = baker.decals[k].filter((d) => !/slab|bricks/.test(d.name));
   const C = S / 16;
   const big = document.createElement('canvas');
   big.width = big.height = S * 32;
