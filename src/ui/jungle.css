@@ -134,6 +134,20 @@
 /* The interaction prompt sits just above the tracker (--qh: the tracker's top, set by JungleQuest). */
 .jungle-ui .x-prompt { bottom: calc(var(--qh, round(calc(var(--u) * 36), 1px)) + round(calc(var(--u) * 6), 1px)); }
 .jungle-ui .x-ptext { font-size: var(--hud-f); }
+/* Med kit reminder (HUD.medHint): same lane as the prompt, a red-edged pulsing line; above the prompt when both show. */
+.j-medhint {
+  position: absolute; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: var(--hud-f);
+  bottom: calc(var(--qh, round(calc(var(--u) * 36), 1px)) + round(calc(var(--u) * 6), 1px));
+  display: flex; align-items: center; gap: round(calc(var(--u) * 6), 1px); text-shadow: var(--ol);
+  background: rgba(24, 20, 37, 0.9); border: round(calc(var(--u) * 2), 1px) solid #e43b44; border-radius: round(calc(var(--u) * 3), 1px);
+  padding: round(calc(var(--u) * 4), 1px) round(calc(var(--u) * 10), 1px);
+  animation: j-medpulse 1s steps(2) infinite;
+}
+.j-medhint.up { bottom: calc(var(--qh, round(calc(var(--u) * 36), 1px)) + round(calc(var(--u) * 50), 1px)); }
+.j-medhint b { color: var(--good); }
+.j-medhint .key { margin: 0; }
+@keyframes j-medpulse { 50% { border-color: #fee761; } }
+.j-mapopen .j-medhint, .x-hud.paused .j-medhint { display: none !important; }
 /* A bottom-anchored hint (hints.js: 80 units up) never sits on a tall tracker either. */
 .jungle-ui .hint[style*="bottom"] { bottom: max(round(calc(var(--u) * 80), 1px), calc(var(--qh, 0px) + round(calc(var(--u) * 6), 1px))) !important; }
 

@@ -1921,6 +1921,8 @@ export class JungleScene {
     h.promptText = el('span.x-plabel');
     h.promptTime = el('span.x-ptime');
     h.prompt = el('div.x-prompt', {}, el('div.x-ptext', {}, h.promptRing, h.promptText, h.promptTime));
+    // Med kit reminder (HUD.medHint): hurt with a kit in the bag → "Q  Use a med kit +25 health", above the prompt.
+    h.medHint = el('div.j-medhint', { style: { display: 'none' } });
     // In-world ◆ over the coached crate and the guided route's crates (pixel diamonds at the world's texel scale).
     h.marks = [];
     h.lowhp = el('div.j-lowhp');   // red screen-edge pulse at low health
@@ -1950,7 +1952,7 @@ export class JungleScene {
         el('div.j-bigfoot', {}, h.bigSteps, el('div.j-bighelp.muted', {}, `Drag / ${['up', 'left', 'down', 'right'].map((a) => keyLabel(this.game.input.keyFor(a))).join('')} / arrows pan · wheel / + − zoom · Space: you`, el('br'), 'Dark blue: deep water · plank strips: bridges (the only way across)')),
         legend));
     this._bindBigMap(h.big);
-    h.root = el('div.x-hud', {}, h.lowhp, h.tlcol, h.tr, h.prompt, ...questNodes, h.bigmap);
+    h.root = el('div.x-hud', {}, h.lowhp, h.tlcol, h.tr, h.prompt, h.medHint, ...questNodes, h.bigmap);
     h.root.style.setProperty('--hudfade', String(JUICE.hudFade?.opacity ?? 0.5));
     ui.append(h.root);
     // Whole pixels (critic M2 P1-3): the centred quest tracker is pinned, the clock lines are snapped when they change.
@@ -2045,7 +2047,7 @@ export class JungleScene {
   _hudRects() {
     const st = this.game.stage.getBoundingClientRect();
     const out = [];
-    for (const n of [this.hud.tl, this.hud.tr, this.hud.timerSub, this.hud.strip, this.hud.prompt, this.hud.coach, this.hud.toasts]) {
+    for (const n of [this.hud.tl, this.hud.tr, this.hud.timerSub, this.hud.strip, this.hud.prompt, this.hud.medHint, this.hud.coach, this.hud.toasts]) {
       if (n.style.display === 'none') continue;
       const r = n.getBoundingClientRect();
       if (r.width > 0) out.push({ n, l: r.left - st.left, t: r.top - st.top, r: r.right - st.left, b: r.bottom - st.top });
@@ -2113,7 +2115,7 @@ export class JungleScene {
     this._set('tx', h.root, '--tx', `${this.game._layout().k / (window.devicePixelRatio || 1)}px`);
     h.stam.set(pl.stamina / STAMINA.max, '');
     this._set('stc', h.stam.node.firstChild, 'background', pl.exhausted ? '#8b9bb4' : '#feae34');
-    this._set('meds', h.meds, 'html', `${resIconHtml('pick_med')}<b>${pl.meds}</b><span class="muted">/${pl.maxMeds ?? CONFIG.player.maxMeds}</span>`);
+    this._set('meds', h.meds, 'html', `${this._key('med')}${resIconHtml('pick_med')}<b>${pl.meds}</b><span class="muted">/${pl.maxMeds ?? CONFIG.player.maxMeds}</span>`);
     this._set('medsd', h.meds, 'display', pl.meds > 0 ? '' : 'none');   // shows once you carry one
     for (const k of RESOURCE_KEYS) {
       const L = h.loot[k];
@@ -2157,6 +2159,15 @@ export class JungleScene {
     // Prompt.
     const t = this.promptTarget;
     h.prompt.style.display = t && !this.ending ? '' : 'none';
+    // Med kit reminder: every time you're under HUD.medHint.below with a kit (not while applying one).
+    const medOn = !this.ending && !pl.dead && pl.meds > 0 && pl.state !== 'heal' && pl.hp / pl.maxHp < HUD.medHint.below;
+    this._set('medh', h.medHint, 'display', medOn ? '' : 'none');
+    if (medOn) {
+      const heal = Math.min(CONFIG.player.medHeal + (this.relicMod?.('medHeal') || 0), pl.maxHp - Math.ceil(pl.hp));
+      this._set('medht', h.medHint, 'html', `${this._key('med')} Use a med kit <b>+${heal} health</b> <span class="muted">(${pl.meds} left)</span>`);
+      // Stacked above the interact prompt when that shows too.
+      this._set('medhu', h.medHint, 'className', `j-medhint${t ? ' up' : ''}`);
+    }
     if (t && !this.ending) {
       const mult = t.objectiveHold && this.game.run.hasSkill('quick_extraction') ? X().quickExtraction : 1;
       const hold = t.hold * mult;

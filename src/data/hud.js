@@ -20,6 +20,9 @@ export const HUD = {
   // Health bar (critic L §3: at 28–38 HP it was the stamina bar's orange): green above `ok`, yellow above `low`,
   // red below; under `pulse` the screen edge pulses red.
   health: { ok: 0.6, low: 0.3, pulse: 0.3, colors: ['#63c74d', '#fee761', '#e43b44'] },
+  // Med kit reminder (JungleScene, user feedback 2026-10-15): under `below` of your health with a kit in the bag, a
+  // pulsing "Q Use a med kit" line sits above the tracker every time (not once), until you heal or are healing.
+  medHint: { below: 0.5 },
   markLift: 0.35,        // world units above a sprite's top where an in-world ◆ marker floats
   // Day creatures' hostile ground ring (critic H2 §5.8): only on one winding up / attacking / holding an attack slot,
   // an alerted one within ringNear tiles, elites and area bosses (JungleScene, the occlusion loop).
@@ -46,7 +49,7 @@ export const QUEST = {
   card: { min: 2.5, time: 8, moveDist: 1.5 },
   tick: 1.4,
   done: 3.8,
-  arrow: { size: 25, glow: 2, scale: 2, dirs: 8, margin: 2, bob: 2, gap: 2 },
+  arrow: { size: 19, glow: 1, scale: 2, dirs: 8, margin: 2, bob: 2, gap: 2 },   // (toned down from 25 / 2: user)
   mark: { lift: 0.3, near: 1.6, bridgeTop: 0.4 },
   orbit: { minDist: 22, calm: 8, radius: 44, size: 13 },
   // "cross at the bridge" (JungleScene._updateFord, critic Q): rechecked every `every` frames; the walk fields from the
