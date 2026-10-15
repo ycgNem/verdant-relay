@@ -553,7 +553,7 @@ export const SOLID = {
   tilePad: 0.15,             // a tile counts as blocked for flow fields when its centre is this close to a footprint
 };
 
-// Ground and water (Stage 6): movement multipliers, deep water and fords (src/world/JungleWorld.js speedAt,
+// Ground and water (Stage 6): movement multipliers, deep water and bridges (src/world/JungleWorld.js speedAt,
 // src/world/JungleGen.js). Undergrowth: ferns are pushed through slowly (no full-speed rolls either), the machete
 // clears them; thickets and brambles stay solid until cut. Creatures that slip through or bulldoze brush
 // (Skitter, Crawler, Razorback) ignore the fern drag.
@@ -562,15 +562,20 @@ export const GROUND = {
   fernRoll: 0.6,             // a dodge roll in ferns (× roll speed)
   rollMin: 0.6,              // a roll never drops below this × speed on slow ground (water, mud)
   mud: 0.82,
-  shallow: 0.55,             // wading: shallow water, river edges, fords
+  shallow: 0.55,             // wading: shallow water, river edges, ponds (never on a bridge deck)
   // Water deeper than `deepFrom` tiles in from the shore is deep: nobody crosses it. Rivers (half-width
-  // 1.4–2.6) keep a deep channel; trails cross at fords (deep cleared `fordPad` tiles around the trail), and
-  // each river gets `extraFords` more (radius `fordRadius`, at least `fordSpacing` tiles apart along it).
+  // 1.4–2.6) keep a deep channel, crossed on bridges (Stage 9, JungleGen planBridge): straight plank decks `width`
+  // tiles wide, N–S or E–W, over every wet row from bank to bank (≤ `maxLen` tiles; trails and reachability fixes
+  // allow `fixLen`). One where each trail crosses deep water (along the trail; `turn` = score penalty for the
+  // other axis), plus `extra` per river across its flow, ≥ `spacing` tiles from any other bridge. Lateral shifts
+  // up to `shift` tiles are tried (`shiftCost` each); decks keep `gap` tiles apart, and a trail crossing within
+  // `trailGap` tiles of an existing bridge joins that bridge (its landings) instead of getting a twin. Landings: dirt paths `landing`
+  // tiles out from each end (trail bridges: to the trail point `reach` samples past the bank, ½ tile each). No tree
+  // trunk, rock or log within `treeSide` tiles of a deck's sides or `treeFront` tiles south of it (its card would hide the
+  // deck); no ruin within `ruinSide` / `ruinFront`.
   deepFrom: 0.85,
-  fordPad: 1.2,
-  extraFords: 3,
-  fordRadius: 1.6,
-  fordSpacing: 30,
+  bridge: { width: 2, maxLen: 12, fixLen: 22, turn: 3, shift: 2, shiftCost: 0.6, extra: 3, spacing: 30, gap: 2, trailGap: 6, landing: 2.5, reach: 5,
+    treeSide: 2, treeFront: 4, ruinSide: 3.5, ruinFront: 5 },
   deepTint: 0.5,             // deep water drawn this much darker (TerrainBaker), so the channel reads
   clearFront: 1.3,           // no undergrowth this far in front of (south of) logs, rocks and ruins, so they show
   treeFront: { rock: 1.9, ruin: 2.4 },   // ...and no tree trunk this far in front of them (its card would hide them)
@@ -580,7 +585,7 @@ export const GROUND = {
   // Reachability (JungleGen): every site, pylon and container must be walkable from the Relay (brush counts as
   // passable — it can be cut; deep water, trunks, rocks and ruins don't). A tile is walkable when its centre
   // is ≥ reachPad from every footprint. Unreachable targets are fixed along the cheapest path: deep water on it
-  // becomes a ford (cost fixDeep per tile), objects on it are removed (fixObject per tile).
+  // gets a bridge (cost fixDeep per tile), objects on it are removed (fixObject per tile).
   reachPad: 0.3,
   fixDeep: 12,
   fixObject: 30,
@@ -590,3 +595,15 @@ export const GROUND = {
 // the feet (at most maxShare of a small creature's height), with the fx_ripple loop centred on that waterline
 // and an fx_splash on entry (its entry texel splashEntry, frame px, on the waterline).
 export const WATER = { line: 8, maxShare: 0.2, splashEntry: [8, 11] };
+
+// Bridge look (TerrainBaker drawBridge, Stage 9), all in texels: the deck runs `end` onto each bank; planks every `plank`
+// (one of them the dark gap); edge logs `kerb` wide; posts `post` tall every `postEvery` along both sides, the rope
+// `ropeDrop` below their tops, sagging `sag` on an E–W span; the south face `fascia` thick with `pile` stubs into the
+// water; the shadow offset `shadow` (down-right) at ×shadowK. `wood` = dark → light (gap, shade, old, weathered,
+// fresh, lit). Night map (DefenseGround laneBridges): the deck is `lane` tiles wider than the lane on each side.
+export const BRIDGE_LOOK = {
+  lane: 0.5, end: 8, plank: 7, kerb: 3, post: 14, postEvery: 64, ropeDrop: 4, sag: 3, fascia: 3, pile: 4,
+  shadow: [3, 5], shadowK: 0.55,
+  wood: ['#2a1a1e', '#3e2731', '#733e39', '#8f5340', '#b86f50', '#c28569'],
+  rope: '#e4a672', ropeDark: '#733e39', moss: '#3e8948', foam: '#5f9a86',
+};

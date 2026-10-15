@@ -13,8 +13,8 @@
 // authored. Fewer, tougher enemies from night 2 (a leak costs its own Relay damage however weak the defense,
 // so a thin build's worst case stays bounded while a good one still feels the tanks), and the Relay's own zap
 // (RELAY_ZAP, below) gives every defense the same flat backstop. Total wave HP (no district threat), variant A:
-// N1 ≈ 660, N2 ≈ 2200, N3 ≈ 7000 (tank-heavy: Razorbacks), N4 ≈ 10100, N5 ≈ 16300 (Ruin Guards, 1 per group),
-// N6 ≈ 12700 support + the 4590-HP Colossus (1020 × BOSS_HP 4.5), then × the map's hpMult (defenseMap.js:
+// N1 ≈ 790, N2 ≈ 2700, N3 ≈ 8900 (tank-heavy: Razorbacks), N4 ≈ 13700, N5 ≈ 24100 (Ruin Guards, 1 per group),
+// N6 ≈ 19900 support + the 6120-HP Colossus (1020 × BOSS_HP 6), then × the map's hpMult (defenseMap.js:
 // Twin Paths 0.95, Crossing 1.07, Ford 1.18).
 // Relay damage per leak: Crawler 5, Skitter 3, Razorback 9, Spitter 4 (+ up to 8 × 2 sap), Burrower 6,
 // Seed Carrier 6, Seedling 1, Ruin Guard 10. The Colossus never "leaks": it besieges the Relay from the plaza
@@ -35,7 +35,13 @@
 
 // N4 7.4 → 6.8 (critic J2 final fixes: after the economy pass the newcomer still fell on N4 ×26/36 with the Relay at
 // ~40 after N3; only N4 eased).
-export const HEALTH_MULT = [1.25, 3.5, 4.7, 6.8, 7.3, 9.2];
+// Stage 9 (build anywhere; the user: "make it a little harder, rn its cakewalk"): free placement made the old curve
+// easier (sim typical 36/36), so health ×1.2 (N1) … ×1.56 (N6), was [1.25, 3.5, 4.7, 6.8, 7.3, 9.2], and the
+// Colossus ×4.5 → ×6 (.playwright-mcp/build9/sim, 36 runs per profile; DESIGN §5):
+//   newcomer 0/36 · −13 / −32 / −70 (18/36 hold) / −58 · falls N3 17, N4 18, N5 1
+//   typical  26/36 (72%; 25/36 in a second batch) · 0 / −7 / −9 / −23 / −38 / −75 · boss killed 10/32
+//   strong   34/36 · 0 / −3 / −4 / −10 / −28 / −25
+export const HEALTH_MULT = [1.5, 4.3, 6.0, 9.2, 10.8, 14.4];
 
 /** Enemy health multiplier for a night (past night 6: ×1.2 per extra night, for the Long Night). */
 export function healthMult(night) {
@@ -71,7 +77,7 @@ export const DEFENSE = {
   exchange: { scrap: 35, max: 2, showAt: 60, fromNight: 2, gives: ['circuits', 'biofiber'] },
   // The Long Night (endless mode, nights past 6): health ×hpGrowth a night, counts ×(1 + countGrowth ×
   // nights past 6), a Colossus every `bossEvery` nights (its health × bossHp × that night's growth).
-  longNight: { hpGrowth: 1.2, countGrowth: 0.1, bossEvery: 3, bossHp: 4.5 },
+  longNight: { hpGrowth: 1.2, countGrowth: 0.1, bossEvery: 3, bossHp: 6.0 },
   // End-of-night banner: with bannerWait it stays until a click / Enter / Space (accepted after bannerMinTime s);
   // without, it auto-advances after endBanner / defeatBanner seconds.
   bannerWait: true,
@@ -127,7 +133,7 @@ export const SALVAGE = {
 
 // Shorthand for authoring: g(push, at, lane, type, count, gap, extra).
 const g = (push, at, lane, type, count, gap, extra = {}) => ({ push, at, lane, type, count, gap, ...extra });
-const BOSS_HP = { hpMult: 4.5 };   // N6 Colossus: 1020 × 4.5 = 4590 (instead of the night's ×9.2); = DEFENSE.longNight.bossHp
+const BOSS_HP = { hpMult: 6.0 };   // N6 Colossus: 1020 × 6 = 6120 (instead of that night ×14.4); = DEFENSE.longNight.bossHp
 
 // WAVE_VARIANTS[night − 1] = [A, B, C]: { key, name, groups }. Lane 0 = the first map lane (North on the
 // default map), lane 1 the second; a 3-lane map takes them % 3.

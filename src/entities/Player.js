@@ -5,7 +5,10 @@
 //   stamina) · F throw the machete (LMB shoves while it's out; F again calls it back) · Q med kit. Interaction (E)
 //   lives in the scene.
 //
-// States: free → swing (combo step 0/1/2) → free … · charge → chop → free · roll → free · throw → free · dead.
+// States: free → swing (combo step 0/1/2) → free … · charge → chop → free · roll → free · throw → free · heal → free · dead.
+// Stage 9: a hit taken stops your swing (POISE.flinch: a beat with no attacks, a roll still works); a med kit takes
+// CONFIG.player.medTime to apply (walking slowly, a hit spoils it, the kit is kept); every wound is logged (hurtLog) so a
+// collapse can say what got you and what to do about it (deathNote).
 // A swing connects once, at its `hitAt` moment: the scene resolves what the arc touches
 // (scene.meleeHit → enemies, undergrowth, nests). Inputs pressed during a swing are buffered, so
 // mashing LMB flows through the combo; a Space press is buffered too (ROLL.buffer, critic I #7). Stamina is paid
@@ -19,9 +22,11 @@
 // expedition result (Run.applyExpedition), so the Run stays the single source of truth.
 
 import * as THREE from 'three';
-import { CONFIG, WEAPONS, WEAPON_ALIAS, STAMINA, ROLL, JUICE, DEFLECT, STATUS } from '../data/config.js';
+import { CONFIG, WEAPONS, WEAPON_ALIAS, STAMINA, ROLL, JUICE, DEFLECT, STATUS, POISE } from '../data/config.js';
+import { EXPLORE_ENEMIES } from '../data/enemies.js';
 import { GROUND } from '../data/jungle.js';
 import { kitWeapon, Bleeds } from './BladeKit.js';
+import { keyLabel } from '../core/Input.js';
 import { setAnim, setFacing, updateVisual, flashVisual, setOpacity, hasAnim, animLength, animHitFrac, setAnimSpeed, setBaseColor } from '../core/Assets.js';
 
 /** Play the first sound name the audio data knows (new names fall back to older ones). */
@@ -92,6 +97,8 @@ export class Player {
     this.sapped = false;
     this.rimT = 0;
     this.moveOpts = { nudge: C.nudge };
+    this.flinchT = 0;          // hit mid-swing: no attacks for this long (POISE.flinch)
+    this.hurtLog = [];         // today's wounds: { src, how, dmg, swinging } (deathNote)
     this._tmp = new THREE.Vector3();
 
     this.vis = this.game.assets.makeVisual('player');
@@ -128,7 +135,7 @@ export class Player {
     const input = this.game.input;
     const sc = this.scene;
     this.iframes -= dt; this.medCd -= dt; this.hurtT -= dt; this.rollCd -= dt; this.comboT -= dt;
-    this.deflectT -= dt; this.deflectLock -= dt; this.riposteT -= dt; this.hackT -= dt; this.throwCd -= dt; this.guardT -= dt; this.turnT -= dt;
+    this.deflectT -= dt; this.deflectLock -= dt; this.riposteT -= dt; this.hackT -= dt; this.throwCd -= dt; this.guardT -= dt; this.turnT -= dt; this.flinchT -= dt;
     this.stateT += dt;
     this.eFreeT = input.isDown('KeyE') ? 0 : this.eFreeT + dt;
     if (this.rimT > 0) { this.rimT -= dt; if (this.rimT <= 0) this.vis.userData.outlineOverride = null; }
@@ -160,7 +167,7 @@ export class Player {
     if (ml > 0) { mx /= ml; mz /= ml; }
     this.moving = ml > 0;
     this.moveDir.x = mx; this.moveDir.z = mz;
-    const block = sc.blockFire;
+    const block = sc.blockFire || this.flinchT > 0;   // (a hit just stopped your swing: POISE.flinch)
     const wantSlash = !block && input.mouseClicked(0);
     const holdSlash = !block && input.mouseHeld(0);
     const holdChop = !block && input.mouseHeld(2) && !this.blade;
@@ -229,6 +236,13 @@ export class Player {
         if (this.stateT >= this.swing.hitAt) this._releaseThrow();
         break;
       }
+      case 'heal': {
+        // Applying a med kit (CONFIG.player.medTime): a roll cancels it (the kit is kept).
+        if (wantRoll && this.rollCd <= 0) { this._enter('free'); this.startRoll(mx, mz); break; }
+        if (Math.random() < 0.3) sc.fx.burst({ x: this.pos.x, y: 0.7, z: this.pos.z }, { color: '#63c74d', count: 1, speed: 0.5, up: 1.2, life: 0.3, size: 1.5 / 32 });
+        if (this.stateT >= C.medTime) { this._enter('free'); this._applyMed(); }
+        break;
+      }
       case 'roll': {
         if (wantSlash && this.stateT > ROLL.time * 0.5) this.buffer = 'slash';
         if (this.stateT >= ROLL.time) {
@@ -257,7 +271,7 @@ export class Player {
     } else {
       const S = C.actSlow;
       const st = this.state;
-      const slow = st === 'charge' ? S.charge : st === 'throw' ? S.throw
+      const slow = st === 'charge' ? S.charge : st === 'throw' ? S.throw : st === 'heal' ? S.heal
         : st === 'swing' ? (this.swing?.plantsOnly ? S.plants : S.swing) : st === 'chop' ? S.swing : 1;
       const rooted = this.rootT > 0;
       // sc.moveMult: carrying a generator core (src/scenes/JungleGoals.js, GOALS.carry.speed).
@@ -281,7 +295,7 @@ export class Player {
       if (this.walkT > 0.18) {
         this.walkT = 0;
         const lv = sc.world.levelAt(this.pos.x, this.pos.z);
-        if (lv === 0) sc.fx.ring({ x: this.pos.x, z: this.pos.z }, { color: '#5f9a86', radius: 0.45, life: 0.35 });
+        if (lv === 0 && !sc.world.onBridge?.(this.pos.x, this.pos.z)) sc.fx.ring({ x: this.pos.x, z: this.pos.z }, { color: '#5f9a86', radius: 0.45, life: 0.35 });
         else if (sc.world.brushAt(Math.floor(this.pos.x), Math.floor(this.pos.z)) === 1 && !sc.noRustle) {   // (rain: ferns don't rustle)
           this.game.sfx.play('fern_push');
           sc.fx.burst({ x: this.pos.x, y: 0.3, z: this.pos.z }, { color: '#376a30', color2: '#4b8139', count: 2, speed: 0.8, up: 1.2, life: 0.35, size: 1.5 / 32, gravity: 4 });
@@ -540,9 +554,25 @@ export class Player {
 
   useMed() {
     const C = CONFIG.player;
-    if (this.medCd > 0) return;
+    if (this.medCd > 0 || this.state === 'heal') return;
     if (this.meds <= 0) { this.scene.toast('No med kits', 'bad'); this.game.sfx.play('error'); this.medCd = 0.4; return; }
     if (this.hp >= this.maxHp) { this.scene.toast('Already at full health', 'amber'); this.game.sfx.play('error'); this.medCd = 0.4; return; }
+    // Stage 9: a kit takes medTime to apply, from a free stance (not mid-swing or mid-roll): heal when it's safe.
+    if (C.medTime > 0) {
+      if (this.state !== 'free') return;
+      this._enter('heal');
+      this.medCd = C.medCooldown;
+      setAnim(this.vis, 'idle');
+      this.scene.fx.ring(this.pos, { color: '#63c74d', radius: 0.7, life: C.medTime });
+      sfx(this.game, 'med_start', 'pickup');
+      return;
+    }
+    this._applyMed();
+  }
+
+  _applyMed() {
+    const C = CONFIG.player;
+    if (this.meds <= 0 || this.dead) return;
     const heal = Math.min(C.medHeal + (this.scene.relicMod?.('medHeal') || 0), this.maxHp - this.hp);   // (Medic's Satchel +10)
     this.hp += heal;
     this.meds -= 1;
@@ -658,6 +688,7 @@ export class Player {
         if (!this.scene.ending && !this.god) {
           const dmg = Math.max(1, Math.round(STATUS.bleed.dps * STATUS.bleed.tick));
           this.hp = Math.max(0, this.hp - dmg);
+          this.hurtLog.push({ src: 'Bleeding', how: 'bleed', dmg, swinging: false });
           fx.text(this.pos, `-${dmg}`, { color: STATUS.bleed.color, y: this.vis.userData.vis.height + 0.25, life: 0.5, key: 'bleed', value: dmg, prefix: '-' });
           flashVisual(this.vis, '#ff4040', 0.06);
           if (this.hp <= 0) this._die();
@@ -669,8 +700,12 @@ export class Player {
 
   // ---------------------------------------------------------------- damage
 
-  /** Take damage from a direction. Returns true if it landed (false while rolling / invulnerable). */
-  hurt(dmg, dx = 0, dz = 0, source = '') {
+  /**
+   * Take damage from a direction. source: who (a creature's name, 'Spores'…); how: the move (EXPLORE_ENEMIES moves:
+   * 'lunge', 'thrust2', 'charge', 'stomp', 'spear', 'bolt', 'glob', 'erupt'…) for the wound log (deathNote).
+   * Returns true if it landed (false while rolling / invulnerable).
+   */
+  hurt(dmg, dx = 0, dz = 0, source = '', how = '') {
     if (this.dead) return false;
     if (this.dodging) {
       // Any attack the roll's i-frames absorb is a perfect dodge (once per roll); DODGED shows once per roll, not
@@ -689,8 +724,15 @@ export class Player {
     this.hp = Math.max(0, this.hp - dmg);
     this.iframes = C.hurtIframes;
     this.hurtT = 0.22;
-    // Getting hit interrupts a charge or a throw (not a committed swing).
-    if (this.state === 'charge' || this.state === 'throw') { this._enter('free'); this._chargeReady = false; this.chargeT = 0; }
+    // Getting hit stops what you were doing (Stage 9, POISE.flinch): a swing, a chop, a charge, a throw, a med kit — and
+    // for a beat you can't attack (rolling still works). Trading blows face-to-face costs you the combo.
+    const swinging = this.state === 'swing' || this.state === 'chop';
+    if (swinging || this.state === 'charge' || this.state === 'throw' || this.state === 'heal') {
+      this._enter('free'); this._chargeReady = false; this.chargeT = 0; this.buffer = null; this.combo = 0; this.comboT = 0;
+      setAnimSpeed(this.vis, 1);
+    }
+    this.flinchT = POISE.flinch.time;
+    this.hurtLog.push({ src: source || '', how: how || '', dmg, swinging });
     const l = Math.hypot(dx, dz);
     if (l > 0) { this.kb.x += (dx / l) * C.hurtKnockback; this.kb.z += (dz / l) * C.hurtKnockback; }
     flashVisual(this.vis, '#ff4040', 0.12);
@@ -704,6 +746,49 @@ export class Player {
     this.scene.onPlayerHurt?.(dmg);
     if (this.hp <= 0) this._die();
     return true;
+  }
+
+  /**
+   * What got you (Stage 9): { line, tip, wounds } for the "You went down" screen — the blow that dropped you, what to do
+   * about it next time, and today's wounds by cause (biggest first). Null if nothing was logged.
+   */
+  deathNote() {
+    const log = this.hurtLog;
+    if (!log.length) return null;
+    const last = log[log.length - 1];
+    const what = (w) => {
+      const name = w.src || 'something';
+      const def = Object.values(EXPLORE_ENEMIES).find((d) => d.name === name);
+      const an = /^[AEIOU]/.test(name) ? 'an' : 'a';
+      const move = { lunge: 'lunge', thrust2: 'second thrust', charge: 'charge', charge2: 'second charge', stomp: 'stomp', spear: 'thrown spear', bolt: 'shot', glob: 'sap glob', erupt: 'ambush', burst: 'burst' }[w.how];
+      if (w.how === 'bleed') return 'bleeding';
+      if (/spore/i.test(name)) return 'spores';
+      if (!def) return `the ${name}`;
+      return move ? `${an} ${name}'s ${move}` : `${an} ${name}`;
+    };
+    const tips = {
+      lunge: 'When a creature flashes red it is committed: roll ({roll}), or tap right-click to deflect. Then hit it while it is open.',
+      thrust2: 'Ferals often stab twice: after you roll the first, roll the second.',
+      charge: 'Step or roll sideways out of a Razorback\'s lane. It stuns itself on trees.',
+      charge2: 'An elite Razorback charges twice: stay ready to roll again.',
+      stomp: 'Back out of the ring when it rears up.',
+      spear: 'A spear flies along its orange line: step sideways when the line locks.',
+      bolt: 'Shots follow the orange line: step out of it.',
+      glob: 'Leave the pink ring before the sap glob lands.',
+      erupt: 'Rustling ferns hide Thorn Stalkers: keep moving, or fight on open ground.',
+      burst: 'Chop a Bloater away, or throw your machete from range.',
+      bleed: 'A roll stops bleeding.',
+      spores: 'Yellow spore clouds hurt: stay out until they thin.',
+    };
+    const key = last.how === 'bleed' ? 'bleed' : /spore/i.test(last.src) ? 'spores' : /Bloater/.test(last.src) ? 'burst' : last.how;
+    const traded = log.filter((w) => w.swinging).length;
+    let tip = tips[key] || 'Watch for its tell, get out of the way, then hit it while it is spent.';
+    if (traded >= 3 && traded >= log.length / 2) tip = `You were hit ${traded} times mid-swing. Stop swinging when something flashes red, and roll.`;
+    const by = new Map();
+    for (const w of log) { const k = what({ ...w, how: w.how === 'thrust2' ? 'lunge' : w.how }); by.set(k, (by.get(k) || 0) + w.dmg); }
+    const wounds = [...by].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${k.replace(/^an? /, '')} ${v}`);
+    const keyName = this.game.input?.keyFor ? keyLabel(this.game.input.keyFor('roll')) : 'Space';
+    return { line: `Taken down by ${what(last)}.`, tip: tip.replace('{roll}', keyName), wounds };
   }
 
   _die() {

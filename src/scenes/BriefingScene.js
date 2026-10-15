@@ -179,11 +179,11 @@ export class BriefingScene {
       if (game.scene !== this) return;
       if (this.choices.length === 1) {
         showHint(game, 'briefing_guided',
-          'This is today\'s trip. Do the <b>goal</b>, open crates for <b>Scrap</b>, then come home. Tonight enemies attack your base, the <b style="color:#2ce8f5">Relay</b>: the Scrap you bring back builds its towers.',
+          'This is today\'s trip. Do the <b>quest</b>, open crates for <b>Scrap</b>, then come home. Tonight enemies attack your base, the <b style="color:#2ce8f5">Relay</b>: the Scrap you bring back builds its towers.',
           { style: this._hintSpot(), time: 16 });
       } else {
         const n = showHint(game, 'briefing_districts',
-          'Pick where to go today. Finish an area\'s <b>goal</b> for a <b style="color:#63c74d">reward</b> tonight; every area also adds its <b style="color:#ff6b6b">danger</b> to tonight\'s attack.',
+          'Pick where to go today. Finish an area\'s <b>quest</b> for a <b style="color:#63c74d">reward</b> tonight; every area also adds its <b style="color:#ff6b6b">danger</b> to tonight\'s attack.',
           { style: this._hintSpot(), time: 14 });
         // Never over the footer (critic M: with the larger type the cards are taller and it covered "Menu").
         const foot = n && this.root.querySelector('.scr-foot');
@@ -386,8 +386,9 @@ export class BriefingScene {
     },
     el('div.dc-stripe', {}, guided ? null : el('span.dc-num', String(i + 1)), el('span.dc-name', d.name), el('span.grow'), more),
     el('div.dc-body', {},
-      el('div.dc-line.dc-obj', {}, el('span.dc-k.amber', 'Goal'), el('span', {}, el('b', obj.name),
-        el('div.small.dc-reward', {}, el('span.good', '▲ Reward: '), obj.boon.short || obj.boon.text, el('span.muted', ' (get home to claim it)')))),
+      // The day's quest (Stage 9): ◆ QUEST, its name, then its reward for tonight (the same words as the jungle's quest card).
+      el('div.dc-line.dc-obj', { title: obj.brief ? `${obj.name}: ${obj.brief}` : obj.name }, el('span.dc-k.amber', '◆ Quest'), el('span', {}, el('b', obj.name),
+        el('div.small.dc-reward', {}, el('span.dc-rk', '★ Reward: '), obj.boon.short || obj.boon.text, el('span.muted', ' (get home to claim it)')))),
       // Finds: true for everything looted today, wherever (Run.lootMults).
       el('div.dc-line.dc-finds', { title: d.bonusText }, el('span.dc-k.good', 'Finds'), el('span', {}, d.finds || d.bonusText, el('span.muted', ' in all you loot today'))),
       el(`div.dc-line.dc-threat${threat.cleared ? '.dc-cleared' : ''}`, {}, el('span.dc-k.bad', 'Danger'), el('span', {}, threat.short || threat.text,

@@ -1,4 +1,4 @@
-// Wading (critic H #6): characters standing in shallow water (river edges, ponds, fords) sink in.
+// Wading (critic H #6): characters standing in shallow water (river edges, ponds) sink in; never on a bridge deck.
 //
 // Every frame, for the player and each creature: if the ground under its feet is water (deep water is
 // solid, so this is the wadeable kind), every sprite of its visual (body, outline, silhouette, card mask,
@@ -40,7 +40,7 @@ export class Wading {
     for (const [vis, x, z] of this._bodies()) {
       seen.add(vis);
       let st = this.state.get(vis);
-      const wet = w.levelAt(x, z) === LEVEL.water && !w.deepAt(Math.floor(x), Math.floor(z));
+      const wet = w.levelAt(x, z) === LEVEL.water && !w.deepAt(Math.floor(x), Math.floor(z)) && !w.onBridge?.(x, z);   // (on a bridge deck: dry)
       if (!st) {
         // Waterline in texels: WATER.line, but at most WATER.maxShare of a small creature's height.
         const v = vis.userData.vis;

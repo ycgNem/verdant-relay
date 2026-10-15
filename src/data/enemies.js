@@ -110,27 +110,41 @@ export const DEFENSE_ENEMIES = {
 // (a roll breaks it), then stays out `exposed` s (the only time you can hit it) and burrows back in `burrow` s.
 // Art: its own derived sheet `thorn_stalker` (batch 4: a red-violet Crawler with a bone-white thorn crest); without
 // it, `fallback` = the old re-tinted Crawler. (`fallback` = { sprite, tint, pod… } used when `sprite` isn't loaded.)
+// Stage 9 (skillful combat, POISE in config.js): every melee / charge attack has an aim phase (`track` of the
+// wind-up: the telegraph follows you) and a committed phase that starts with a red flash — after it nothing you do
+// with the blade stops it (only a deflect); roll or deflect. poise: the stagger (s) a hit needs to interrupt the aim
+// phase (light slashes have none, the finisher 0.35, the chop 0.9) and to flinch it at all — under it a slash barely
+// shoves it and it hits back (POISE.counter). recover: s it stands open after an attack that missed you (hits on it
+// then deal × POISE.punish.mult); after one that landed it hops back instead. dart: the Skitter darts back out after its
+// open beat. guard (Ferals): hit from the front twice within `window` s while it can't hit back, it raises its guard for
+// `time` s (frontal slashes are blocked; a chop or a blow from the side / back breaks it: stunned `break` s), then
+// thrusts out of it. HP / damage re-cut so a combo traded face-to-face doesn't kill a Feral but a punished one does.
 export const EXPLORE_ENEMIES = {
   feral: {
-    name: 'Feral Scavenger', hp: 42, speed: 2.7, detect: 8, attack: 'melee', damage: 12, windup: 0.6, cooldown: 1.3, reach: 1.7, lunge: 2.8, lungeTime: 0.24,
-    track: 0.6, lead: 0.9, creep: 0.35, podTrigger: true, size: 0.8, drop: 0.55, burst: ['#a22633', '#3a4466'],
-    thrust2: { chance: 0.4, fromNight: 2, delay: 0.35, damage: 0.6, lunge: 2.0, track: 0.5 },
-    spear: { windup: 0.9, width: 0.3, speed: 11, damage: 14, range: 7, min: 2.5, cooldown: 3.5, brushDist: 4, lead: 0.8, lock: 0.45 },
+    name: 'Feral Scavenger', hp: 66, speed: 2.7, detect: 8, attack: 'melee', damage: 17, windup: 0.8, cooldown: 1.3, reach: 1.7, lunge: 2.8, lungeTime: 0.24,
+    track: 0.5, lead: 0.9, creep: 0.35, podTrigger: true, size: 0.8, drop: 0.55, burst: ['#a22633', '#3a4466'],
+    poise: 0.5, recover: 0.8,
+    guard: { hits: 2, window: 1.0, time: 0.8, break: 1.0, cooldown: 3.5, arc: 100 },
+    thrust2: { chance: 0.4, fromNight: 2, delay: 0.45, damage: 0.8, lunge: 2.0, track: 0.35 },
+    spear: { windup: 0.9, width: 0.3, speed: 11, damage: 15, range: 7, min: 2.5, cooldown: 3.5, brushDist: 4, lead: 0.8, lock: 0.45 },
   },
   crawler: {
-    name: 'Bramble Crawler', brush: 'through', hp: 26, speed: 2.4, detect: 7, attack: 'melee', damage: 10, windup: 0.5, cooldown: 1.2, reach: 1.5, lunge: 2.4, lungeTime: 0.24,
-    track: 0.6, lead: 0.9, creep: 0.3, bleed: 3, podTrigger: true, size: 0.7, drop: 0.25, burst: ['#3e8948', '#63c74d'],
+    name: 'Bramble Crawler', brush: 'through', hp: 34, speed: 2.4, detect: 7, attack: 'melee', damage: 13, windup: 0.7, cooldown: 1.2, reach: 1.5, lunge: 2.4, lungeTime: 0.24,
+    track: 0.5, lead: 0.9, creep: 0.3, bleed: 3, podTrigger: true, size: 0.7, drop: 0.25, burst: ['#3e8948', '#63c74d'],
+    poise: 0.3, recover: 0.7,
   },
   skitter: {
-    name: 'Skitter', brush: 'through', hp: 13, speed: 4.2, detect: 8, attack: 'melee', damage: 6, windup: 0.35, cooldown: 0.9, reach: 1.5, lunge: 1.9, lungeTime: 0.16,
-    track: 0.6, lead: 0.9, creep: 0, cue: 0.15, backArc: true, size: 0.5, drop: 0.15, burst: ['#b55088', '#68386c'],
+    name: 'Skitter', brush: 'through', hp: 16, speed: 4.2, detect: 8, attack: 'melee', damage: 8, windup: 0.5, cooldown: 0.9, reach: 1.5, lunge: 1.9, lungeTime: 0.16,
+    track: 0.4, lead: 0.9, creep: 0, cue: 0.15, backArc: true, size: 0.5, drop: 0.15, burst: ['#b55088', '#68386c'],
+    poise: 0, recover: 0.45, dart: true,
   },
   scav: { name: 'Rival Scavenger', hp: 36, speed: 2.2, detect: 9, attack: 'ranged', damage: 10, windup: 0.7, cooldown: 2.0, range: 7, shotSpeed: 9, shot: 'bolt', size: 0.8, drop: 0.5, keepAway: 4, burst: ['#a22633', '#3a4466'] },
-  spitter: { name: 'Spitter', hp: 34, speed: 0, detect: 8, attack: 'ranged', damage: 9, windup: 0.8, cooldown: 2.2, range: 7.5, shotSpeed: 6.5, shot: 'glob', lobOverBrush: true, size: 0.75, drop: 0.3, burst: ['#b55088', '#ff0044'] },
+  spitter: { name: 'Spitter', hp: 34, speed: 0, detect: 8, attack: 'ranged', damage: 10, windup: 0.8, cooldown: 2.2, range: 7.5, shotSpeed: 6.5, shot: 'glob', lobOverBrush: true, size: 0.75, drop: 0.3, burst: ['#b55088', '#ff0044'] },
   razorback: {
-    name: 'Razorback', brush: 'crash', hp: 90, speed: 1.6, detect: 7, attack: 'charge', damage: 20, windup: 0.8, cooldown: 2.4, chargeSpeed: 9, chargeTime: 0.6, chargeRange: 6, stun: 0.9,
+    name: 'Razorback', brush: 'crash', hp: 110, speed: 1.6, detect: 7, attack: 'charge', damage: 26, windup: 0.9, cooldown: 2.4, chargeSpeed: 9, chargeTime: 0.6, chargeRange: 6, stun: 1.2,
     podTrigger: true, size: 1.0, drop: 0.6, burst: ['#b86f50', '#e4a672'],
-    elite: { reaim: 0.5, stomp: { windup: 0.7, radius: 1.6, damage: 14, range: 2.2, cooldown: 2.6, knock: 6 } },
+    poise: 1.0, recover: 1.0,
+    elite: { reaim: 0.55, stomp: { windup: 0.8, radius: 1.6, damage: 16, range: 2.2, cooldown: 2.6, knock: 6 } },
   },
   stalker: {
     name: 'Thorn Stalker', brush: 'under', hp: 40, speed: 3.2, detect: 8, attack: 'ambush', damage: 16, windup: 0.7, cooldown: 2.6, reach: 1.6,
@@ -152,4 +166,4 @@ export const EXPLORE_ENEMIES = {
 };
 // Feral Chief (night 5+, one per camp; the Pack Lord boss wears the same look): a tougher Feral in a red-and-gold
 // cloak (DERIVED_SPRITES.feral_chief) whose aura speeds up the Ferals round it (DAY_CREATURES.chief).
-EXPLORE_ENEMIES.feral_chief = { ...EXPLORE_ENEMIES.feral, name: 'Feral Chief', hp: 72, damage: 14, drop: 0.9, sprite: 'feral_chief', burst: ['#a22633', '#f0c040'] };
+EXPLORE_ENEMIES.feral_chief = { ...EXPLORE_ENEMIES.feral, name: 'Feral Chief', hp: 96, damage: 19, drop: 0.9, sprite: 'feral_chief', burst: ['#a22633', '#f0c040'] };

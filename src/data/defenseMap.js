@@ -1,4 +1,4 @@
-// The night maps around the Relay (Stage 7 "night board", critics K §2.2 / §4, J M2, H §4).
+// The night maps around the Relay (Stage 7 "night board", critics K §2.2 / §4, J M2, H §4; Stage 9 build anywhere).
 //
 // Tile coordinates: tile (x, y) has its centre at (x + 0.5, y + 0.5) in world space (world X = x, world
 // Z = y; screen up = north, as on the jungle map). Lane points are tile coordinates too, so enemies walk down
@@ -11,8 +11,12 @@
 // board fits beside the side panel at an integer zoom: ×2 at 1920×1080 (960 × 540 internal), ×1 at 720p
 // (DefenseScene._fitCamera / src/world/NightCamera.js).
 //
-// A run plays ONE map (towers stay on their pads all run): `run.mapKey`, picked from the run seed
-// (pickMapKey); old saves without one play 'twin'. Save.js checks tower pads against padCount(map).
+// Build anywhere (Stage 9): a tower goes on any free tile of the field (BUILD below says which are free: not a
+// trail, not the tile right under a trail (the tower would hide it), not the Relay's plaza, not a tree, rock,
+// lamp or water, and not next to another tower). One tower per tile; towers are stored by tile (run.towers[i].x /
+// .y). A run plays ONE map: `run.mapKey`, picked from the run seed (pickMapKey); old saves without one play 'twin'.
+// `pads` / `lane.forward` are the old build pads (Stage 7–8), kept only so saves from then load: a tower saved on
+// pad i stands on legacyPadTile(map, i).
 //
 // Lanes are labelled by compass direction: the Relay is the centre of the jungle (JungleGen) and each trail
 // leads out toward part of it. `bearing` is the screen/world angle (degrees, atan2(dz, dx): 0 = east,
@@ -20,18 +24,46 @@
 // area, a beacon) to the lane facing it:
 //   · tonight's area danger (the district's extra group) enters from the lane facing that area
 //     (DefenseScene.dangerLane / laneForDistrict; the wave builder sends tonight.extraGroups down it);
-//   · every ONLINE beacon (run.world.pylons) opens a "forward pad" on the lane facing it (`forward` slots,
-//     in order; pad indices continue after the map's pads, so saves stay valid as beacons come on).
+//   · every ONLINE beacon (run.world.pylons) lights the mouth of the lane facing it (BEACON_LIGHT): enemies in
+//     the light take more damage.
 // Waves reference lanes by index and use `lane % lanes.length`: 2-lane wave data works on every map, and a
 // 3rd lane (if a map has one) only gets enemies through the danger lane.
 
 export const FIELD = { w: 23, h: 15 };
+
+// Where towers may stand (DefenseScene._buildBlock / _placeCheck). Each blocked tile has a one-word reason the
+// placement ghost shows ("Path", "Too close", …).
+export const BUILD = {
+  hideBelow: true,     // the tile right under (south of) a trail tile is blocked: a 2-tile-tall tower there hides the trail
+  gap: 1,              // towers keep this many empty tiles between them (Chebyshev): their 48 × 64 art never overlaps
+  // Reasons (one word or two, under the ghost) and their longer line (side panel / tooltip).
+  words: {
+    off: 'Off the field', path: 'Path', hides: 'Hides path', plaza: 'Relay', tree: 'Tree', rock: 'Rocks',
+    water: 'Water', lamp: 'Lamp', taken: 'Taken', close: 'Too close', cost: "Can't afford",
+  },
+  lines: {
+    path: 'Enemies walk here: towers go beside the paths.',
+    hides: 'A tower here would hide the path behind it.',
+    plaza: "The Relay's plaza stays clear.",
+    tree: 'Blocked by a tree.',
+    rock: 'Blocked by rocks.',
+    water: 'Too wet to build on.',
+    lamp: 'A lamp stands here.',
+    close: 'Towers need a free tile between them.',
+  },
+};
+
+// Beacons light the lane mouths (Stage 9: the old "forward pads"): every beacon you switched on in the jungle lights
+// `tiles` more tiles of the lane facing it, from where it enters the field (up to `max` beacons a lane); enemies in
+// the light take ×(1 + bonus) damage from everything. The light is drawn as cyan pools along the trail.
+export const BEACON_LIGHT = { tiles: 5, max: 2, bonus: 0.15, from: 1, every: 1.5, color: '#2ce8f5' };
 
 /** Compass words → bearing in degrees (screen angle, see the header). */
 export const COMPASS_DEG = {
   east: 0, 'south-east': 45, south: 90, 'south-west': 135, west: 180, 'north-west': -135, north: -90, 'north-east': -45,
 };
 
+// `forward`: the old beacon forward-pad slots (Stage 7–8), kept for loading old saves (legacyPadTile).
 const lane = (name, short, bearing, points, forward = []) => ({ name, short, bearing, points, forward });
 
 export const DEFENSE_MAPS = {
@@ -49,11 +81,7 @@ export const DEFENSE_MAPS = {
         [[-1, 12], [4, 12], [4, 9], [9, 9], [9, 13], [14, 13], [14, 10], [17, 10], [17, 8], [19, 8]],
         [[1, 9.5], [1.25, 13.375]]),
     ],
-    // Build pads: tile coords of the pad's top-left, nudged off the grid by multiples of 1/8 tile (still
-    // pixel-exact) so the plinths don't read as a TD grid. Every footprint (tile + plinth face) stays clear
-    // of lane tiles and pads are ≥ 2 tiles apart (room for 48-px tower art). Stage 7 balance: on each map two
-    // pads that saw one path (or almost none) moved to spots that see both (pad indices kept, so forward
-    // pads and saves keep their numbers), so a wide build's 9th–11th towers aren't wasted.
+    // Legacy build pads (Stage 7–8; towers now go on any free tile): only for loading old saves (legacyPadTile).
     pads: [
       [5.125, 3.25], [10.25, 3.5], [6.25, 7.625], [11.25, 7.5], [14.375, 7.375], [16.5, 2.75],
       [6.125, 10.625], [11.25, 10.75], [16.125, 12.125], [17, 5.75], [1.25, 7.5], [16, 8.75],
@@ -144,16 +172,23 @@ export function pickMapKey(seed) {
   return MAP_KEYS[((h ^ (h >>> 16)) >>> 0) % MAP_KEYS.length];
 }
 
-/** Forward-pad slots of a map, flattened: [{ lane, at: [x, y], rank }] — pad index = map.pads.length + i. */
+/** Legacy forward-pad slots of a map, flattened: [{ lane, at: [x, y], rank }] — old pad index = map.pads.length + i. */
 export function forwardSlots(map) {
   const out = [];
   map.lanes.forEach((l, li) => (l.forward || []).forEach((at, rank) => out.push({ lane: li, at, rank })));
   return out;
 }
 
-/** Highest pad index + 1 any tower may use on this map (base pads + every forward slot). */
+/** Legacy: highest old pad index + 1 a saved tower may carry on this map (base pads + every forward slot). */
 export function padCount(map) {
   return map.pads.length + forwardSlots(map).length;
+}
+
+/** The tile an old save's tower on pad `pad` now stands on ({ x, y }), or null for an unknown pad. */
+export function legacyPadTile(map, pad) {
+  const at = pad < map.pads.length ? map.pads[pad] : forwardSlots(map)[pad - map.pads.length]?.at;
+  if (!at) return null;
+  return { x: Math.max(0, Math.min(map.width - 1, Math.floor(at[0] + 0.5))), y: Math.max(0, Math.min(map.height - 1, Math.floor(at[1] + 0.5))) };
 }
 
 const angDiff = (a, b) => Math.abs((((a - b) % 360) + 540) % 360 - 180);
@@ -240,9 +275,13 @@ export const DEFENSE_VIEW = {
   // Lane wear (DefenseGround): a trodden, lighter centre band (moonlit: the trails read at night), two
   // broken wobbly wheel ruts, mud puddles, stones and footprints, like the day's trails.
   wear: { band: 13, bandLight: 1.08, bandTarget: 122, bandMax: 1.5, rutOffset: 6, rutGap: 0.3, puddles: 0.12, stones: 0.22 },
-  // Board clutter (critic H fix 9): empty pads glow only when they matter; hostile rings only on the
-  // hovered enemy and the selected tower's target.
-  pads: { idleOpacity: 0.32, pulse: [0.4, 0.25] },
+  // Placing a tower (Stage 9 build anywhere): the ghost (the tower's sprite on the tile under the cursor) tinted
+  // `ok` / `bad`, a 1-tile dashed footprint, faint corner ticks on every free tile (`grid` opacity), and a dot every
+  // `dotStep` tiles on each stretch of path the tower would cover (`dot` texels square).
+  build: { ok: '#63c74d', bad: '#e43b44', ghostOpacity: 0.85, grid: 0.6, gridTick: 3, dot: 4, dotStep: 0.5, cursorKeys: 9 },
+  // The footing under a built tower (hand-made `tower_footing`, its manifest "top" box centred on the tile; the rank
+  // badge sits on its front face). Off / missing art: the tower stands on the bare ground.
+  footing: 'tower_footing',
   leakRows: 3,                // live leak feed (in-wave side panel): newest rows shown (a lull shows only its header)
   // Side panel fit (critic K2 §5): when the side panel is shorter than `dockMinPanel` UI units (every 16:9 window:
   // the UI scales with the window, so 720p and 1440p have the same room), coach hints dock only in prep — in pushes

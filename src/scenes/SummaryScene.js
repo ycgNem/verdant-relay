@@ -170,8 +170,8 @@ export class SummaryScene {
     const obj = PRIMARY[x.objective || run.objectiveFor(x.district)];
     // The goal's night reward only arrives if you got home (Run.applyExpedition: `rewardLost` otherwise).
     const reward = x.objectiveDone && obj && (extracted || x.objectiveSecured) ? obj.boon.text : null;
-    rows.push(el(`div.sum-row${x.objectiveDone ? '.ok' : '.no'}`, {}, el('span.sum-k.amber', 'Goal'),
-      el('div', {}, el('b', `${x.objectiveDone ? '✓' : '✗'} ${obj ? obj.name : 'Goal'}`),
+    rows.push(el(`div.sum-row${x.objectiveDone ? '.ok' : '.no'}`, {}, el('span.sum-k.amber', 'Quest'),
+      el('div', {}, el('b', `${x.objectiveDone ? '✓' : '✗'} ${obj ? obj.name : 'Quest'}`),
         x.objectiveDone ? null : el('span.small.muted', x.objectiveFailed ? '  · failed' : '  · not done'))));
     // Rewards for tonight: the goal's, plus bonus tasks / events (the same list night prep shows).
     const rewards = (x.boons || []).filter((b) => b !== reward);

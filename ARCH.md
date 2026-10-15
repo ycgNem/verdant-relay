@@ -20,7 +20,7 @@ How the engine pieces fit together. `DESIGN.md` says what the game is; `PLAN.md`
   Run modes: `&mode=long|daily` (Long Night / Daily; a long run accepts `&night=` up to 99, e.g. `?debug=defense&night=6&mode=long`
   then win → night 7) and `&og=N` (Overgrowth level). The defense scene's `vr.game.scene.debug` has `win()`, `lose()`, `spawn(type, lane)`,
   `state()`, `callNext()`, `cast(protocol, x, z)`; `&variant=0|1|2` forces tonight's wave variant (A/B/C).
-  Night board: `&map=twin|crossing|ford` (else picked from the seed), `&beacons=N` (pylons p0…p(N−1) count as switched on → forward pads).
+  Night board: `&map=twin|crossing|ford` (else picked from the seed), `&beacons=N` (pylons p0…p(N−1) count as switched on → beacon light at the lane mouths).
   Relics: `&relics=whetstone,pylon_coil` (already brought home), with `debug=summary` `&found=a,b` (carried home on the
   debug trip). In the jungle `vr.game.scene.relicsCtl.debug` has `carry(id)`, `drop({ rarity })`, `goto('cache'|'shrine'|'lore', n)`, `info()`.
   `&seed=N` fixes the run seed (the same jungle every load: before/after captures, e.g. the trail and fog measurements).
@@ -141,15 +141,19 @@ Module functions (import from `../core/Assets.js`):
   maximum (`SOLID.kind`). `addCollider({kind:'prop', type:'container'|'objective'|'nest'|'pylon'|'relay', x, z})` for scene
   props, or `{x, z, r}` for a plain circle. Deep water (`data.deep`) is a solid tile for everyone (`wetAt` for brush-slippers);
   `objGrid` (tile centre within `SOLID.tilePad` of a footprint) + deep feed `blockedAt` and so the flow fields.
-  Debug: `vr.game.scene.debug.colliders(true)` outlines footprints (yellow), deep water (blue ×) and fords (cyan +);
+  `onBridge(x, z)` = on a bridge deck (`data.ford` tile): `speedAt` returns 1, Wading skips it, footsteps say `wood`.
+  Debug: `vr.game.scene.debug.colliders(true)` outlines footprints (yellow), deep water (blue ×) and bridge decks (cyan +);
   `debug.reach()` returns the generator's reachability report.
 - `JungleGen.generateWorld(seed, districtKeys, { guided })` → plain data (`guided`: the guided run's world also gets
   `guided = { site, route }` — the guided goal site and the walk there — and up to 4 trail-side containers `{ guided: true,
   yield: 1 }` with ids `g0…`, `GUIDE.routeCrates`; `worldForRun` passes `run.guided` and keys its cache on it): `size` (192), `level` (vertex terrain levels, `LEVEL`),
   `pave`, `brush` (per tile, `BRUSH`), `region`, `trail`, `site`, `objects` (trees/ruins/rocks), `sites` (`lost`: no trail,
   ringed by thick brush), `containers` (`yield`: Scrap multiplier by distance from the Relay / nearest pylon), `spores`,
-  `pylons`, `center`, `deep` / `ford` (per tile), `reach` (`ensureReachable(world)`: flood from the Relay over
-  `blockGrid(world)`, repairs with fords / object removal; `floodTiles` is exported for tests). `worldForRun(game, run, keys)` caches it per run seed; `compass(dx, dz)`; `clearDisc(world, x, z, r)`.
+  `pylons`, `center`, `deep` / `ford` (per tile; `ford` = bridge deck tiles, 2 over deep water, 1 over shallow),
+  `bridges` (`[{ id, kind: 'trail'|'extra'|'fix', axis: 'ns'|'ew', x0, z0, x1, z1 }]`, tile rects, x1/z1 exclusive;
+  `planBridge(world, x, z, { pref, maxLen })` / `layBridge(world, plan, kind)`, tuning `GROUND.bridge`), `reach`
+  (`ensureReachable(world)`: flood from the Relay over `blockGrid(world)`, repairs with bridges (else shallowing) /
+  object removal → `{ targets, unreachable, bridges, shallow, removed, passes, left }`; `floodTiles` is exported for tests). `worldForRun(game, run, keys)` caches it per run seed; `compass(dx, dz)`; `clearDisc(world, x, z, r)`.
   Relics & lore (`siteFeatures`, own seed streams `names` / `features` / `lore`): `site.name` (majors, landmarks;
   `src/data/lore.js`), `site.kind` (landmarks: statue / mast / greenhouse), `relicCaches` `[{id 'rc…', site, x, z}]`
   (lost majors), `shrines` `[{id 'sh…', site, kind, x, z}]` (landmarks), `loreSpots` `[{id 'lg…', site, x, z}]`; each
@@ -256,6 +260,20 @@ Module functions (import from `../core/Assets.js`):
 - Ruin paving with PixelLab art is sampled per slab (`PAVING.slab`): staggered rows, random flip/rotation, the star motif on only some slabs.
 - Creatures keep apart from the player and each other (`CROWD`, `ExploreEnemy._separate`, skipped mid-attack); waiting
   ones hold flank / back slots (`ExploreEnemy._circle`, `attackers.flank` / `backArc`).
+- **Poise and punishing** (Stage 9, `POISE` in config.js, per-creature `poise` / `recover` / `dart` / `guard` in
+  `EXPLORE_ENEMIES`): `ExploreEnemy.hit(dmg, dx, dz, kb, src, stagger, spec)` — `spec` is the swing (`spec.riposte`
+  skips the punish ×). A wind-up is `committed` once it stops aiming (`_commit()`: `Fx.tell` red blink + glint; the
+  scene's red "!" waits for it); a committed attack is never interrupted by a blow. Otherwise only `stagger > poise`
+  interrupts; a sub-poise hit shoves × `POISE.lightKb` with no hit-stun and (in `chase`) calls `_provoked()` → it
+  counters at once (`counterQ`, `_takeToken(true)` skips the cap / post-hit pause) or, a Feral on counter cooldown,
+  counts the flurry and raises its guard (`state 'guard'`, `_block()` / guard break → `stun`). `e.open` (getter):
+  `recover` with `openT > 0` (set by `_recover` when the lunge / charge / stomp missed: `landed` false), `stunned`,
+  `exposed` — blade hits on it × `POISE.punish.mult` (gold `crit` number). Ranged wind-ups and the Feral spear start
+  only on screen (`_onScreen()`). `Player.hurt(dmg, dx, dz, source, how)`: `how` = the move (`lunge`, `thrust2`,
+  `charge`, `stomp`, `spear`, `bolt`, `glob`, `erupt`, `burst`…), logged in `player.hurtLog` (`{src, how, dmg,
+  swinging}`, bleed ticks too); a landed hit cancels swing / chop / charge / throw / heal and sets `flinchT`
+  (`POISE.flinch`, no attacks). `player.deathNote()` → `{ line, tip, wounds }` for the "You went down" modal.
+  Med kits: `useMed()` enters state `heal` for `CONFIG.player.medTime` s (a hit or a roll cancels it, the kit is kept).
 - `Ambience(scene3d, world).update(dt, cx, cz, dusk)`: pollen, falling leaves, fireflies (emissive, drawn over the
   foliage), light shafts.
 - Persistent state: `run.world` (`run.worldState(size, cell)` decodes it, `run.storeWorld(state)` stores it; bitsets in base64).
@@ -326,43 +344,67 @@ Module functions (import from `../core/Assets.js`):
 
 - **Maps:** `DEFENSE_MAPS` = `{ twin, crossing, ford }` (`MAP_KEYS`); each has `width/height` (23×15 field), `lanes`
   (`{ name, short, bearing, points, forward }`: waypoint polyline from off-field left to the plaza; `bearing` = the compass
-  direction the lane faces in the jungle; `forward` = up to 2 forward-pad slots), `pads` (fractional tile coords),
-  `woodPads`, `core`, `coreRadius`, `plaza`, `lamps`, `stream` (ford), `trees/rubble/bushes`, `margin`, `hpMult` (enemy
+  direction the lane faces in the jungle; `forward` = the old forward-pad slots, legacy), `pads` / `woodPads` (the old
+  build pads, legacy: only `legacyPadTile` reads them), `core`, `coreRadius`, `plaza`, `lamps`, `stream` (ford),
+  `trees/rubble/bushes`, `margin`, `hpMult` (enemy
   health × this on the map: `DefenseScene.hpMult` = night curve × run mods × map, so the layouts play alike). `DEFENSE_MAP` = twin
   (legacy alias). Helpers: `mapFor(runOrKey)` (unknown → twin), `pickMapKey(seed)` (Run.create → `run.mapKey`),
-  `forwardSlots(map)` → `[{ lane, at, rank }]` (`pickMapKey` mixes unsigned: ~⅓ each map; it used to give Twin 67%), `padCount(map)` (pads + slots: Save validates `tower.pad < padCount`),
-  `laneForAngle(map, angle)` (jungle angle → the lane whose bearing is closest).
+  (`pickMapKey` mixes unsigned: ~⅓ each map; it used to give Twin 67%), `laneForAngle(map, angle)` (jungle angle → the lane
+  whose bearing is closest). Build anywhere (Stage 9): `BUILD` = `{ hideBelow, gap, words, lines }` (the placement rules'
+  switches and each blocked tile's one-word reason / longer line), `BEACON_LIGHT` = `{ tiles, max, bonus, from, every }`.
+  Legacy (old saves only): `forwardSlots(map)`, `padCount(map)` (Save accepts an old `tower.pad < padCount`),
+  `legacyPadTile(map, pad)` → `{ x, y }` (Run.fromSave moves such a tower onto that tile).
 - **Scene hooks** (`DefenseScene`): `this.map`, `laneForDistrict(key)` (the lane facing that area: region angle from
   `worldForRun` → `laneForAngle`; stored as `this.dangerLane`, read by `_waveOpts()` → `buildWave({ dangerLane })`),
-  `_padSpots()` (map pads, then the forward slots opened by `run.world.pylons` on the lane facing each beacon; a slot with a
-  tower stays; pad index = `map.pads.length + slot`), `_laneTiles(lane?)`. Waves pick a lane with `lane % lanes.length`.
+  `_beaconLanes()` (per lane, the switched-on beacons facing it, ≤ `BEACON_LIGHT.max`), `_beaconLit()` / `this._lit` (per
+  lane the lit `[d0, d1]` lane distance from the field edge, or null), `beaconMult(e)` (×(1 + bonus) in `damage()` for a
+  non-boss enemy in the light; DefenseForecast counts it too), `_laneTiles(lane?)`. Waves pick a lane with `lane % lanes.length`.
   Leaks: `_noteLeak(src, dmg, count, lane)` feeds `nightStats`, the in-wave feed (`_leaks`, `DEFENSE_VIEW.leakRows`) and
   `run.lastNight = { night, leaks: { type: { count, damage } } }` (Run.finish → Results "What got through");
   `leakSummaryText(night)` is the banner line.
+- **Build anywhere** (Stage 9, `DefenseScene`): towers are `run.towers[i] = { x, y, type, … }` (tiles); `this.towers` are
+  `Tower` views (`Tower.pos` = the tile centre, `tower.footing` = `makeFooting(seed)`: the shared `tower_footing` decal,
+  `userData.faceZ` for `rankBadge`). `_buildBuildAids()` fills `_blocked` ("x,y" → `BUILD.words` key: path, hides
+  (the tile under a lane tile), plaza, lamp, and `ground.blockAt` tree / rock / water) and makes the aids: `ghost` (the
+  type's sprite, see-through, depthTest off), `ghostMark` (dashed 1-tile footprint), `grid` (free-tile corner ticks on
+  a field-sized canvas, `_drawGrid` redraws when towers change), `dots` (InstancedMesh: a dot every `build.dotStep` tiles
+  of lane inside the ghost's range), the beacon light pools. `_placeCheck(x, y, type?)` → `{ ok, why, word, line }`
+  (off → blocked → taken → too close (`BUILD.gap`, Chebyshev) → price). State: `placing` (type or null), `cursor`
+  `{ x, y }` (mouse tile via `_tileUnderMouse()`, or the arrow-key cursor: `cursorKeys`), `selTower`, `hoverTower`
+  (`_pickTower()`, screen-space over the sprite). `_pickType(type)` (bar / 1–6), `_cancelPlacing()`, `_build(type, x, y,
+  keep)` (Shift = keep placing; else the new tower is selected; `ground.setTowers` clears plants over it), `_select(t)`,
+  `_cycleTower(dir)` (Tab), `_moveCursorKeys(dt)`, `arrowsTaken()` (NightCamera skips its arrow pan while placing),
+  `_updatePlacing()` per frame (ghost tint, range, dots, `placeTag` "Covers 12 tiles · North" / the red reason).
+  Side panel: the **build bar** `buildBar` (`_renderBuildBar` once per tower list, `_refreshBuildBar` in place: tiles
+  with `_towerIcon(type)` — a whole-number portrait crop — hotkey, price; title = hovered / picked name via `_barLabel`),
+  shown in prep / lulls unless a tower is selected; `sideMode` 'preview' | 'placing' (`_renderPlacing`) | 'tower'.
 - **NightCamera(scene, fit, bounds):** integer zoom k (`ks` = the allowed steps, `kDefault`), internal res = floor(window / k)
   rounded to even through `game.setInternalRes`; the board viewport is `DEFENSE_VIEW.view` (UI units, panel on the right).
   Default k = the largest that fits `fit` (the field), or 2 when only 1 fits, the day scale is ≥ 3 and 2 shows ≥
   `zoom.prefer` of the field. Wheel (90 ms throttle, ignores `.ui-block`) and `+`/`−` step k keeping the point under the
   cursor; right/middle drag pans after `zoom.dragThreshold` px (a still right click is replayed to the scene's input);
-  arrows pan, Home frames; clamped to `bounds`. `dayScale(vw, vh)` = the day's integer scale for a window.
-- **DefenseGround:** `buildDefenseGround(game, map, { seed, laneTiles, pads, tint })` → `{ group, world, stats: { cards,
-  dropped }, update, dispose }`: a stand-in jungle world (vertex levels from lane distance, the ford's stream → water/mud,
-  4-pass ≤1-level relaxation, stepping-stone fords), TerrainBaker chunks into one 2048² canvas, `wearLanes` (lighter trodden
+  arrows pan (not while `scene.arrowsTaken()`), Home frames; clamped to `bounds`; `follow(x, z, margin)` pans just enough
+  to keep a point in view (the keyboard build cursor, a Tab-selected tower). `dayScale(vw, vh)` = the day's integer scale for a window.
+- **DefenseGround:** `buildDefenseGround(game, map, { seed, laneTiles, pads, towers, tint })` → `{ group, world, stats: { cards,
+  dropped }, update, dispose, blockAt(x, y), setTowers(list) }`: a stand-in jungle world (vertex levels from lane distance, the ford's stream → water/mud,
+  4-pass ≤1-level relaxation, `laneBridges`: a plank bridge per run of lane tiles over water, drawn with TerrainBaker's
+  `drawBridge` after `wearLanes`, `world.bridges`), TerrainBaker chunks into one 2048² canvas, `wearLanes` (lighter trodden
   centre band that flattens the dirt's mottling, two broken wobbly ruts, puddle/pebble decals — `DEFENSE_VIEW.wear`), a
-  dithered darker margin, plaza hazard stripes; cards from `chunkCards` **minus any whose opaque texels cover a lane, a pad
-  or the Relay** (`keepZones` + `coversKeep`, per-texel against the sprite's alpha). `GROUND` = `{ size, x0, z0 }`.
-  `makePlinth(seed, wood, grow, assets)` → the hand-made `plinth_stone|timber|rubble` (`DEFENSE_VIEW.plinthArt`: timber on
-  wood pads, else weighted by the pad seed, half the stone / rubble ones mirrored; the manifest's `top` box centred on
-  the pad via `userData.zOffset` / `xOffset`), else the texel-drawn plinth; `userData.topW/topH` for markers, `faceZ` =
-  the front face's middle (DefenseScene `rankBadge(tower, level)` lays `rank_badge_2|3` flat there; Tower falls back to
-  the floating chevrons). The returned ground also has `patch(tx, tz, w, h)` (splat stains, Fx.decal). `laneTint(tiles, color, alpha)`
+  dithered darker margin, plaza hazard stripes; cards from `chunkCards` **minus any whose opaque texels cover a lane
+  or the Relay** (`keepZones` + `coversKeep`, per-texel against the sprite's alpha). Each kept card records the field
+  tiles whose tower it would draw in front of (`c.tiles`, `towerZones` / `coveredTiles`, `KEEP.tower`): trees and rocks
+  block those tiles (`blockAt` → 'tree' | 'rock', plus water tiles → 'water'); `setTowers(list)` rebuilds the card mesh
+  without any card over a built tower (plants are cleared). `GROUND` = `{ size, x0, z0 }`.
+  `makePlinth(seed, wood, grow, assets)` (the old build-pad plinths; unused since Stage 9) stays exported. A tower's
+  rank badge lies on its footing's front face (`DefenseScene.rankBadge(tower, level)`; Tower falls back to the floating
+  chevrons). The returned ground also has `patch(tx, tz, w, h)` (splat stains, Fx.decal). `laneTint(tiles, color, alpha)`
   → a multiply-blended wet band along a lane (laneSlow reward).
 - **Look:** `DEFENSE_VIEW.post` runs the jungle's PostFx at full dark (moon tint × ambient, navy lift, vignette; no canopy, no
   player light): enemy eyes and the Relay crystal (Emissive.js) and `lightPool`s (`DEFENSE_VIEW.glow`: lamps, Relay,
-  forward pads; `emit` = how far lit pixels escape the moonlight) stay bright. `post.on: false` = the older lit-scene look.
+  beacon light; `emit` = how far lit pixels escape the moonlight) stay bright. `post.on: false` = the older lit-scene look.
   Units and the Relay don't write depth (painter's order), so occlusion silhouettes never fire on the board; flat
-  things therefore sort by renderOrder: ground lights / wet band −3, plinths −2, shadows, rings, pad markers, range and
-  chevrons −1, sprites 0. Units get the light code `post.unitLift` (`_lightCode(mat, share)`: alpha = 1 − share).
+  things therefore sort by renderOrder: ground lights / wet band −3, footings −2, shadows, rings, free-tile ticks, path
+  dots, range and chevrons −1, sprites 0; the placement footprint (39) and ghost (40) draw over everything. Units get the light code `post.unitLift` (`_lightCode(mat, share)`: alpha = 1 − share).
 - **Tower muzzles:** `JUICE.towerMuzzle[type]` = `{ color, 1, 2, 3, '3a', '3b' }` → `[x, y]` (x on a 32-wide scale,
   y texels above the sprite bottom); `Tower.muzzle()` picks the level / branch (missing branch → level 3).
   Protocol buttons show `PROTOCOL_ICONS[id]` sprites (src/data/protocols.js), the glyph as fallback.
@@ -435,17 +477,21 @@ Module functions (import from `../core/Assets.js`):
   `upgrade(t, branch)` (sets `t.branch`), `towerStats` merges the branch's `set` and `t.rangeMod`; `exchangeLeft()` /
   `exchange(kind)` (`DEFENSE.exchange`, prep only from night 2); `protocolsFor(meta)`; `salvageOptions(lost, night)`
   (seeded, `SALVAGE.tiers`: 3 picks on a clean night, else 2; no `patch` at a full Relay, no `tune` without a tower to
-  tune; `SALVAGE.badNight` weights after a bad night) / `applySalvage(key, bestPad)`; fields `wavePush` (0–8), `salvage` (`{ freeUpgrades }` for
+  tune; `SALVAGE.badNight` weights after a bad night) / `applySalvage(key, best)` (best = tonight's top-damage tower record, for a tune-up); fields `wavePush` (0–8), `salvage` (`{ freeUpgrades }` for
   the next prep), `tonight.exchanged`. Save validates `tower.branch` ('a'|'b'), `tower.rangeMod` (1–1.5), `wavePush`,
   `salvage` (backward compatible, no version bump).
-- **Debug** (`vr.game.scene.debug`): `state()` (phase, push, lull, wave, protocols…), `callNext()`, `cast(k, x, z)`,
-  `win()`, `lose()`, `spawn(type, lane)`; `&variant=0|1|2` forces a wave variant.
+- **Debug** (`vr.game.scene.debug`): `state()` (phase, push, lull, wave, placing, cursor…), `callNext()`, `cast(k, x, z)`,
+  `win()`, `lose()`, `spawn(type, lane)`, `place(type, x, y)` (true, or the blocked reason), `check(x, y, type)`,
+  `tileXY(x, y)` (a tile's stage point for real-input tests); `&variant=0|1|2` forces a wave variant.
 - **Balance sim** (`.playwright-mcp/nightmech/`, not shipped): `sim_page.js` injects `window.__sim` into a
   `?debug=defense` page — `campaign(profile, seed, { map, tweak })` plays a whole run through the real scene (renderer
   and the scene's own frame update off; `_step(1/30, true)`), `night(cfg)` one debug night with a fixed build,
   `tweak({...})` overrides data in the game's own module instances. `campaign.mjs N profiles workers tag` runs workers
   and prints the per-night table; `tallwide.mjs`, `onelane.mjs`, `calib.mjs` (forecast vs outcome), `ui.mjs` (real-input
-  UI pass with screenshots).
+  UI pass with screenshots). Stage 9 copy for build anywhere: `.playwright-mcp/build9/sim/` (`chooseTile`: every free
+  tile per `_placeCheck`, scored by path coverage weighted toward the less-covered lane; the newcomer picks among the
+  10 free tiles nearest the Relay; `night(cfg)` towers are `[type, [x, y] | -1, level, branch]`), plus `t3.mjs` (real
+  mouse / keyboard placement with screenshots), `grid.mjs` (each map's free-tile ASCII grid), `save.mjs` (old pad saves).
 
 ## Screen-space lighting (`src/core/PostFx.js`)
 
@@ -475,6 +521,8 @@ lightning), `decal` (dissolving splat), `corpse(visualRoot)` (death beat; Fx dis
 for friendly markers, `hitStop(t)` / `slowMo(time, scale)` with `dt *= fx.step(realDt)` in the scene update.
 `makeVisual(key, {ring})` adds the hostile ground ring; `resIcon(key)` / `resIconHtml(key)` (ui.js) draw pick_* sprite icons.
 `hitFlash(root)`: `JUICE.hitFlash.white` frames of white, then `tint` frames of red-orange, on the hit sprite only.
+`tell(root, {color, time, blink})` (Stage 9): the whole sprite blinks a flat colour (ink edge kept) on sim time — the
+creatures' commit flash (`POISE.tell`). Both use `_overlay(root, key)`, a flat-colour copy of the sprite body.
 Death splats (`decal` without `life`) are desaturated toward `JUICE.death.splatGround` and fade out in steps over
 `decalFade` s. `chargeLane` draws a dust-dither capsule with rounded ends and moving chevrons.
 `splat(pos, creatureKey, size)` (critic H2 §7): the creature's kind (`JUICE.death.splat.kind`: blood / sap / magenta / acid)
@@ -501,12 +549,18 @@ a toast queues (deduped, dropped after `stale` s; one on screen with others wait
 `setToastsHeld(ui, s)` holds new toasts for up to `s` s. `showBanner(parent, node, { prio, time, wait, toasts, onShow })`
 puts a banner node in `parent`'s lane: one at a time, a higher `prio` cuts a lower one (place names 0, goal / sunset 1,
 area boss 2, back home 3), queued ones wait at most `wait` s; while one is up the `toasts` host is held; `.out` at `time`,
-removed after the fade. `bannerBusy(parent)`. JungleScene `_banner(title, sub, { prio, cls, time, extra })` builds one
+removed after the fade. `dismissBanner(parent, node)` ends one early (fading) or drops it from the queue (the quest
+card once you walk off). `bannerBusy(parent)`. JungleScene `_banner(title, sub, { prio, cls, time, extra })` builds one
 (`extra` = a follow-up line fading in `extraDelay` s later: a boss kill's rewards). `showHint(…, { parent })` docks a hint
 in a container instead of floating it (night prep: `DefenseScene.hintDock`, top of the side panel). `{ host }` floats it in
 a screen step's root instead of `game.ui`, so it goes when the step re-renders (the summary's skill hint).
 CSS sizes: `calc(var(--u) * N)` = N px on a 960×540 stage (scales with the window; JS: `game.u`). Shared classes in `src/ui/style.css`. Font sizes follow the
 pixel-font grid in style.css (`max(calc(var(--fq) * 2), round(calc(var(--u) * N - 0.01px), var(--fq)))`, N ≥ 12; critic M).
+Fonts: `--font` (body, HUD) = 'VR Glyphs' (our pixel text face, `src/ui/fonts/vr-glyphs.ttf` from `tools/make_glyph_font.py`:
+ASCII + digits + UI symbols, 8-unit em, ascent 7 / descent 2) → Tiny5 (Latin-1 fallback); `--font-display` /
+`--font-label` = Silkscreen first. Canvas text uses the same stack (`'VR Glyphs', Tiny5`, JungleMap labels). The text
+face is ~20% wider than Tiny5 was: give fixed-width boxes room or let them wrap, and measure at 1024×600 / 1920×945.
+`npm run check:glyphs` fails on a UI-string character no pixel font draws, or a GLYPHS / unicode-range mismatch.
 
 ## Run (`src/core/Run.js`) — the single source of truth
 
@@ -540,7 +594,7 @@ Fields: `seed night phase relayHp relayMax playerHp meds weapon res{scrap,circui
   `skillMult(field)` (product over owned skills), `bountyMult()` (Salvage King; DefenseScene._kill).
   Skill points: JungleScene `_grantSkillPoint(opts)` gives at most `CONFIG.expedition.maxSkillPoints` (1) a trip from the
   goal / bonus tasks; **`_grantSkillPoint({ boss: true })` (an area boss kill) always adds one on top**.
-- Towers: `availableTowers(meta)`, `buildCost(type)` (includes `CONFIG.towerSurcharge` Scrap per same-type tower, `buildSurcharge(type)`), `towerCount(type)`, `build(type, padIndex)`, `upgradeCost(t, branch)` (null = max, `{}` = free), `upgradeBranches(t)`, `upgrade(t, branch)` (level 3 needs a branch; see Night rules),
+- Towers: `availableTowers(meta)`, `buildCost(type)` (includes `CONFIG.towerSurcharge` Scrap per same-type tower, `buildSurcharge(type)`), `towerCount(type)`, `build(type, x, y)`, `upgradeCost(t, branch)` (null = max, `{}` = free), `upgradeBranches(t)`, `upgrade(t, branch)` (level 3 needs a branch; see Night rules),
   `sellValue(t)`, `sell(t)` (a fitted mod goes back to the bench), `towerStats(t, relayFrac)` → merged stats with
   upgrades / boons, then every owned skill's and the fitted mod's `tower` block through the exported
   `applyTowerMod(s, type, block, acc, relayFrac)` (filters `kinds` / `types` / `when.relayBelow`; `range` / `rate` /
@@ -650,10 +704,23 @@ one, `_updateDay` sunset; `_updateTips` shows one at a time (urgent first, a cal
 is a passing tip that isn't saved. Text: `TIPS.text`, `{action}` = the bound key (`scene._key(action)`).
 **HUD structure** (`_buildHud`): `hud.tlcol` (top-left column: `hud.tl` panel — other systems append into it, e.g. the
 relic strip — then `hud.coach`), `hud.tr` (minimap ring, `j-clock` = `hud.sun` + `hud.timer`, `hud.dayLbl`,
-`hud.timerSub`; the weather tag appends here), `hud.strip` (goal, `hud.ford`, home), the prompt, edge arrows
-(`arrowObj`, `arrowExt`, `arrowCrate`), `hud.lowhp`. The top centre is free for an area boss's bar. `--tx` on `hud.root` =
+`hud.timerSub`; the weather tag appends here), `hud.strip` (= the quest tracker, `scene.quest.root`, holding
+`hud.ford`, `hud.extract`, `hud.optList`), the prompt, the quest's edge arrows / markers / pointer, `hud.lowhp`. The top
+centre is free for banners, the quest card and an area boss's bar.
+**Quests on screen** (Stage 9, `src/scenes/JungleQuest.js`, tuning `QUEST` in `src/data/hud.js`): `scene.quest =
+new JungleQuest(scene)`, built in `_buildHud` (`build(h)` returns its nodes), driven from `_updateHud` by
+`quest.update(dt, { ot, ex, homeNow, cc, rects })` (tracker text, edge arrows `_edge` for quest / crate / home, ◆ ▼
+markers over on-screen targets, the orbit pointer, `PixelGlow` light pool + beam per target); `showCard()` /
+`toggleCard()` (the quest card in the banner lane; `enter()` shows it; the `quest` key action, `src/data/controls.js`, default J, toggles it), `onStep(prev)`
+(from `_advanceStep`: the ✔ tick), `complete()` (from `completeObjective`: QUEST COMPLETE banner + burst), `bigHtml()`
+(the big map's quest panel), `targets()` (live targets of the current step). `stepText(step, site)` fills a label's
+`{at}` with the site's place name; `stepVerb(step)` is the prompt text. Pixel art: `src/ui/questArt.js`
+(`arrowCanvas(dir, dirs, n, ramp, glow)` — ≥ 17 pixels a rotated arrow rasterised per direction (+ a `glow` ring), smaller ones 8-way —
+`diamondCanvas`, `chevronCanvas`; 1-texel ink outline, top-left bevel, cached canvases shown at `--tx`). `--qh` on
+`game.ui` = the tracker's top (the prompt and bottom hints sit above it). `--tx` on `hud.root` =
 the world's texel size in CSS px (HUD pixel icons scale by it); `--hudfade` = `JUICE.hudFade.opacity`. River wayfinding:
-`_updateFord(target)` sets `this._ford` (a `ford` marker on both maps, the strip's "cross at the stepping stones").
+`_updateFord(target)` sets `this._ford` (the middle of the best bridge: a `ford` marker — the plank-bridge glyph — on
+both maps, the tracker's "cross at the bridge").
 DefenseScene `_readiness()` (→ `READINESS`) drives the "Your defense" line and `_tryStartWave()`'s confirm.
 `ui.shownResources(res)` / `resRow` hide zero currencies (Scrap always shows); `resChip(k, n, {short})` = icon + number.
 

@@ -331,6 +331,27 @@ Wave C — the jungle gets content (critic J M3–M5, M7, N2, N4; critic L UX)
       rebuilt on open (dusk bloom the same day), one-colour Relay bar label with `--ol`, no "best run" on debug defeats,
       no break in "right-click"
 
+### Stage 9: Quests, skillful combat, bridges, build anywhere (2026-10-14)
+Feedback: the day's goal ("Salvage a power cell") doesn't read as a quest and the on-screen arrow is easy to miss; the
+game is a cakewalk and fights are face-trades (you hit it, it hits you, no dodging); the river crossings aren't
+obvious; towers should be buildable anywhere, not only on pads (with a build UI to match); text slightly easier to read.
+PixelLab: up to 500 more generations for this stage (balance 2275.9 at the start → keep it ≥ 1775.9).
+- [x] Quests read as quests: quest card at day start, a clear tracker, a big edge arrow with distance, a world beacon
+- [x] Skillful combat + harder days: telegraphed attacks you must dodge, no free face-trading, tougher enemies
+      (the Bloater / spore mushrooms stay as they are) — `POISE`: red-flash commits, poise, counters, Feral guard,
+      openings (×1.5 punish), hit-flinch, a 0.7 s med kit, "what got you" on going down (DESIGN §4)
+- [x] Bridges: river crossings drawn as obvious bridges (day jungle and the Ford night map)
+- [x] Build anywhere at night: no pads, place a tower on any free tile off the paths, new build UI; nights re-tuned
+      (a Build bar in the side panel + a snapped ghost with the reason / path coverage, keyboard cursor, footings;
+      beacons now light the lane mouths for +15% damage; enemy health ×1.2–1.56 and the Colossus ×4.5 → ×6 so the sim's
+      typical wins ~70% (was 92%), the newcomer falls on night 3–4; readiness recalibrated; old pad saves load onto
+      their pad's tile)
+- [x] Text slightly easier to read: our own pixel text face in `vr-glyphs.ttf` (caps 6, x-height 5, descenders 2,
+      4-wide letters, on Tiny5's grid and line box) replaces Tiny5 for body text at the same sizes; research heads
+      name + count / line, workbench footer stock as icon + number, summary card 650 wide, title menu clear of its
+      hotkey chips, big map footer wraps (shots `.playwright-mcp/text9/before_*` / `after_*`)
+- [ ] Critic round on a frozen build + fixes
+
 ### Next (deferred from the round-2 critics — start here)
 Economy and pacing
 - [ ] A median-player economy: real players banked ~17–40 Scrap a day in critic runs vs the sim's 85; re-tune the
@@ -339,7 +360,7 @@ Economy and pacing
 - [ ] Re-centre difficulty on the night: a competent run is decided before dusk by skills/research/area (K2 #4:
       health +6% per night skill, threatScale 0.85 from N4)
 Night
-- [ ] Forward pads worth a tower (beacon lamp or longer sightlines) (K2 #6); the Relay zap trimmed 13 → 10 with "Relay
+- [ ] ~~Forward pads worth a tower (K2 #6)~~ (Stage 9: no pads; beacons light the lane mouths for +15% damage); the Relay zap trimmed 13 → 10 with "Relay
       coil" ranks as a Scrap sink (K2 #7)
 - [ ] Off-view arrows with counts when zoomed so ×2 at 720p is playable (K2 #11); a second board shape (3 lanes, or
       the Relay not on the right) (J2 A6)

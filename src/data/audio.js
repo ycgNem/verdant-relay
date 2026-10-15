@@ -164,6 +164,10 @@ export const SOUNDS = {
     { w: 'noise', fil: 'bandpass', f: 1600, f2: 700, q: 0.8, dur: 0.2, a: 0.004 },
     { w: 'noise', fil: 'highpass', f: 3000, dur: 0.12, a: 0.01, vol: 0.4 },
     { w: 'sine', f: 500, f2: 1100, dur: 0.05, at: 0.06, vol: 0.18 }] },
+  step_wood: { vol: 0.055, pitch: 3, gap: 0.08, max: 2, layers: [   // a bridge deck: a hollow plank knock
+    { w: 'sine', f: 190, f2: 120, dur: 0.06, a: 0.002 },
+    { w: 'noise', fil: 'bandpass', f: 900, q: 2.5, dur: 0.04, vol: 0.45 },
+    { w: 'sine', f: 140, f2: 110, dur: 0.05, at: 0.02, vol: 0.3 }] },
   step_fern: { vol: 0.045, pitch: 3, gap: 0.08, max: 2, layers: [
     { w: 'noise', fil: 'bandpass', f: 2200, f2: 3000, q: 0.8, dur: 0.16, a: 0.03, am: [14, 0.5] }] },
 
@@ -834,7 +838,7 @@ export const AMBIENCE = {
 export const AUDIO_DIRECTOR = {
   // Footfalls on the walk anim's contact frames (6-frame walk: 0 and 3); a stride fallback for models.
   footsteps: { contactFrames: [0, 3], stride: 1.6, minSpeed: 0.8, pan: 0.12, fern: 0.85,
-    // terrain level (LEVEL in jungle.js) → surface sound; paved dirt = stone, trails = dirt
+    // terrain level (LEVEL in jungle.js) → surface sound; paved dirt = stone, trails = dirt, bridge decks = wood
     surfaces: ['water', 'mud', 'dirt', 'leaf', 'moss'] },
   heartbeat: { below: 0.3, interval: [1.05, 0.62], vol: [0.55, 1] },
   hold: { tick: [0.17, 0.055], rate: [1, 2], humVol: 0.045, humHz: [55, 165], humCutoff: [300, 2200] },

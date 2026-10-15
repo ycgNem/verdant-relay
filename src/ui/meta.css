@@ -52,8 +52,13 @@
 .rt-head { display: flex; align-items: baseline; gap: round(calc(var(--u) * 6), 1px); }
 .rt-head b { color: var(--bc); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 19 - 0.01px), var(--fq))); }   /* branch heads a step above body (critic M2 P1-2) */
 /* The branch line wraps instead of ellipsising (critic M2 P1-1: "Towers and night abiliti…"). */
-.rt-head { flex-wrap: wrap; row-gap: 0; }
-.rt-head .small.muted { white-space: normal; min-width: 0; flex: 1 1 auto; line-height: 1.15; }
+/* Stage 9 (wider text face): name and count on the first row, the branch line under them across the branch, so
+   every branch head is the same two rows and the three trees start level ("0/7" no longer drops to a third line). */
+.rt-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; row-gap: 0; }
+.rt-head > b { grid-row: 1; grid-column: 1; }
+.rt-head > .grow { display: none; }
+.rt-head > .small:last-child { grid-row: 1; grid-column: 3; }
+.rt-head .small.muted { grid-row: 2; grid-column: 1 / -1; white-space: normal; min-width: 0; line-height: 1.15; }
 .rt-body { position: relative; }
 .rt-lines { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
 .rt-lines svg { position: absolute; left: 0; top: 0; overflow: visible; }
@@ -89,6 +94,13 @@
   display: flex; align-items: center; gap: round(calc(var(--u) * 10), 1px); padding: round(calc(var(--u) * 6), 1px) round(calc(var(--u) * 10), 1px);
   border: round(calc(var(--u) * 2), 1px) solid var(--panel-edge); border-left: round(calc(var(--u) * 4), 1px) solid var(--bc); border-radius: round(calc(var(--u) * 3), 1px);
   background: rgba(38, 43, 68, 0.6); min-height: round(calc(var(--u) * 40), 1px);
+}
+/* Short windows (1024 × 600): a little less air between rows, so the tree and the detail bar fit without a scroller
+   (Stage 9: the wider text face wraps more node names). */
+@media (max-height: 660px) {
+  .collection-screen .content.research { gap: round(calc(var(--u) * 4), 1px); padding-top: round(calc(var(--u) * 4), 1px); padding-bottom: round(calc(var(--u) * 4), 1px); }
+  .rt-grid { row-gap: round(calc(var(--u) * 6), 1px); }
+  .rt-branch { gap: round(calc(var(--u) * 3), 1px); }
 }
 .rt-detail .grow { display: flex; flex-direction: column; gap: round(calc(var(--u) * 2), 1px); min-width: 0; }
 .rt-dname b { color: #fff; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 19 - 0.01px), var(--fq))); }   /* the picked node's name: a step above body (critic M2 P1-2) */

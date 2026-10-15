@@ -470,3 +470,58 @@
 .df-side .df-rd-line > .df-meter { display: inline-flex; vertical-align: middle; margin: 0 round(calc(var(--u) * 6), 1px) 0 round(calc(var(--u) * 4), 1px); }
 /* Intel / trades in the body (QA 8): one block, rows spaced like the footer's. */
 .df-prepacts { display: flex; flex-direction: column; gap: round(calc(var(--u) * 5), 1px); }
+
+/* ---- Build anywhere (Stage 9): the build bar under the panel body, and the tag under the placement ghost. */
+.df-buildbar { display: flex; flex-direction: column; gap: round(calc(var(--u) * 2), 1px); border-top: round(calc(var(--u) * 1), 1px) solid var(--panel-edge); margin-top: round(calc(var(--u) * 6), 1px); margin-bottom: round(calc(var(--u) * 5), 1px); flex: none; }
+/* The bar's title sits on its top rule like a legend (one line saved at 720p). */
+.df-bbhead { display: flex; align-items: center; gap: round(calc(var(--u) * 4), 1px); margin-top: round(calc(var(--u) * -7), 1px); line-height: 1; }
+.df-bbhead > * { background: #181425; padding: 0 round(calc(var(--u) * 3), 1px); }
+.df-bbhead > .grow, .df-bbhead > .df-bbname:empty { background: none; padding: 0; }
+.df-bbhead .df-tag { color: var(--amber); }
+.df-bbkeys { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 11 - 0.01px), var(--fq))); }
+.df-bbname { color: var(--text); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.df-bblock { font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 11 - 0.01px), var(--fq))); }
+.df-bgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: round(calc(var(--u) * 2), 1px); }
+.df-bgrid.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.df-bgrid.c2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.df-bgrid.c1 { grid-template-columns: minmax(0, 1fr); }
+.df-side .btn.df-bcard {
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: round(calc(var(--u) * 2), 1px); min-width: 0;
+  padding: round(calc(var(--u) * 3), 1px) 1px round(calc(var(--u) * 2), 1px); margin: 0; min-height: 0;
+  background: rgba(38, 43, 68, 0.75); border: round(calc(var(--u) * 2), 1px) solid #3a4466; border-radius: round(calc(var(--u) * 3), 1px);
+  box-shadow: none; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); line-height: 1.1; color: var(--text);
+}
+.df-side .btn.df-bcard:hover { border-color: var(--amber); background: rgba(58, 68, 102, 0.85); }
+.df-side .btn.df-bcard.selected { border-color: var(--good); background: rgba(44, 82, 52, 0.85); outline: none; }
+.df-side .btn.df-bcard.disabled { opacity: 0.55; }
+.df-side .btn.df-bcard.disabled:hover { border-color: var(--danger); }
+.df-bicon { position: relative; flex: none; height: round(calc(var(--u) * 24), 1px); display: flex; align-items: flex-end; justify-content: center; align-self: stretch; }
+.df-bicon .df-hk { top: round(calc(var(--u) * -2), 1px); bottom: auto; left: round(calc(var(--u) * -1), 1px); padding: 0 round(calc(var(--u) * 2), 1px); line-height: 1.1; }
+/* The price wraps (Scrap over the component) rather than clip when the tile is narrow (wide body font, 4 to a row). */
+.df-bcost { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; row-gap: 0; white-space: nowrap; max-width: 100%; }
+.df-bcost .cost { gap: round(calc(var(--u) * 2), 1px); }
+.df-bcost { gap: round(calc(var(--u) * 1.5), 1px); }
+.df-bcost .res { gap: 1px; }
+.df-bscrap { color: var(--text); font-weight: 400; }
+.df-bscrap.short { color: var(--danger); }
+/* First prep with nothing built: the bar's cards pulse so the eye finds where building starts. */
+@keyframes df-bnudge { 0%, 100% { border-color: #3a4466; } 50% { border-color: var(--amber); } }
+.df-buildbar.df-nudge .btn.df-bcard:not(.disabled) { animation: df-bnudge 1.4s steps(2, jump-none) infinite; }
+.df-placehow { display: flex; flex-direction: column; gap: round(calc(var(--u) * 2), 1px); line-height: 1.3; }
+.df-tick { color: var(--good); }
+.df-placewhy { line-height: 1.3; }
+.df-beaconline { color: #8ff8ff; line-height: 1.3; }
+.df-placetag {
+  position: absolute; left: 0; top: 0; pointer-events: none; white-space: nowrap; z-index: 5;
+  font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); color: var(--good);
+  background: rgba(24, 20, 37, 0.92); border: 1px solid var(--good); padding: 0 round(calc(var(--u) * 5), 1px); border-radius: round(calc(var(--u) * 2), 1px);
+}
+.df-placetag.bad { color: #ff7a80; border-color: var(--danger); }
+.df-side .btn.df-bcard.df-surch .df-bscrap:not(.short) { color: var(--amber); }
+/* Small screens (1024×600 and the like: the 16 px font floor makes the panel's lines wrap): drop the readiness line's
+   "Defense" label and the leaker's name under it (both stay in the tooltips) so both paths stay above the fold. */
+@media (max-height: 660px), (max-width: 1150px) {
+  .df-side .df-rd-line > .df-rd-k { display: none; }
+  .df-side .df-rd-line > .df-meter { margin-left: 0; }
+  .df-side .df-rd-lanes .df-rd-lane > .bad { display: none; }
+}

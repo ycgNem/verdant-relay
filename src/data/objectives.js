@@ -20,9 +20,13 @@
 // Finishing every step completes the objective: +1 skill point, and the `boon` applies to tonight's
 // defense (players see it as the "Reward"). minNight: the goal is only dealt from that night on (Run.objectiveFor).
 //
-// `name` is THE objective sentence: the briefing card, the start banner, the HUD strip and the summary
-// all use it word for word. Step `label`s only show as sub-steps of multi-step objectives ("name: label").
-// `boon.short` is the briefing card's one-line reward; `boon.text` the full sentence (summary, night prep).
+// `name` is THE quest's name: the briefing card, the quest card, the tracker, the big map and the summary all use it
+// word for word. Stage 9 (quests read as quests): each step's `label` is the tracker's "what to do now" line and a
+// line on the quest card: plain, self-contained, saying what and where (`{at}` becomes " at <place name>" when the
+// step's site has a name, else nothing). `verb` (optional) is the shorter interact-prompt text (else the label
+// without {at}). `brief` is one line on what the quest is (the briefing card, under the name).
+// `boon.short` is the briefing card's / quest card's reward; `boon.hint` the tracker's short reward line;
+// `boon.text` the full sentence (summary, night prep). The tracker numbers the steps ("1/2") unless `stepNums: false`.
 // Boon fields: freeUpgrades, freeRepair, towerRate, towerDamage, enemyCount, enemySpeed, laneSlow, bankScrap,
 // bankRes {circuits, …} (Run.addBoon). `relic`: the goal also drops a relic of that rarity (scene.dropRelic).
 // Every goal pays +20 Scrap at home on top of its own reward (critic J2 #1: goals paid in kind and looting beat
@@ -35,88 +39,99 @@ export const PRIMARY = {
   restore_relay: {
     name: 'Fix the power box',
     steps: [
-      { type: 'pickup', prop: 'fuse', label: 'find the fuse', room: 'side' },
-      { type: 'activate', prop: 'power_box', hold: 1.5, label: 'fit it in the power box', room: 'objective' },
+      { type: 'pickup', prop: 'fuse', label: 'Find the spare fuse{at}', verb: 'Take the fuse', room: 'side' },
+      { type: 'activate', prop: 'power_box', hold: 1.5, label: 'Fit the fuse in the power box{at}', verb: 'Fit the fuse in the power box', room: 'objective' },
     ],
-    boon: { short: '+20 Scrap and one free tower upgrade tonight', text: 'Generator online: +20 Scrap and one free tower upgrade tonight.', bankScrap: 20, freeUpgrades: 1 },
+    brief: 'Find a spare fuse, then fit it in a broken power box',
+    boon: { short: '+20 Scrap and one free tower upgrade tonight', hint: 'a free tower upgrade tonight', text: 'Generator online: +20 Scrap and one free tower upgrade tonight.', bankScrap: 20, freeUpgrades: 1 },
   },
   recover_data: {
     name: 'Download the route data',
     steps: [
-      { type: 'activate', prop: 'terminal', hold: 7, spawnDuring: 4, label: 'hold E at the terminal (enemies come)', room: 'objective' },
+      { type: 'activate', prop: 'terminal', hold: 7, spawnDuring: 4, label: 'Download the data at the terminal{at}', verb: 'Download the route data (creatures come)', room: 'objective' },
     ],
-    boon: { short: '+20 Scrap and 10% fewer enemies tonight', text: 'Their routes are mapped: +20 Scrap, and tonight\'s wave is 10% smaller.', bankScrap: 20, enemyCount: 0.9 },
+    brief: 'Stay at an old terminal while it downloads. Creatures come for you',
+    boon: { short: '+20 Scrap and 10% fewer enemies tonight', hint: '10% fewer enemies tonight', text: 'Their routes are mapped: +20 Scrap, and tonight\'s wave is 10% smaller.', bankScrap: 20, enemyCount: 0.9 },
   },
   activate_pumps: {
     name: 'Switch on the two water pumps',
     steps: [
-      { type: 'activate', prop: 'pump', hold: 1.5, count: 2, label: 'switch on both pumps', room: 'split' },
+      { type: 'activate', prop: 'pump', hold: 1.5, count: 2, label: 'Switch on both water pumps', verb: 'Switch on this pump', room: 'split' },
     ],
-    boon: { short: '+20 Scrap, and the North path floods: enemies 15% slower there', text: 'Pumps flood the north path: +20 Scrap, and enemies there are 15% slower tonight.', bankScrap: 20, laneSlow: { lane: 0, mult: 0.85 } },
+    brief: 'Two pumps stand at different spots: switch on both',
+    boon: { short: '+20 Scrap, and the North path floods: enemies 15% slower there', hint: 'enemies 15% slower on the North path tonight', text: 'Pumps flood the north path: +20 Scrap, and enemies there are 15% slower tonight.', bankScrap: 20, laneSlow: { lane: 0, mult: 0.85 } },
   },
   salvage_cell: {
     name: 'Salvage a power cell',
     steps: [
-      { type: 'activate', prop: 'cell_cache', hold: 2.5, guards: 3, label: 'open the guarded cache (hold E)', room: 'objective' },
+      { type: 'activate', prop: 'cell_cache', hold: 2.5, guards: 3, label: 'Open the guarded cache{at} and take its power cell', verb: 'Open the cache, take the power cell', room: 'objective' },
     ],
-    boon: { short: '+20 Scrap and towers fire 10% faster tonight', text: 'Power cell installed: +20 Scrap, and towers fire 10% faster tonight.', bankScrap: 20, towerRate: 1.1 },
+    brief: 'A cache with a power cell inside. Creatures guard it',
+    boon: { short: '+20 Scrap and towers fire 10% faster tonight', hint: 'towers fire 10% faster tonight', text: 'Power cell installed: +20 Scrap, and towers fire 10% faster tonight.', bankScrap: 20, towerRate: 1.1 },
   },
   clear_blockage: {
     name: 'Kill the Razorback blocking the way',
     steps: [
-      { type: 'kill', enemy: 'razorback', elite: true, label: 'kill the big Razorback', room: 'objective' },
+      { type: 'kill', enemy: 'razorback', elite: true, label: 'Kill the big Razorback{at}', room: 'objective' },
     ],
-    boon: { short: '+45 Scrap when you get home', text: 'Its hoard: +45 Scrap when you get home.', bankScrap: 45 },
+    brief: 'A huge Razorback blocks a ruin. Kill it for its hoard',
+    boon: { short: '+45 Scrap when you get home', hint: '+45 Scrap when you get home', text: 'Its hoard: +45 Scrap when you get home.', bankScrap: 45 },
   },
   // ---- Stage 7 (critic J M4): five new goals
   escort_engineer: {
     name: 'Bring the stranded engineer home',
     minNight: 2,
     steps: [
-      { type: 'escort', phase: 'find', prop: 'engineer', hold: 1, label: 'find him (hold E)', room: 'objective' },
-      { type: 'escort', phase: 'lead', label: 'lead him to the Relay or a beacon' },
+      { type: 'escort', phase: 'find', prop: 'engineer', hold: 1, label: 'Find the engineer{at}', room: 'objective' },
+      { type: 'escort', phase: 'lead', label: 'Lead him home: the Relay or a beacon' },
     ],
-    boon: { short: '+20 Scrap and two free tower upgrades tonight', text: 'The engineer joins the Relay crew: +20 Scrap and two free tower upgrades tonight.', bankScrap: 20, freeUpgrades: 2 },
+    brief: 'Find the engineer, then lead him home. Keep him alive',
+    boon: { short: '+20 Scrap and two free tower upgrades tonight', hint: 'two free tower upgrades tonight', text: 'The engineer joins the Relay crew: +20 Scrap and two free tower upgrades tonight.', bankScrap: 20, freeUpgrades: 2 },
     rewardAtDelivery: true,
   },
   hold_uplink: {
     name: 'Hold the uplink until it comes online',
     minNight: 2,
     steps: [
-      { type: 'defend', phase: 'start', prop: 'uplink', hold: 1, label: 'start it (hold E)', room: 'objective' },
-      { type: 'defend', phase: 'hold', label: 'stay close while it boots' },
+      { type: 'defend', phase: 'start', prop: 'uplink', hold: 1, label: 'Start the uplink{at}', room: 'objective' },
+      { type: 'defend', phase: 'hold', label: 'Stay close while it boots' },
     ],
-    boon: { short: '+20 Scrap and 15% fewer enemies tonight', text: 'The uplink jams their calls: +20 Scrap, and tonight\'s wave is 15% smaller.', bankScrap: 20, enemyCount: 0.85 },
+    brief: 'Start an uplink and stay by it while it boots. Creatures come',
+    boon: { short: '+20 Scrap and 15% fewer enemies tonight', hint: '15% fewer enemies tonight', text: 'The uplink jams their calls: +20 Scrap, and tonight\'s wave is 15% smaller.', bankScrap: 20, enemyCount: 0.85 },
   },
   track_alpha: {
     name: 'Track down the Alpha and kill it',
     minNight: 2,
+    stepNums: false,   // (its labels count the tracks themselves)
     steps: [
-      { type: 'track', label: 'find its tracks', room: 'objective' },
-      { type: 'track', label: 'follow the tracks' },
-      { type: 'track', label: 'follow the tracks' },
-      { type: 'kill', enemy: 'alpha', elite: true, label: 'kill the Alpha' },
+      { type: 'track', label: 'Find the Alpha\'s tracks{at}', room: 'objective' },
+      { type: 'track', label: 'Follow the tracks (2 of 3)' },
+      { type: 'track', label: 'Follow the tracks (3 of 3)' },
+      { type: 'kill', enemy: 'alpha', elite: true, label: 'Kill the Alpha' },
     ],
-    boon: { short: 'A rare relic, +20 Scrap and towers 10% stronger tonight', text: 'The Alpha\'s trophy: +20 Scrap, and towers deal 10% more damage tonight.', bankScrap: 20, towerDamage: 1.1 },
+    brief: 'Follow three sets of tracks to the Alpha, then kill it',
+    boon: { short: 'A rare relic, +20 Scrap and towers 10% stronger tonight', hint: 'a rare relic, towers 10% stronger tonight', text: 'The Alpha\'s trophy: +20 Scrap, and towers deal 10% more damage tonight.', bankScrap: 20, towerDamage: 1.1 },
     relic: 'R',
   },
   haul_core: {
     name: 'Carry a generator core home',
     minNight: 2,
     steps: [
-      { type: 'carry', phase: 'pickup', prop: 'core', hold: 0.8, label: 'pick it up (hold E)', room: 'objective' },
-      { type: 'carry', phase: 'deliver', label: 'carry it to the Relay or a beacon' },
+      { type: 'carry', phase: 'pickup', prop: 'core', hold: 0.8, label: 'Pick up the generator core{at}', room: 'objective' },
+      { type: 'carry', phase: 'deliver', label: 'Carry it home: the Relay or a beacon' },
     ],
-    boon: { short: '+50 Scrap and 2 Circuits', text: 'The core, sold for parts: +50 Scrap and 2 Circuits.', bankScrap: 50, bankRes: { circuits: 2 } },
+    brief: 'Carry a heavy core home. You can\'t swing while you carry it',
+    boon: { short: '+50 Scrap and 2 Circuits', hint: '+50 Scrap and 2 Circuits', text: 'The core, sold for parts: +50 Scrap and 2 Circuits.', bankScrap: 50, bankRes: { circuits: 2 } },
     rewardAtDelivery: true,
   },
   purge_bloom: {
     name: 'Pop all three spore nests within a minute',
     minNight: 2,
     steps: [
-      { type: 'purge', label: 'pop the spore nests', room: 'objective' },
+      { type: 'purge', label: 'Pop the 3 spore nests{at}', room: 'objective' },
     ],
-    boon: { short: '+20 Scrap and enemies 10% slower tonight', text: 'The bloom is gone: +20 Scrap, and enemies move 10% slower tonight.', bankScrap: 20, enemySpeed: 0.9 },
+    brief: 'Pop three spore nests within a minute of the first',
+    boon: { short: '+20 Scrap and enemies 10% slower tonight', hint: 'enemies 10% slower tonight', text: 'The bloom is gone: +20 Scrap, and enemies move 10% slower tonight.', bankScrap: 20, enemySpeed: 0.9 },
   },
 };
 export const PRIMARY_KEYS = Object.keys(PRIMARY);

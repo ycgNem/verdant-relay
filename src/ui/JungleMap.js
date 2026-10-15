@@ -12,12 +12,13 @@ export const MAP_MARKERS = {
   relay: { color: '#2ce8f5', core: '#ffffff', shape: 'hub', size: 1.6, label: 'Relay (home)' },
   pylon_on: { color: '#63c74d', core: '#d8ffcf', shape: 'tri', size: 1.25, label: 'Beacon (a way home)' },
   pylon_off: { color: '#7a8399', shape: 'tri', size: 1.1, label: 'Beacon (switch it on)' },
-  objective: { color: '#feae34', shape: 'diamond', size: 1.4, label: 'Goal' },
+  objective: { color: '#feae34', shape: 'diamond', size: 1.4, label: 'Quest' },
   optional: { color: '#c47bff', shape: 'diamond', size: 1.1, label: 'Bonus task' },
   container: { color: '#ead4aa', shape: 'dot', size: 0.6, label: 'Supplies' },
   player: { color: '#ffffff', shape: 'arrow', size: 1.7, label: 'You' },
   // Wayfinding (critic L §3): the crossing to use when the straight line to the goal runs into deep water.
-  ford: { color: '#c8e4f0', shape: 'diamond', size: 1.25, hollow: true, label: 'Crossing (stepping stones)' },
+  // Stage 9: rivers are crossed on bridges — a little plank-bridge glyph (BRIDGE cells) in plank colours.
+  ford: { color: '#e4a672', core: '#733e39', shape: 'bridge', size: 1.5, label: 'Bridge (the way across)' },
   // Area boss lair (src/entities/AreaBoss.js): a pixel skull, from day 3 until it is killed.
   boss: { color: '#ff4a4a', core: '#ffe0d0', shape: 'skull', size: 1.6, label: 'Area boss' },
   // Relics & lore (src/scenes/JungleRelics.js): strongboxes, shrines and relics on the ground (a four-point star);
@@ -34,6 +35,8 @@ export const MAP_MARKERS = {
 const ORDER = ['forage_fungus', 'forage_fruit', 'forage_bloom', 'container', 'cache', 'lore', 'pylon_off', 'optional', 'relic', 'boss', 'ford', 'pylon_on', 'relay', 'objective', 'player'];
 // The skull marker (shape 'skull'): 5 × 5 cells, 1 = bone, 2 = eye / tooth gap (left dark).
 const SKULL = ['01110', '11111', '12121', '11111', '01010'];
+// The bridge marker (shape 'bridge'): 5 × 5 cells seen from above, 1 = rail / plank (color), 2 = plank shade (core).
+const BRIDGE = ['10001', '12221', '11111', '12221', '10001'];
 // Markers that stick to the minimap rim when they are outside it.
 const RIM = new Set(['objective', 'relay', 'pylon_on', 'ford']);
 const INK = '#0b0a12';
@@ -94,14 +97,16 @@ export function drawMarker(g, type, px, py, unit, opts = {}) {
   if (!st) return;
   const s = Math.max(2, Math.round(unit * st.size * (opts.scale || 1)));
   const cx = Math.round(px), cy = Math.round(py);
-  if (st.shape === 'skull') {
-    // Whole-pixel cells: an ink border one cell wide, then the bone.
+  if (st.shape === 'skull' || st.shape === 'bridge') {
+    // Whole-pixel cells: an ink border one cell wide, then the bone / the planks.
     const k = Math.max(1, Math.round(s / 5)), x0 = cx - Math.floor((5 * k) / 2), y0 = cy - Math.floor((5 * k) / 2);
+    const cells = st.shape === 'skull' ? SKULL : BRIDGE;
     g.fillStyle = INK;
-    g.fillRect(x0 - k, y0 - k, 7 * k, 7 * k - k);
-    SKULL.forEach((row, y) => [...row].forEach((c, x) => {
+    g.fillRect(x0 - k, y0 - k, 7 * k, st.shape === 'skull' ? 7 * k - k : 7 * k);
+    cells.forEach((row, y) => [...row].forEach((c, x) => {
       if (c === '0') return;
-      g.fillStyle = c === '1' ? (opts.dim ? '#4a5266' : st.color) : INK;
+      g.fillStyle = opts.dim ? '#4a5266' : c === '1' ? st.color : st.core || INK;
+      if (st.shape === 'skull' && c !== '1') g.fillStyle = INK;
       g.fillRect(x0 + x * k, y0 + y * k, k, k);
     }));
     return;
@@ -157,7 +162,7 @@ export class JungleMap {
     const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
     const cols = LEVEL_COL.map(hex);
     const thick = hex('#132514'), bram = hex('#3a1a1e'), trail = hex('#8a6c48'), pave = hex('#6a6e66'), tree = hex('#0e1c10');
-    const deep = hex('#0f2a52'), ford = hex('#b8c4b0'), ford2 = hex('#8fa39a');
+    const deep = hex('#0f2a52'), ford = hex('#e4a672'), ford2 = hex('#b86f50');
     for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
       const i = z * W + x;
       const lv = d.level[z * V + x];
@@ -166,9 +171,12 @@ export class JungleMap {
       const b = d.brush[i];
       if (b === BRUSH.thicket) c = thick; else if (b === BRUSH.bramble) c = bram;
       if (d.trail[i]) c = trail;
-      // Deep water (impassable) reads dark blue; fords (the shallow crossings) as a pale stony strip.
+      // Deep water (impassable) reads dark blue; bridge decks (d.ford) as a bright plank strip, planks striped across.
       if (d.deep?.[i]) c = deep;
-      if (d.ford?.[i]) c = ((x + z) & 1) ? ford : ford2;
+      if (d.ford?.[i]) {
+        const br = d.bridges?.find((q) => x >= q.x0 && x < q.x1 && z >= q.z0 && z < q.z1);
+        c = ((br?.axis === 'ew' ? x : z) & 1) ? ford : ford2;
+      }
       const o = i * 4;
       img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 255;
     }

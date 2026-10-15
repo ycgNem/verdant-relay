@@ -1,5 +1,6 @@
-// A placed tower on a build pad. The persistent record lives in run.towers ({ pad, type, level,
-// target, spent }); this class is only its view + combat behaviour for the night.
+// A placed tower on a tile of the night field (Stage 9: build anywhere). The persistent record lives in run.towers
+// ({ x, y, type, level, target, spent }); this class is only its view + combat behaviour for the night. It stands
+// on a hand-made footing (scene.makeFooting) whose front face carries the rank badge.
 //
 // Stats come from run.towerStats(record, relayFrac) every frame (upgrades, skills and tonight's
 // boons applied there), then the scene adds Pulse Beacon buffs (`buffRate`, `bonusChance`).
@@ -16,7 +17,7 @@
 
 import * as THREE from 'three';
 import { TOWERS, BIG_SIZE } from '../data/towers.js';
-import { DEFENSE_MAP, DEFENSE_VIEW } from '../data/defenseMap.js';
+import { DEFENSE_VIEW } from '../data/defenseMap.js';
 import { setAnim, setFacing, updateVisual } from '../core/Assets.js';
 import { JUICE } from '../data/config.js';
 import { CARD_SCALE } from '../core/PixelView.js';
@@ -29,13 +30,14 @@ export class Tower {
     this.scene = scene;
     this.rec = rec;
     this.def = TOWERS[rec.type];
-    // Pad centre from the scene's pads (map variants), else the default map's pad list.
-    const sp = scene.pads?.[rec.pad];
-    const [px, py] = sp ? [sp.x - 0.5, sp.z - 0.5] : DEFENSE_MAP.pads[rec.pad];
-    this.pos = new THREE.Vector3(px + 0.5, 0, py + 0.5);
+    // The tile's centre.
+    this.pos = new THREE.Vector3(rec.x + 0.5, 0, rec.y + 0.5);
     this.obj = new THREE.Group();
     this.obj.position.copy(this.pos);
     scene.three.add(this.obj);
+    // Footing under the tower (flat, drawn before its shadow and sprite); faceZ = its front face for the rank badge.
+    this.footing = scene.makeFooting?.(rec.x * 7 + rec.y * 13) || null;
+    if (this.footing) this.obj.add(this.footing);
     this.cd = 0.15 + Math.random() * 0.3;
     this.shots = 0;
     this.attackT = 0;
@@ -77,7 +79,8 @@ export class Tower {
     if (bk && scene.game.assets.textures?.[bk]) key = bk;
     // 1-texel outline in a dark shade of the type colour (critic G #12: towers read off the plinths).
     const oc = new THREE.Color(this.def.icon?.color || '#ead4aa').lerp(new THREE.Color('#06050a'), DEFENSE_VIEW.towerOutlineMix ?? 0.55);
-    this.visual = scene.game.assets.makeVisual(key, { outline: `#${oc.getHexString()}` });
+    // On a footing the footing is the ground contact: no blob shadow (it hid the footing's stones).
+    this.visual = scene.game.assets.makeVisual(key, { outline: `#${oc.getHexString()}`, ...(this.footing ? { shadow: false } : {}) });
     const vis = this.visual.userData.vis;
     // Placeholder models grow a little per level; real sprites have their own level art.
     if (vis.kind === 'model' && !scene.game.assets.hasSprite(key)) vis.body.scale.setScalar(1 + 0.1 * (this.level - 1));
@@ -365,6 +368,7 @@ export class Tower {
 
   dispose() {
     this.scene.game.assets.disposeVisual(this.visual);
+    this.footing?.userData.dispose?.();
     this.obj.removeFromParent();
   }
 }

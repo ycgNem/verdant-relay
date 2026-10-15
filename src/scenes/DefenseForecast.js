@@ -2,7 +2,8 @@
 // vs total HP", a fast 1-D replay of tonight's pushes against the real tower stats.
 //
 // Each lane is sampled every READINESS.sample tiles. A tower covers the samples within its range (that
-// coverage is what decides most nights: a Relay-side pad sees ~8 tiles of path, a central one ~18 of two).
+// coverage is what decides most nights: a tower beside the Relay sees ~8 tiles of path, a central one ~18 of
+// two). Enemies in a beacon's light at a lane mouth (BEACON_LIGHT, scene._lit) take its bonus damage.
 // Enemies walk their lane at their real speeds (district speed, lane slows, Snare slows where snares cover
 // the path — slows multiply time in range, they are not "+6 DPS"), Burrowers can't be shot by bullets while
 // underground, Spitters plant and lob sap, Seed Carriers burst unless a blast tagged them, tanks resist, the
@@ -17,6 +18,7 @@ import { DEFENSE_ENEMIES } from '../data/enemies.js';
 import { DEFENSE, RELAY_ZAP, relayZapDamage, healthMult } from '../data/waves.js';
 import { READINESS } from '../data/guide.js';
 import { BIG_SIZE } from '../data/towers.js';
+import { BEACON_LIGHT } from '../data/defenseMap.js';
 
 export function forecastNight(scene) {
   const R = READINESS;
@@ -166,6 +168,8 @@ export function forecastNight(scene) {
         tw.cd += 1 / tw.rate;
         const hurt = (e, amt, type) => {
           if (e.dead || amt <= 0) return;
+          const lit = scene._lit?.[e.L.li];
+          if (lit && !e.def.boss && e.d >= lit[0] && e.d <= lit[1]) amt *= 1 + BEACON_LIGHT.bonus;
           const res = s.pierce ? 1 : e.def.resist?.[type] ?? 1;
           const big = s.bigBonus && (e.def.size || 0) >= BIG_SIZE ? s.bigBonus : 1;
           if (type === 'blast') e.blast = t;

@@ -2,21 +2,25 @@
 // the game look alike: a square "world" around the defense field (TerrainBaker blends its terrain,
 // FloraAtlas cards draw the plants and trees) — worn dirt trails where the lanes run (ruts, mud puddles,
 // stones, like the day's trails), a paved plaza under the Relay, open jungle floor on the field, an optional
-// stream with a ford (map.stream), and a wall of jungle all around.
+// stream crossed on plank bridges (map.stream, laneBridges), and a wall of jungle all around.
 //
 // Lanes stay clear (critic K §4.1): no card (tree, ruin, plant) may cover a lane — every card is tested
-// texel by texel against the screen area an enemy on a lane tile (or a tower on a pad, or the Relay) can
-// occupy, and dropped when an opaque texel of it would draw IN FRONT of that area. The old map hid a third
-// of the south lane (and the boss's charge) behind trees.
+// texel by texel against the screen area an enemy on a lane tile (or the Relay) can occupy, and dropped when
+// an opaque texel of it would draw IN FRONT of that area. The old map hid a third of the south lane (and the
+// boss's charge) behind trees.
+//
+// Build anywhere (Stage 9): every field tile is a place a tower may stand. Each kept card records the field
+// tiles whose tower it would draw in front of (`c.tiles`): a tree or rock blocks those tiles (blockAt → 'tree' /
+// 'rock'), plants are cleared when a tower is built there (setTowers rebuilds the card mesh without them).
 //
 // Defense tile (x, y) maps to world tile (x − X0, y − Z0); the meshes sit in a group offset by (X0, Z0),
 // so everything lines up with DefenseScene's coordinates.
 
 import * as THREE from 'three';
 import { DEFENSE_VIEW } from '../data/defenseMap.js';
-import { LEVEL, BRUSH } from '../data/jungle.js';
+import { LEVEL, BRUSH, BRIDGE_LOOK } from '../data/jungle.js';
 import { makeNoise, hash2 } from './noise.js';
-import { TerrainBaker } from './TerrainBaker.js';
+import { TerrainBaker, drawBridge } from './TerrainBaker.js';
 import { FloraAtlas } from './FloraAtlas.js';
 import { makeCardMaterial, chunkCards, cardMesh } from './JungleWorld.js';
 
@@ -30,13 +34,17 @@ export const GROUND = { size: S, x0: X0, z0: Z0 };
 const KEEP = {
   enemy: { x0: -0.35, x1: 1.35, up: 2.6, down: 0.15 },
   pad: { x0: -0.35, x1: 1.35, up: 2.4, down: 1.35 },
+  tower: { x0: -0.3, x1: 1.3, up: 2.1, down: 0.5 },    // a tower on its tile (48 × 64 art, its foot at the tile centre; a low rock may hide the footing)
 };
 
 /**
  * @param map   a DEFENSE_MAPS entry
- * @param opts  { seed, laneTiles: Set("x,y") incl. the off-field trail, pads: [{x, z}] (pad centres), tint }
+ * @param opts  { seed, laneTiles: Set("x,y") incl. the off-field trail, pads: [{x, z}] (legacy pad centres, kept
+ *              clear), towers: [{x, y}] (built towers: plants over them are cleared), tint }
+ * Returns { group, world, stats, patch, update, dispose, blockAt(x, y) → 'tree' | 'rock' | 'water' | null,
+ *           setTowers([{x, y}]) }.
  */
-export function buildDefenseGround(game, map, { seed, laneTiles, pads = [], tint }) {
+export function buildDefenseGround(game, map, { seed, laneTiles, pads = [], towers = [], tint }) {
   const W = map.width, H = map.height, V = S + 1;
   const n = makeNoise(seed ^ 0x2468);
   const isLane = (x, y) => laneTiles.has(`${x},${y}`);
@@ -110,14 +118,9 @@ export function buildDefenseGround(game, map, { seed, laneTiles, pads = [], tint
       if (world.level[i] > m + 1) world.level[i] = m + 1;
     }
   }
-  // Fords: lane tiles with water at a corner get stepping stones.
-  for (const k of laneTiles) {
-    const [lx, ly] = k.split(',').map(Number);
-    const tx = lx - X0, tz = ly - Z0;
-    if (tx < 0 || tz < 0 || tx >= S || tz >= S) continue;
-    const c = [world.level[tz * V + tx], world.level[tz * V + tx + 1], world.level[(tz + 1) * V + tx], world.level[(tz + 1) * V + tx + 1]];
-    if (c.some((l) => l === LEVEL.water)) world.ford[tz * S + tx] = 1;
-  }
+  // Bridges (Stage 9, like the day jungle's): each run of lane tiles over the stream gets a plank bridge along the
+  // lane, BRIDGE_LOOK.lane tiles wider than the lane on each side (drawn after wearLanes, below).
+  const bridges = laneBridges(world, laneTiles);
 
   // ---- undergrowth: a wall of jungle outside the field, a few plants on it.
   for (let tz = 0; tz < S; tz++) {
@@ -171,6 +174,12 @@ export function buildDefenseGround(game, map, { seed, laneTiles, pads = [], tint
   const g = big.getContext('2d', { willReadFrequently: true });
   for (let cz = 0; cz < C; cz++) for (let cx = 0; cx < C; cx++) g.drawImage(baker.bake(cx, cz), cx * 512, cz * 512);
   wearLanes(g, game.assets, baker, map, laneTiles, seed);
+  if (bridges.length) {
+    const img = g.getImageData(0, 0, big.width, big.height);
+    for (const b of bridges) drawBridge(img.data, big.width, 0, 0, b, seed, () => 1);
+    g.putImageData(img, 0, 0);
+    world.bridges = bridges;
+  }
   // The field reads as the playable area: the margin is a touch darker (a 2-step dithered edge).
   {
     const fx0 = -X0 * 32, fz0 = -Z0 * 32, fx1 = (W - X0) * 32, fz1 = (H - Z0) * 32;
@@ -220,14 +229,41 @@ export function buildDefenseGround(game, map, { seed, laneTiles, pads = [], tint
   const all = chunkCards(world, atlas, null, 0, 0, S, S);
   const keep = keepZones(map, laneTiles, pads);
   const cards = all.filter((c) => !coversKeep(c, atlas, keep));
-  const cardsMesh = cardMesh(cards, atlas, cmat);
-
+  // Build anywhere: which field tiles each card would hide a tower on; trees and rocks block those tiles.
+  const tileKeep = towerZones(map);
+  const block = new Map();   // tile index → 'tree' | 'rock' | 'water'
+  for (const c of cards) {
+    c.tiles = coveredTiles(c, atlas, tileKeep);
+    if (c.kind === 2 || c.kind === 3) for (const t of c.tiles) if (!block.has(t)) block.set(t, c.kind === 2 ? 'tree' : 'rock');
+  }
+  for (const [x, y] of map.trees || []) if (inField(x, y)) block.set(y * W + x, 'tree');
+  for (const [x, y] of map.rubble || []) if (inField(x, y)) block.set(y * W + x, 'rock');
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const tx = x - X0, tz = y - Z0;
+    const c = [world.level[tz * V + tx], world.level[tz * V + tx + 1], world.level[(tz + 1) * V + tx], world.level[(tz + 1) * V + tx + 1]];
+    if (c.some((l) => l === LEVEL.water)) block.set(y * W + x, 'water');
+  }
+  let cardsMesh = null;
   const group = new THREE.Group();
   group.position.set(X0, 0, Z0);
-  group.add(ground, cardsMesh);
+  group.add(ground);
+  // The card mesh minus every card that would hide a built tower (rebuilt when towers change).
+  let towerKey = null;
+  const setTowers = (list) => {
+    const on = new Set(list.map((t) => t.y * W + t.x));
+    const key = [...on].sort((a, b) => a - b).join(',');
+    if (key === towerKey) return;
+    towerKey = key;
+    if (cardsMesh) { group.remove(cardsMesh); cardsMesh.geometry.dispose(); }
+    cardsMesh = cardMesh(on.size ? cards.filter((c) => !c.tiles.some((t) => on.has(t))) : cards, atlas, cmat);
+    group.add(cardsMesh);
+  };
+  setTowers(towers);
   return {
     group, world,
     stats: { cards: all.length, dropped: all.length - cards.length },
+    blockAt: (x, y) => (inField(x, y) ? block.get(y * W + x) || null : null),
+    setTowers,
     // The baked ground under a rectangle of defense-space texels (32 per tile) as RGBA bytes, or null off the canvas
     // (Fx.decal stains splats into it, critic H2 §7).
     patch(tx, tz, w, h) {
@@ -239,9 +275,45 @@ export function buildDefenseGround(game, map, { seed, laneTiles, pads = [], tint
     dispose() {
       group.removeFromParent();
       tex.dispose(); geom.dispose(); mat.dispose();
-      cardsMesh.geometry.dispose(); cmat.dispose(); atlas.texture.dispose();
+      cardsMesh?.geometry.dispose(); cmat.dispose(); atlas.texture.dispose();
     },
   };
+}
+
+// ------------------------------------------------------------------ bridges over the stream
+
+/**
+ * Plank bridges where lanes cross water (Stage 9): every 4-connected group of lane tiles with water at a corner is
+ * one deck (world tiles, TerrainBaker's bridge format) along the lane, BRIDGE_LOOK.lane tiles wider than the lane on
+ * both sides. Marks the deck tiles in world.ford.
+ */
+function laneBridges(world, laneTiles) {
+  const V = S + 1, L = world.level, wet = new Set();
+  for (const k of laneTiles) {
+    const [lx, ly] = k.split(',').map(Number);
+    const tx = lx - X0, tz = ly - Z0;
+    if (tx < 0 || tz < 0 || tx >= S || tz >= S) continue;
+    if (Math.min(L[tz * V + tx], L[tz * V + tx + 1], L[(tz + 1) * V + tx], L[(tz + 1) * V + tx + 1]) === LEVEL.water) wet.add(k);
+  }
+  const out = [], seen = new Set(), over = BRIDGE_LOOK.lane;
+  for (const k of wet) {
+    if (seen.has(k)) continue;
+    const comp = [], st = [k];
+    seen.add(k);
+    while (st.length) {
+      const q = st.pop();
+      comp.push(q.split(',').map(Number));
+      const [x, y] = comp[comp.length - 1];
+      for (const n of [`${x + 1},${y}`, `${x - 1},${y}`, `${x},${y + 1}`, `${x},${y - 1}`]) if (wet.has(n) && !seen.has(n)) { seen.add(n); st.push(n); }
+    }
+    const xs = comp.map((c) => c[0]), ys = comp.map((c) => c[1]);
+    const x0 = Math.min(...xs) - X0, x1 = Math.max(...xs) + 1 - X0, z0 = Math.min(...ys) - Z0, z1 = Math.max(...ys) + 1 - Z0;
+    let ew = x1 - x0 > z1 - z0;
+    if (x1 - x0 === z1 - z0) ew = laneTiles.has(`${x0 + X0 - 1},${z0 + Z0}`) || laneTiles.has(`${x1 + X0},${z0 + Z0}`);
+    out.push(ew ? { id: `nb${out.length}`, axis: 'ew', x0, x1, z0: z0 - over, z1: z1 + over } : { id: `nb${out.length}`, axis: 'ns', x0: x0 - over, x1: x1 + over, z0, z1 });
+    for (const [x, y] of comp) world.ford[(y - Z0) * S + x - X0] = 1;
+  }
+  return out;
 }
 
 // ------------------------------------------------------------------ keeping lanes clear
@@ -272,6 +344,53 @@ function keepZones(map, laneTiles, pads) {
     }
   }
   return { grid };
+}
+
+/** A protected area per field tile (a tower standing there), bucketed like keepZones; zone.id = tile index. */
+function towerZones(map) {
+  const grid = new Map();
+  const T = KEEP.tower;
+  for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
+    const zn = { id: y * map.width + x, x0: x + T.x0, x1: x + T.x1, y0: y + 0.5 - T.up, y1: y + T.down, z: y };
+    for (let sy = Math.floor(zn.y0); sy <= Math.floor(zn.y1); sy++) for (let sx = Math.floor(zn.x0); sx <= Math.floor(zn.x1); sx++) {
+      const key = `${sx},${sy}`;
+      if (!grid.has(key)) grid.set(key, []);
+      grid.get(key).push(zn);
+    }
+  }
+  return { grid };
+}
+
+/** The ids of every zone of `keep` that card `c` draws an opaque texel in front of (see coversKeep). */
+function coveredTiles(c, atlas, keep) {
+  const e = c.e;
+  if (!e.ay) return [];
+  const cx = c.x + X0, cz = c.z + Z0;
+  const left = cx - e.ax / 32;
+  const bx0 = Math.floor(left - 0.1), bx1 = Math.floor(left + e.w / 32 + 0.1), by0 = Math.floor(cz - e.ay / 32), by1 = Math.floor(cz);
+  let any = false;
+  for (let sy = by0; sy <= by1 && !any; sy++) for (let sx = bx0; sx <= bx1 && !any; sx++) {
+    const list = keep.grid.get(`${sx},${sy}`);
+    if (list && list.some((zn) => zn.z < cz - 0.02)) any = true;
+  }
+  if (!any) return [];
+  const out = new Set();
+  const mask = alphaMask(atlas, e);
+  for (let ty = 0; ty < e.ay; ty += 2) {
+    const sy = cz - (e.ay - ty) / 32;
+    for (let tx = 0; tx < e.w; tx += 2) {
+      const mx = c.flip ? e.w - 1 - tx : tx;
+      if (!mask[ty * e.w + mx]) continue;
+      const sx = left + tx / 32;
+      const list = keep.grid.get(`${Math.floor(sx)},${Math.floor(sy)}`);
+      if (!list) continue;
+      for (const zn of list) {
+        if (zn.z >= cz - 0.02 || out.has(zn.id)) continue;
+        if (sx >= zn.x0 && sx <= zn.x1 && sy >= zn.y0 && sy <= zn.y1) out.add(zn.id);
+      }
+    }
+  }
+  return [...out];
 }
 
 const alphaCache = new WeakMap();

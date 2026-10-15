@@ -637,6 +637,7 @@ export class Fx {
     this.corpses = [];
     this.decals = [];
     this.whites = [];            // live white hit-flash overlays
+    this.tells = [];             // live commit tells (blinking flat-colour overlays)
     this.camUp = new THREE.Vector3(0, 1, 0);
     this.camBack = new THREE.Vector3(0, 0, 1);
     this.stopT = 0;
@@ -1020,7 +1021,38 @@ export class Fx {
     if (!vis) return;
     if (vis.kind !== 'sprite' || !vis.body) { flashVisual(root, '#ffffff', time); return; }
     const HF = JUICE.hitFlash || { white: 1, tint: 2, color: '#ff6a3d', mix: 0.6, ink: '#181425' };
-    let o = root.userData.whiteOverlay;
+    const o = this._overlay(root, 'whiteOverlay', HF);
+    o.visible = true;
+    const heavy = time > (JUICE.melee?.whiteFlash ?? 0.08) * 1.2 ? 1 : 0;
+    const frames = HF.white + HF.tint + heavy;
+    const live = this.whites.find((w) => w.o === o);
+    if (live) { live.n = 0; live.frames = Math.max(live.frames - live.n, frames); }
+    else this.whites.push({ o, body: vis.body, n: 0, frames, white: HF.white });
+    this._flashLook(o, 0, HF);
+  }
+
+  /**
+   * The commit tell (Stage 9, POISE.tell): the creature's whole sprite blinks flat `color` (ink edge kept) for `time` s,
+   * `blink` s on / off — "red flash: it's coming, roll or deflect". Its own overlay (a hit flash on top still shows).
+   */
+  tell(root, o = {}) {
+    const vis = root?.userData.vis;
+    if (!vis) return;
+    const color = o.color || '#ff2e2e', time = o.time ?? 0.2, blink = o.blink ?? 0.05;
+    if (vis.kind !== 'sprite' || !vis.body) { flashVisual(root, color, time); return; }
+    const ov = this._overlay(root, 'tellOverlay', JUICE.hitFlash, 2);
+    ov.material.color.set(color);
+    if (ov.material.userData.flash) ov.material.userData.flash.uMode.value = 0;
+    ov.visible = true;
+    const live = this.tells.find((w) => w.o === ov);
+    if (live) { live.t = 0; live.time = time; live.blink = blink; }
+    else this.tells.push({ o: ov, body: vis.body, t: 0, time, blink });
+  }
+
+  /** A flat-colour copy of a sprite body (ink edge kept) drawn just over it: hit flashes and tells. */
+  _overlay(root, key, HF, order = 1) {
+    const vis = root.userData.vis;
+    let o = root.userData[key];
     if (!o) {
       const mat = new THREE.SpriteMaterial({ map: vis.tex, color: '#ffffff', transparent: true, alphaTest: 0.5, depthWrite: false });
       const G = vis.geom;
@@ -1044,21 +1076,15 @@ export class Fx {
       };
       mat.customProgramCacheKey = () => 'vr-card-sprite-hitflash';
       o = new THREE.Sprite(mat);
-      o.name = 'whiteFlash';
+      o.name = key;
       o.center.copy(vis.body.center);
-      o.renderOrder = (vis.body.renderOrder || 0) + 1;
+      o.renderOrder = (vis.body.renderOrder || 0) + order;
       root.add(o);
-      root.userData.whiteOverlay = o;
+      root.userData[key] = o;
     }
     o.position.copy(vis.body.position);
     o.scale.copy(vis.body.scale);
-    o.visible = true;
-    const heavy = time > (JUICE.melee?.whiteFlash ?? 0.08) * 1.2 ? 1 : 0;
-    const frames = HF.white + HF.tint + heavy;
-    const live = this.whites.find((w) => w.o === o);
-    if (live) { live.n = 0; live.frames = Math.max(live.frames - live.n, frames); }
-    else this.whites.push({ o, body: vis.body, n: 0, frames, white: HF.white });
-    this._flashLook(o, 0, HF);
+    return o;
   }
 
   /** Colour of a hit-flash overlay on frame n (0-based): white, then the red-orange tint. */
@@ -1461,6 +1487,15 @@ export class Fx {
       w.n++;
       if (w.n > w.frames || !w.o.parent) { w.o.visible = false; this.whites.splice(i, 1); }
     }
+    // commit tells blink on real (sim) time, so they read the same at any frame rate
+    for (let i = this.tells.length - 1; i >= 0; i--) {
+      const w = this.tells[i];
+      w.t += dt;
+      w.o.position.copy(w.body.position);
+      w.o.scale.copy(w.body.scale);
+      w.o.visible = Math.floor(w.t / w.blink) % 2 === 0;
+      if (w.t >= w.time || !w.o.parent) { w.o.visible = false; this.tells.splice(i, 1); }
+    }
 
     // corpses: flash → squash & pop → slide → fade
     const D = JUICE.death;
@@ -1543,6 +1578,7 @@ export class Fx {
     for (const it of this.items) { if (it.obj) this._disposeObj(it.obj, true); it.tex?.dispose(); }
     this.items = [];
     this.whites = [];
+    this.tells = [];
     this.decals = [];
     for (const c of this.corpses) this.game.assets.disposeVisual(c.root);
     this.corpses = [];

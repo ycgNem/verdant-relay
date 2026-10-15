@@ -11,7 +11,9 @@
 //     field, centred on the board (pan for the rest), so texels never shrink to one pixel on a big screen;
 //   · range: from the full-field zoom up to the day's own scale (+ zoom.maxOverDay);
 //   · mouse wheel (or + / −) steps between them, keeping the ground point under the cursor fixed;
-//   · pan: drag with the right or middle mouse button, or the arrow keys; clamped to the field + a margin.
+//   · pan: drag with the right or middle mouse button, or the arrow keys (not while the scene uses them to move
+//     its build cursor: scene.arrowsTaken()); clamped to the field + a margin. follow(x, z) pans just enough to
+//     keep a point (the build cursor, a selected tower) in view.
 //     A right press that doesn't move (zoom.dragThreshold) is still a right CLICK (cancel / deselect):
 //     update() withholds button 2 from game.input until it knows, so call it before the scene reads input.
 // The focus (the world point at the viewport's centre) is snapped to the 1/32-tile grid by PixelCamera.
@@ -231,14 +233,31 @@ export class NightCamera {
     if (this.scene.paused) return;
     const Z = DEFENSE_VIEW.zoom;
     let dx = 0, dy = 0;
-    if (inp.isDown('ArrowLeft')) dx -= 1;
-    if (inp.isDown('ArrowRight')) dx += 1;
-    if (inp.isDown('ArrowUp')) dy -= 1;
-    if (inp.isDown('ArrowDown')) dy += 1;
+    const arrows = !this.scene.arrowsTaken?.();
+    if (arrows && inp.isDown('ArrowLeft')) dx -= 1;
+    if (arrows && inp.isDown('ArrowRight')) dx += 1;
+    if (arrows && inp.isDown('ArrowUp')) dy -= 1;
+    if (arrows && inp.isDown('ArrowDown')) dy += 1;
     if (dx || dy) this.panBy(-dx * Z.panKeys * dt, -dy * Z.panKeys * dt);
     if (inp.wasPressed('Equal') || inp.wasPressed('NumpadAdd')) this.zoomStep(1);
     if (inp.wasPressed('Minus') || inp.wasPressed('NumpadSubtract')) this.zoomStep(-1);
     if (inp.wasPressed('Home')) this.frame();
+  }
+
+  /** Pan (whole tiles' worth, clamped) so ground point (x, z) is at least `margin` tiles inside the viewport. */
+  follow(x, z, margin = 1) {
+    const cam = this.scene.camera, ppu = cam.ppu, vp = this.vp;
+    const cx = (vp.x0 + vp.x1) / 2, cy = (vp.y0 + vp.y1) / 2;
+    const hw = Math.max(0, (vp.x1 - vp.x0) / 2 / ppu - margin), hh = Math.max(0, (vp.y1 - vp.y0) / 2 / ppu - margin);
+    // The ground point at the viewport's centre now.
+    const gx = cam.focus.x + (cx - this.game.width / 2) / ppu, gz = cam.focus.z + (cy - this.game.height / 2) / ppu;
+    let mx = 0, mz = 0;
+    if (x < gx - hw) mx = x - (gx - hw); else if (x > gx + hw) mx = x - (gx + hw);
+    if (z < gz - hh) mz = z - (gz - hh); else if (z > gz + hh) mz = z - (gz + hh);
+    if (!mx && !mz) return;
+    this.fx += mx;
+    this.fz += mz;
+    this.place();
   }
 
   /** Is a world ground point inside the map viewport right now? */

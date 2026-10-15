@@ -171,6 +171,7 @@ export class AudioDirector {
 
   _surface(sc, x, z) {
     const w = sc.world;
+    if (w.onBridge?.(x, z)) return 'wood';   // a bridge deck (Stage 9)
     const lv = w.levelAt(x, z);
     const s = D.footsteps.surfaces[lv] || 'dirt';
     if (lv !== LEVEL.dirt && lv !== LEVEL.floor) return s;

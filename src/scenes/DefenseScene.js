@@ -1,4 +1,5 @@
-// Night defense: the Relay map with two lanes and 16 build pads.
+// Night defense: the Relay map with two lanes; towers go on any free tile (Stage 9 build anywhere: pick a tower in
+// the side panel's build bar or with 1–6, a ghost follows the cursor snapped to the tiles, click to build).
 //
 // Phases:
 //   prep  build / upgrade / sell / set targeting / repair, read the wave preview, then Start Wave.
@@ -22,7 +23,7 @@
 // (before the banner); a defeat clears the save.
 
 import * as THREE from 'three';
-import { buildDefenseGround, makePlinth } from '../world/DefenseGround.js';
+import { buildDefenseGround } from '../world/DefenseGround.js';
 import '../ui/defense.css';
 import { el, button, resChip, resRow, costLine, bar, toast, modal, resIconHtml, setToastsPaused, pinWhole, snapCentred } from '../ui/ui.js';
 import { showHint } from '../ui/hints.js';
@@ -38,7 +39,7 @@ import { WAVE_VARIANTS, DEFENSE, SALVAGE, RELAY_ZAP, relayZapDamage, healthMult,
 import { PROTOCOLS } from '../data/protocols.js';
 import { ProtocolDeck } from './DefenseProtocols.js';
 import { forecastNight } from './DefenseForecast.js';
-import { DEFENSE_MAP, DEFENSE_VIEW, mapFor, forwardSlots, laneForAngle } from '../data/defenseMap.js';
+import { DEFENSE_MAP, DEFENSE_VIEW, BUILD, BEACON_LIGHT, mapFor, laneForAngle } from '../data/defenseMap.js';
 import { NightCamera } from '../world/NightCamera.js';
 import { laneTint } from '../world/DefenseGround.js';
 import { worldForRun, compass } from '../world/JungleGen.js';
@@ -179,7 +180,7 @@ export class DefenseScene {
     this.game = game;
     this.run = game.run;
     this._disp = [];          // geometries / materials / textures to dispose
-    this._visuals = [];       // makeVisual roots owned by the scene (scenery, pads, core)
+    this._visuals = [];       // makeVisual roots owned by the scene (scenery, core)
     this._listeners = [];
   }
 
@@ -213,7 +214,7 @@ export class DefenseScene {
     this.corePos = new THREE.Vector3(this.map.core.x, 0, this.map.core.y);
     this.coreRadius = this.map.coreRadius;
     // Enemy health tonight: the night curve (healthMult) × any run modifier (Run.nightHpMult, e.g. Overgrowth)
-    // × the map's hpMult (layouts whose pads see both paths get tougher enemies, so every map plays fair).
+    // × the map's hpMult (layouts where one spot sees both paths get tougher enemies, so every map plays fair).
     this.hpMult = (run.nightHpMult ? run.nightHpMult() : healthMult(run.night)) * (this.map.hpMult ?? 1);
     // The lane facing tonight's area: its danger group comes down it (buildWave via _waveOpts).
     this.dangerLane = this.laneForDistrict(this.district);
@@ -226,7 +227,6 @@ export class DefenseScene {
     this.fx.ground = { patch: (tx, tz, w, h) => this.ground?.patch?.(tx, tz, w, h) || null, unlit: false };   // splats stain the board (Fx.decal)
     this._buildScenery();
     this._buildCore();
-    this._buildPads();
     this._buildIndicators();
     this._buildChevrons();
     this._fitCamera();   // NightCamera: integer zoom (pixel-exact like the day), framed on the board
@@ -238,10 +238,15 @@ export class DefenseScene {
     this.waveTime = 0;
     this.prepTime = 0;
     this.enemies = [];
+    this.padBaseY = 0;          // (towers stand on the ground: their footing is a flat decal)
     this.towers = run.towers.map((rec) => new Tower(this, rec));
-    this.selPad = -1;
-    this.placing = null;
-    this.hoverPad = -1;
+    this.ground?.setTowers?.(run.towers);
+    this._buildBuildAids();     // placement ghost, free-tile ticks, path-cover dots, beacon light (after the towers)
+    this.selTower = null;       // the selected tower (its panel: upgrade / sell / targeting)
+    this.hoverTower = null;     // the tower under the pointer
+    this.placing = null;        // the tower type being placed (the ghost follows the cursor), or null
+    this.cursor = null;         // the tile under the pointer / the keyboard build cursor { x, y }
+    this.cursorKeys = false;    // the build cursor is driven by the arrow keys (else by the mouse)
     this.hoverType = null;
     this.sellArmed = null;
     this.boss = null;
@@ -273,8 +278,8 @@ export class DefenseScene {
     this._hintQueue = [
       { id: 'def_boss_target', pos: 'map-bottom-left', when: () => this.phase === 'prep' && bossLane != null,
         html: `The <b>${DEFENSE_ENEMIES.colossus.name}</b> comes down the <b>${this.lanes[bossLane ?? 0]?.name}</b> in the last push. Set <b>one or two</b> towers deep on its path to <b>Toughest</b> (<span class="key">T</span>); keep the rest on <b>First in line</b> for its escort. On the plaza it stops and slams the Relay until it dies.` },
-      { id: 'def_build', pos: 'map-bottom-left', when: () => this.phase === 'prep', spot: () => this._padHintSpot(),
-        html: 'Enemies walk the dirt paths to your base. <b>Click a glowing square</b> beside a path to build a tower there.' },
+      { id: 'def_build', pos: 'map-bottom-left', when: () => this.phase === 'prep',
+        html: `Enemies walk the dirt paths to your base. <b>Pick a tower</b> in the Build list (or press <span class="key">1</span>–<span class="key">${Math.min(6, run.availableTowers(game.meta).length)}</span>), then <b>click free ground beside a path</b> to build it there.` },
       { id: 'def_select', pos: 'map-bottom-left', when: () => this.phase === 'prep' && this.towers.length > 0,
         html: 'Click a tower to <b>upgrade</b> it (<span class="key">U</span>) or <b>sell</b> it back (<span class="key">S</span>).' },
       { id: 'def_preview', pos: 'map-bottom-left', when: () => this.phase === 'prep' && (this.towers.length > 0 || this.prepTime > 14),
@@ -306,7 +311,12 @@ export class DefenseScene {
       },
       setSpeed: (n) => { this.speed = Math.max(0.25, Math.min(16, n)); this._refreshTop(true); return this.speed; },
       money: (n = 500) => { run.add({ scrap: n, circuits: Math.ceil(n / 25), biofiber: Math.ceil(n / 25) }); this.sideDirty = true; this._refreshTop(true); return { ...run.res }; },
-      state: () => ({ phase: this.phase, waveTime: this.waveTime, push: this.pushIdx, pushes: this.wave.pushes, lullT: this.lullT, enemies: this.enemies.length, toSpawn: this.events ? this.events.length - this.spawnIdx : this.wave.total, relayHp: run.relayHp, res: { ...run.res }, towers: run.towers.length, variant: this.wave.name }),
+      state: () => ({ phase: this.phase, waveTime: this.waveTime, push: this.pushIdx, pushes: this.wave.pushes, lullT: this.lullT, enemies: this.enemies.length, toSpawn: this.events ? this.events.length - this.spawnIdx : this.wave.total, relayHp: run.relayHp, res: { ...run.res }, towers: run.towers.length, variant: this.wave.name, placing: this.placing, cursor: this.cursor }),
+      // Build anywhere: place(type, x, y) builds through the real rules (false + the reason when the tile is blocked);
+      // check(x, y, type) → { ok, why, word }; tileXY(x, y) → the stage point (CSS px) of a tile's centre.
+      place: (type, x, y) => { const c = this._placeCheck(x, y, type); return c.ok ? this._build(type, x, y) : c.why; },
+      check: (x, y, type) => this._placeCheck(x, y, type),
+      tileXY: (x, y) => { const p = this.game.project(new THREE.Vector3(x + 0.5, 0, y + 0.5), this.camera); return { x: p.x, y: p.y }; },
       callNext: () => this.callNextPush(),
       cast: (key, x, z) => this.protocols.cast(key, { x, z }),
     };
@@ -433,8 +443,8 @@ export class DefenseScene {
    */
   rankBadge(tower, level) {
     const key = `rank_badge_${level}`;
-    const pad = this.pads?.[tower.rec.pad];
-    if (!DEFENSE_VIEW.rankBadgeOnPlinth || !pad?.faceZ || !this.game.assets.hasSprite(key)) return null;
+    const faceZ = tower.footing?.userData.faceZ;
+    if (!DEFENSE_VIEW.rankBadgeOnPlinth || !faceZ || !this.game.assets.hasSprite(key)) return null;
     this._rankMats ||= {};
     if (!this._rankMats[key]) {
       const info = this.game.assets.spriteInfo(key);
@@ -445,8 +455,8 @@ export class DefenseScene {
     const R = this._rankMats[key];
     const m = new THREE.Mesh(R.geom, R.mat);
     m.rotation.x = -Math.PI / 2;
-    m.position.set(0, 0.03, pad.faceZ);
-    m.renderOrder = -1;   // on the plinth (−2), under the tower sprite
+    m.position.set(0, 0.03, faceZ);
+    m.renderOrder = -1;   // on the footing (−2), under the tower sprite
     m.userData.pxSnap = true;
     return m;
   }
@@ -635,11 +645,11 @@ export class DefenseScene {
   /**
    * Ground and jungle: the same blended terrain and foliage cards as the day jungle
    * (src/world/DefenseGround.js), lit by the night lights, sprites tinted like the units. Cards that would
-   * cover a lane, a pad (forward pads too) or the Relay are dropped there.
+   * cover a lane or the Relay are dropped there; trees and rocks that would hide a tower block those tiles
+   * (ground.blockAt), and plants over a built tower are cleared (ground.setTowers).
    */
   _buildGround() {
-    const pads = this._padSpots().map(({ at: [x, y] }) => ({ x: x + 0.5, z: y + 0.5 }));
-    this.ground = buildDefenseGround(this.game, this.map, { seed: this.run.seed, laneTiles: this._laneTiles(), pads, tint: this.spriteTint });
+    this.ground = buildDefenseGround(this.game, this.map, { seed: this.run.seed, laneTiles: this._laneTiles(), towers: this.run.towers, tint: this.spriteTint });
     this.three.add(this.ground.group);
     this._track(this.ground);
     // Visible rewards: a slowed path (tonight.laneSlow, e.g. "pumps flood the north path") is tinted wet.
@@ -683,37 +693,42 @@ export class DefenseScene {
   }
 
   /**
-   * Every pad spot of the map: its pads, then each forward slot that is open — a beacon (pylon) switched on
-   * in the jungle opens the next forward slot on the lane facing it (DEFENSE_MAPS[*].lanes[*].forward).
-   * A slot with a tower already on it stays (a save, or a beacon from an earlier night). Pad index =
-   * map.pads.length + slot index, stable for the run. → [{ i, at: [x, y], forward?, beacon? }]
+   * Beacons switched on in the jungle (run.world.pylons), by the lane facing each one (laneForAngle from the
+   * Relay): [[{ district, dir }], …] per lane, at most BEACON_LIGHT.max a lane. Each lights the mouth of its lane.
    */
-  _padSpots() {
-    if (this._spots) return this._spots;
-    const map = this.map, base = map.pads.length;
-    const spots = map.pads.map((at, i) => ({ i, at }));
-    const slots = forwardSlots(map);
-    const open = new Map();
+  _beaconLanes() {
+    if (this._beacons) return this._beacons;
+    const out = this.map.lanes.map(() => []);
     const on = new Set(this.run.world?.pylons || []);
     const data = on.size ? this._jungle() : null;
-    if (data) {
-      const used = new Map();
-      for (const p of data.pylons) {
-        if (!on.has(p.id)) continue;
-        const li = laneForAngle(map, Math.atan2(p.z - data.center.z, p.x - data.center.x));
-        const rank = used.get(li) || 0;
-        used.set(li, rank + 1);
-        const si = slots.findIndex((s) => s.lane === li && s.rank === rank);
-        if (si >= 0) open.set(si, { district: DISTRICT_KEYS[p.region] || null, dir: compass(p.x - data.center.x, p.z - data.center.z) });
-      }
+    for (const p of data?.pylons || []) {
+      if (!on.has(p.id)) continue;
+      const li = laneForAngle(this.map, Math.atan2(p.z - data.center.z, p.x - data.center.x));
+      if (out[li].length < BEACON_LIGHT.max) out[li].push({ district: DISTRICT_KEYS[p.region] || null, dir: compass(p.x - data.center.x, p.z - data.center.z) });
     }
-    slots.forEach((s, si) => {
-      const i = base + si;
-      const beacon = open.get(si) || (this.run.towers.some((t) => t.pad === i) ? { district: null, dir: '' } : null);
-      if (beacon) spots.push({ i, at: s.at, forward: true, lane: s.lane, beacon });
+    return (this._beacons = out);
+  }
+
+  /** The lit stretch of each lane ([d0, d1] lane distance, or null): BEACON_LIGHT.tiles per beacon from the field edge. */
+  _beaconLit() {
+    if (this._lit) return this._lit;
+    const B = BEACON_LIGHT;
+    this._lit = this._beaconLanes().map((list, li) => {
+      if (!list.length) return null;
+      const lane = this.lanes[li];
+      let d0 = 0;
+      const p = new THREE.Vector3();
+      while (d0 < lane.total && lane.pointAt(d0, p).x < 0) d0 += 0.25;   // where the trail enters the field
+      d0 += B.from - 1;
+      return [d0, Math.min(lane.total, d0 + B.tiles * list.length)];
     });
-    this._spots = spots;
-    return spots;
+    return this._lit;
+  }
+
+  /** Damage multiplier for an enemy standing in a beacon's light (BEACON_LIGHT.bonus; not the boss), else 1. */
+  beaconMult(e) {
+    const L = this._lit?.[e.laneIndex];
+    return L && e.dist >= L[0] && e.dist <= L[1] && !e.boss ? 1 + BEACON_LIGHT.bonus : 1;
   }
 
   _addVisual(key, x, z, opts) {
@@ -812,58 +827,243 @@ export class DefenseScene {
   }
 
   /**
-   * Build pads: an in-world stone / timber plinth per pad (DefenseGround.makePlinth), sized from the widest
-   * tower sprite, with a dashed rim marker hugging its top face. Forward pads (open beacon slots) get a
-   * cyan-trimmed marker. this.pads is indexed by pad index (map pads, then every forward slot); closed
-   * forward slots are entries with `closed: true` and nothing drawn.
+   * The footing under a built tower (DEFENSE_VIEW.footing, hand-made `tower_footing`): a flat decal whose manifest
+   * "top" box is centred on the tile, half of them mirrored (by `seed`); userData.faceZ = its front face's middle
+   * (the rank badge). Shared geometry / material. Null without the art.
    */
-  _buildPads() {
-    // Occupied pads may keep corner brackets in the tower's type colour (DEFENSE_VIEW.typeBrackets).
-    this.typeMarkMats = {};
-    this.padBaseY = 0;
-    const grow = Math.max(0, this._towerArt().w - 32);
-    const spots = new Map(this._padSpots().map((s) => [s.i, s]));
-    const total = this.map.pads.length + forwardSlots(this.map).length;
-    const wood = this.map.woodPads || [];
-    this.pads = [];
-    for (let i = 0; i < total; i++) {
-      const s = spots.get(i);
-      const at = s ? s.at : (i < this.map.pads.length ? this.map.pads[i] : forwardSlots(this.map)[i - this.map.pads.length].at);
-      const [x, y] = at;
-      const pad = { i, x: x + 0.5, z: y + 0.5, closed: !s, forward: !!s?.forward, beacon: s?.beacon || null, lane: s?.lane };
-      if (s) {
-        const base = makePlinth(i * 7 + 3, wood.includes(i), grow, this.game.assets);
-        base.position.set(x + 0.5 + (base.userData.xOffset || 0), 0.02, y + 0.5 + base.userData.zOffset);
-        pad.faceZ = base.userData.faceZ;
-        this.three.add(base);
-        this._track(base.geometry, base.material, base.material.map);
-        const mw = Math.round(base.userData.topW * 32) + 2, mh = Math.round(base.userData.topH * 32) + 2;
-        const mk = this._markerTex(mw, mh);
-        const mat = this._track(new THREE.MeshBasicMaterial({ map: mk.tex, color: '#feae34', transparent: true, opacity: 0.6, depthWrite: false }));
-        const marker = new THREE.Mesh(mk.geom, mat);
-        marker.rotation.x = -Math.PI / 2;
-        marker.position.set(x + 0.5, this.padBaseY + 0.03, y + 0.5);
-        marker.renderOrder = -1;   // ground mark: under the tower standing on it
-        marker.userData.pxSnap = true;
-        marker.visible = false;
-        this.three.add(marker);
-        Object.assign(pad, { base, marker, mat, topW: base.userData.topW, topH: base.userData.topH });
-        if (pad.forward) {
-          // Forward pad: a small cyan beacon lamp at its back-left corner (your beacon's light).
-          const lamp = this._glowPool(x + 0.5, y + 0.5, DEFENSE_VIEW.glow.forward);
-          pad.glow = lamp;
-        }
-      } else {
-        // Closed slot: a hidden marker so code that hides markers wholesale keeps working.
-        const marker = new THREE.Object3D();
-        marker.visible = false;
-        Object.assign(pad, { base: null, marker, mat: null });
-      }
-      this.pads.push(pad);
+  makeFooting(seed) {
+    const key = DEFENSE_VIEW.footing;
+    if (!this._footing) {
+      const info = key && this.game.assets.spriteInfo?.(key);
+      const img = info?.tex?.image;
+      if (!img || !info.def?.top) { this._footing = { none: true }; return null; }
+      const [x0, y0, x1, y1] = info.def.top;
+      const W = img.width, H = img.height;
+      const mat = this._track(new THREE.MeshLambertMaterial({ map: info.tex, transparent: true, alphaTest: 0.5, depthWrite: false }));
+      // Lifted out of the moonlight like the tower on it (else the stones read as a dark blob at night).
+      if (this.post) this._lightCode(mat, DEFENSE_VIEW.post.unitLift);
+      const geom = this._track(new THREE.PlaneGeometry(W / 32, H / 32));
+      const cx = (x0 + x1 + 1) / 2, cy = (y0 + y1 + 1) / 2;
+      this._footing = { mat, geom, W, H, cx, cy, faceZ: ((y1 + 1 + H) / 2 - cy) / 32 };
     }
-    // Legacy selection marker (kept for code that toggles it); pad markers turn cyan when selected now.
-    this.selMarker = new THREE.Object3D();
-    this.selMarker.visible = false;
+    const F = this._footing;
+    if (F.none) return null;
+    const m = new THREE.Mesh(F.geom, F.mat);
+    m.rotation.x = -Math.PI / 2;
+    const flip = ((seed * 2654435761) >>> 16) & 1;
+    if (flip) m.scale.x = -1;
+    m.position.set((flip ? F.cx - F.W / 2 : F.W / 2 - F.cx) / 32, 0.02, (F.H / 2 - F.cy) / 32);
+    m.renderOrder = -2;   // before the tower's shadow (−1) and sprite (0): towers don't write depth at night
+    m.userData.pxSnap = true;
+    m.userData.faceZ = F.faceZ;
+    return m;
+  }
+
+  /**
+   * Build anywhere (Stage 9): the tiles no tower may ever use (`_blocked`: "x,y" → BUILD.words key: trails, the
+   * tile under a trail, the plaza, lamps, trees / rocks / water from the ground), and the placement aids: the
+   * ghost (the tower's sprite, tinted), its dashed 1-tile footprint, faint corner ticks on every free tile, dots on
+   * the stretch of path the tower would cover, and the beacons' light at the lane mouths.
+   */
+  _buildBuildAids() {
+    const map = this.map, W = map.width, H = map.height, V = DEFENSE_VIEW.build;
+    this.typeMarkMats = {};
+    const blocked = new Map();
+    const lane = this._laneTiles();
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const k = `${x},${y}`;
+      const pl = map.plaza;
+      let why = null;
+      if (lane.has(k)) why = 'path';
+      else if (BUILD.hideBelow && lane.has(`${x},${y - 1}`)) why = 'hides';
+      else if (x >= pl.x0 && x <= pl.x1 && y >= pl.y0 && y <= pl.y1) why = 'plaza';
+      else if ((map.lamps || []).some(([lx, ly]) => lx === x && ly === y)) why = 'lamp';
+      else why = this.ground?.blockAt?.(x, y) || null;
+      if (why) blocked.set(k, why);
+    }
+    this._blocked = blocked;
+    // Footprint: a dashed rim one tile (+1 texel) square under the ghost.
+    const mk = this._markerTex(34, 34);
+    this.ghostMarkMat = this._track(new THREE.MeshBasicMaterial({ map: mk.tex, color: V.ok, transparent: true, opacity: 0.95, depthWrite: false, depthTest: false }));
+    this.ghostMark = new THREE.Mesh(mk.geom, this.ghostMarkMat);
+    this.ghostMark.rotation.x = -Math.PI / 2;
+    this.ghostMark.renderOrder = 39;   // over plants in front of the tile, under the ghost
+    this.ghostMark.userData.pxSnap = true;
+    this.ghostMark.visible = false;
+    this.three.add(this.ghostMark);
+    // Free-tile ticks (a canvas over the whole field, redrawn when the towers change).
+    const c = document.createElement('canvas');
+    c.width = W * 32; c.height = H * 32;
+    this._gridCanvas = c;
+    const tex = this._track(new THREE.CanvasTexture(c));
+    tex.magFilter = tex.minFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    this._gridTex = tex;
+    this.gridMat = this._track(new THREE.MeshBasicMaterial({ map: tex, color: V.ok, transparent: true, opacity: V.grid, depthWrite: false }));
+    this.grid = new THREE.Mesh(this._track(new THREE.PlaneGeometry(W, H)), this.gridMat);
+    this.grid.rotation.x = -Math.PI / 2;
+    this.grid.position.set(W / 2, 0.03, H / 2);
+    this.grid.renderOrder = -1;
+    this.grid.userData.pxSnap = true;
+    this.grid.visible = false;
+    this.three.add(this.grid);
+    this._gridKey = null;
+    // Path-cover dots (one instanced mesh; a dot every dotStep tiles of lane inside the ghost's range).
+    let n = 0;
+    for (const l of this.lanes) n += Math.ceil(l.total / V.dotStep) + 1;
+    this.dotMat = this._track(new THREE.MeshBasicMaterial({ color: V.ok, transparent: true, opacity: 0.9, depthWrite: false }));
+    this.dots = new THREE.InstancedMesh(this._track(new THREE.PlaneGeometry(V.dot / 32, V.dot / 32)), this.dotMat, n);
+    this.dots.renderOrder = -1;
+    this.dots.count = 0;
+    this.dots.frustumCulled = false;
+    this.dots.visible = false;
+    this.three.add(this.dots);
+    this._dotKey = null;
+    this.ghost = null;
+    this.ghostType = null;
+    // Beacon light: cyan pools along each lit lane mouth (BEACON_LIGHT; the old forward pads).
+    this._beaconLit().forEach((L, li) => {
+      if (!L) return;
+      const p = new THREE.Vector3();
+      for (let d = L[0] + 0.5; d <= L[1]; d += BEACON_LIGHT.every) {
+        this.lanes[li].pointAt(d, p);
+        this._glowPool(p.x, p.z, DEFENSE_VIEW.glow.forward);
+      }
+    });
+  }
+
+  /** Is (x, y) a tile of the field? */
+  _inField(x, y) { return x >= 0 && y >= 0 && x < this.map.width && y < this.map.height; }
+
+  /** The tower standing on tile (x, y), or null. */
+  _towerAt(x, y) { return this.towers.find((t) => t.rec.x === x && t.rec.y === y) || null; }
+
+  /**
+   * Can a `type` tower go on tile (x, y) right now? → { ok, why (BUILD.words key), word, line }. Order: off the
+   * field, the map's blocked tiles, a tower there, a tower too close (BUILD.gap), then the price (no `type`: skip it).
+   */
+  _placeCheck(x, y, type = this.placing) {
+    const out = (why, line) => ({ ok: !why, why, word: why ? BUILD.words[why] : '', line: line || (why ? BUILD.lines[why] || '' : '') });
+    if (!Number.isInteger(x) || !Number.isInteger(y) || !this._inField(x, y)) return out('off');
+    const b = this._blocked?.get(`${x},${y}`);
+    if (b) return out(b);
+    if (this._towerAt(x, y)) return out('taken', 'A tower stands here: click it to upgrade or sell it.');
+    const g = BUILD.gap;
+    if (this.towers.some((t) => Math.max(Math.abs(t.rec.x - x), Math.abs(t.rec.y - y)) <= g)) return out('close');
+    if (type) {
+      const cost = this.run.buildCost(type);
+      if (!this.run.canAfford(cost)) return out('cost', this.run.missing(cost));
+    }
+    return out(null);
+  }
+
+  /** Free-tile ticks: small corner marks on every tile a tower could go on now (ignoring price). */
+  _drawGrid() {
+    const key = this.towers.map((t) => `${t.rec.x},${t.rec.y}`).join('|');
+    if (key === this._gridKey) return;
+    this._gridKey = key;
+    const c = this._gridCanvas, g = c.getContext('2d'), k = DEFENSE_VIEW.build.gridTick;
+    g.clearRect(0, 0, c.width, c.height);
+    g.fillStyle = '#ffffff';
+    for (let y = 0; y < this.map.height; y++) for (let x = 0; x < this.map.width; x++) {
+      if (!this._placeCheck(x, y, null).ok) continue;
+      const X = x * 32, Y = y * 32;
+      // four L-shaped corner ticks, k texels long, one texel in from the tile's edge
+      for (const [cx, cy, sx, sy] of [[X + 1, Y + 1, 1, 1], [X + 30, Y + 1, -1, 1], [X + 1, Y + 30, 1, -1], [X + 30, Y + 30, -1, -1]]) {
+        g.fillRect(sx > 0 ? cx : cx - k + 1, cy, k, 1);
+        g.fillRect(cx, sy > 0 ? cy : cy - k + 1, 1, k);
+      }
+    }
+    this._gridTex.needsUpdate = true;
+  }
+
+  /** The placement ghost for `type` (its level-1 sprite, see-through, painter's order), made on demand. */
+  _ghostFor(type) {
+    if (this.ghostType === type && this.ghost) return this.ghost;
+    if (this.ghost) this.game.assets.disposeVisual(this.ghost);
+    this.ghost = this.game.assets.makeVisual(type, { shadow: false });
+    this.ghostType = type;
+    this._noDepthWrite(this.ghost);
+    // Drawn over everything (cards in front of the tile included): it's a preview, not part of the scene.
+    this.ghost.traverse((o) => { if (o.material) { o.material.depthTest = false; o.renderOrder = 40; } });
+    const m = this.ghost.userData.vis.body?.material;
+    if (m) { m.transparent = true; m.opacity = DEFENSE_VIEW.build.ghostOpacity; }
+    this.three.add(this.ghost);
+    return this.ghost;
+  }
+
+  /**
+   * Per frame while placing: the ghost on the cursor tile (green / red), its footprint, the range ring, the dots on
+   * the path it would cover, the free-tile ticks, and the tag under it (the reason it can't go there, else what
+   * it covers). Hidden otherwise.
+   */
+  _updatePlacing() {
+    const V = DEFENSE_VIEW.build;
+    const on = !!(this.placing && this.canBuild && !this.paused);
+    this.grid.visible = on;
+    if (on) this._drawGrid();
+    const c = on && this.cursor;
+    const showAt = !!c && (this.cursorKeys || (this.mouse?.inside && !this.overUi));
+    this.ghostMark.visible = showAt;
+    this.dots.visible = showAt;
+    if (this.ghost) this.ghost.visible = showAt;
+    if (!showAt) { this.placeTag.style.display = 'none'; this._place = null; return false; }
+    const chk = this._placeCheck(c.x, c.y, this.placing);
+    this._place = chk;
+    const col = chk.ok ? V.ok : V.bad;
+    const x = c.x + 0.5, z = c.y + 0.5;
+    this.ghostMark.position.set(x, 0.035, z);
+    this.ghostMarkMat.color.set(col);
+    const g = this._ghostFor(this.placing);
+    g.visible = true;
+    g.position.set(x, 0, z);
+    const m = g.userData.vis.body?.material;
+    if (m) m.color.set(chk.ok ? '#d8ffd0' : '#ff9a9a');
+    const st = this._previewStats(this.placing);
+    this._showRange(x, z, st, col, chk.ok);
+    // Path it would cover: a dot every dotStep tiles of lane inside its range (and outside a Mortar's minimum).
+    const key = `${c.x},${c.y},${st.range},${st.minRange || 0},${col}`;
+    if (key !== this._dotKey) {
+      this._dotKey = key;
+      const r2 = st.range * st.range, m2 = (st.minRange || 0) ** 2;
+      const mtx = new THREE.Matrix4(), rot = new THREE.Matrix4().makeRotationX(-Math.PI / 2), p = new THREE.Vector3();
+      let i = 0;
+      const cover = this.lanes.map(() => 0);
+      if (st.kind !== 'support') {
+        this.lanes.forEach((lane, li) => {
+          for (let d = 0; d <= lane.total; d += V.dotStep) {
+            lane.pointAt(d, p);
+            if (p.x < 0) continue;
+            const d2 = (p.x - x) ** 2 + (p.z - z) ** 2;
+            if (d2 > r2 || d2 < m2) continue;
+            cover[li] += V.dotStep;
+            mtx.copy(rot).setPosition(p.x, 0.045, p.z);
+            this.dots.setMatrixAt(i++, mtx);
+          }
+        });
+      }
+      this.dots.count = i;
+      this.dots.instanceMatrix.needsUpdate = true;
+      this.dotMat.color.set(col);
+      this._cover = cover;
+    }
+    // The tag: the reason in red, else the tiles of path it covers (per path when it sees more than one).
+    const cover = this._cover || [];
+    const seen = this.lanes.map((l, li) => [l.short, Math.round(cover[li] || 0)]).filter(([, n]) => n > 0);
+    const boosts = st.kind === 'support' ? this.towers.filter((t) => t.def.kind !== 'support' && Math.hypot(t.pos.x - x, t.pos.z - z) <= st.range + 0.01).length : 0;
+    const txt = !chk.ok ? chk.word
+      : st.kind === 'support' ? `Boosts ${boosts} tower${boosts === 1 ? '' : 's'}`
+      : !seen.length ? 'Covers no path'
+      : seen.length === 1 ? `Covers ${seen[0][1]} tiles · ${seen[0][0]}` : `Covers ${seen.map(([sh, n]) => `${sh} ${n}`).join(' · ')}`;
+    const n = this.placeTag;
+    if (n.textContent !== txt) { n.textContent = txt; this._ptW = 0; }
+    n.classList.toggle('bad', !chk.ok);
+    n.style.display = '';
+    if (!this._ptW) { this._ptW = n.offsetWidth; this._ptH = n.offsetHeight; }
+    const tp = this.game.project(new THREE.Vector3(x, 0, z + 0.72), this.camera);
+    const q = this._clampToView({ x: Math.round(tp.x) - Math.round(this._ptW / 2), y: Math.round(tp.y) }, n);
+    n.style.transform = `translate(${Math.round(q.x)}px, ${Math.round(q.y)}px)`;
+    return true;
   }
 
   /** Shared material for the type-coloured pad brackets under a tower (see Tower.refreshVisual). */
@@ -940,35 +1140,15 @@ export class DefenseScene {
 
   /**
    * Per-frame board furniture (critic H fix 9 — show things when they matter):
-   *  · pad markers: the selected pad (cyan, also under a tower); while placing, every empty pad (green);
-   *    the hovered pad (white); otherwise empty pads show a dim static rim only while you can afford a
-   *    tower, and pulse only during the very first prep; built pads show nothing (no orange dot);
+   *  · placing a tower: the ghost, free-tile ticks and path-cover dots (_updatePlacing); nothing marks the
+   *    ground otherwise (no build pads since Stage 9);
    *  · units draw in painter's order (_noDepthWrite) so silhouettes only fire for scenery;
    *  · hostile rings only under the hovered enemy, the selected tower's current target and the boss;
    *  · visible rewards: towers glint while tonight's towerRate / towerDamage reward applies.
    */
   _updateBoard(dt) {
-    const t = this.game.time, run = this.run, P = DEFENSE_VIEW.pads;
-    const build = this.canBuild;
-    if (build && (this._affordT = (this._affordT || 0) - dt) <= 0) {
-      this._affordT = 0.25;
-      this._anyAffordable = run.availableTowers(this.game.meta).some((ty) => run.canAfford(run.buildCost(ty)));
-    }
-    const firstPrep = this.phase === 'prep' && this.night === 1 && this.towers.length === 0;
-    for (const p of this.pads) {
-      if (p.closed || !p.mat) continue;
-      const tw = this._towerOn(p.i);
-      const hovered = p.i === this.hoverPad, selected = p.i === this.selPad;
-      let show = false, color = p.forward ? '#2ce8f5' : '#feae34', op = P.idleOpacity;
-      if (selected) { show = true; color = '#2ce8f5'; op = tw ? 0.7 + 0.3 * Math.sin(t * 5) : 1; }
-      else if (!build || tw) show = false;
-      else if (this.placing) { show = true; color = hovered ? '#ffffff' : '#63c74d'; op = hovered ? 1 : 0.45 + 0.25 * Math.sin(t * 3 + p.i * 0.7); }
-      else if (hovered) { show = true; color = '#ffffff'; op = 1; }
-      else if (firstPrep) { show = true; op = P.pulse[0] + P.pulse[1] * Math.sin(t * 3 + p.i * 0.7); }
-      else if (this._anyAffordable) show = true;
-      p.marker.visible = show;
-      if (show) { p.mat.color.set(color); p.mat.opacity = op; }
-    }
+    const t = this.game.time;
+    this._updatePlacing();
     for (const tw of this.towers) this._noDepthWrite(tw.visual);
     if (this.post && !this._hpLit && this.hpMats) {
       // Enemy health bars keep their colours at night (emissive light code).
@@ -976,8 +1156,8 @@ export class DefenseScene {
       for (const m of Object.values(this.hpMats)) this._lightCode(m, DEFENSE_VIEW.post.barLift);
     }
     // Hovered enemy (for its ring and name tag) and the selected tower's target.
-    this.hoverEnemy = this._pickEnemy();
-    const selT = this._towerOn(this.selPad);
+    this.hoverEnemy = this.placing ? null : this._pickEnemy();
+    const selT = this.selTower;
     const k = selT?.stats?.kind;
     const target = selT && k && k !== 'support' && k !== 'snare' && selT.pickTarget ? selT.pickTarget(this.enemies, selT.stats) : null;
     for (const e of this.enemies) {
@@ -993,7 +1173,7 @@ export class DefenseScene {
     if (!this.paused && (tn?.towerRate > 1 || tn?.towerDamage > 1)) {
       const R = DEFENSE_VIEW.rewards;
       for (const tw of this.towers) {
-        tw._glintT = (tw._glintT ?? ((tw.rec.pad * 0.61) % R.glintEvery)) - dt;
+        tw._glintT = (tw._glintT ?? (((tw.rec.x * 0.61 + tw.rec.y * 0.37)) % R.glintEvery)) - dt;
         if (tw._glintT > 0) continue;
         tw._glintT = R.glintEvery;
         this.fx.flash({ x: tw.pos.x + 0.22, y: this.padBaseY + tw.height * 0.85, z: tw.pos.z + 0.05 }, { color: tn.towerDamage > 1 ? '#feae34' : '#fee761', size: 0.3, life: 0.14 });
@@ -1128,7 +1308,10 @@ export class DefenseScene {
     this.leakFeed = el('div.df-leaks', { style: { display: 'none' } });
     // Coach hints dock here, under the panel's title (critic H2 §5.1: never over the board); kept out of re-renders.
     this.hintDock = el('div.df-hintdock');
-    this.side = el('div.df-side.panel.ui-block', {}, this.sideHead, this.hintDock, this.sideBody, this.leakFeed, this.protoBar, this.sideFoot);
+    // Build bar (prep and lulls): one card per tower (icon, hotkey, name, price), kept out of the panel's re-renders
+    // like the protocol bar (_renderBuildBar / _refreshBuildBar). Pick one, then click the board to place it.
+    this.buildBar = el('div.df-buildbar', { style: { display: 'none' } });
+    this.side = el('div.df-side.panel.ui-block', {}, this.sideHead, this.hintDock, this.sideBody, this.leakFeed, this.protoBar, this.buildBar, this.sideFoot);
     // Fade the bottom edge while more content sits below the scroll fold.
     this.sideBody.addEventListener('scroll', () => this._sideMore());
 
@@ -1145,6 +1328,9 @@ export class DefenseScene {
     // Name tag over the hovered tower (towers are small at night zoom).
     this.towerTag = el('div.df-towertag', { style: { display: 'none' } });
     root.append(this.towerTag);
+    // Under the placement ghost: why it can't go there (red), else how much path it covers.
+    this.placeTag = el('div.df-placetag', { style: { display: 'none' } });
+    root.append(this.placeTag);
     // Boss entry marker: a pulsing arrow at the lane mouth while the boss walks in from off-screen.
     this.bossArrow = el('div.df-bossarrow', { style: { display: 'none' } }, '☠ ▶▶');
     root.append(this.bossArrow);
@@ -1345,7 +1531,7 @@ export class DefenseScene {
    */
   _readiness() {
     const run = this.run;
-    const key = `${this.night}|${run.towers.map((t) => `${t.pad}${t.type}${t.level}${t.branch || ''}${t.target}${t.rangeMod || ''}`).join(',')}`
+    const key = `${this.night}|${run.towers.map((t) => `${t.x}.${t.y}${t.type}${t.level}${t.branch || ''}${t.target}${t.rangeMod || ''}`).join(',')}`
       + `|${this.wave.total}|${Math.round(run.relayHp)}|${this.protocols.keys.join(',')}|${run.skills.length}`;
     if (this._rdKey === key && this._rd) return this._rd;
     this._computeTowerStats();
@@ -1386,18 +1572,17 @@ export class DefenseScene {
 
   _renderSide() {
     this.sideDirty = false;
-    const t = this._towerOn(this.selPad);
+    const t = this.selTower;
     let mode = 'preview';
-    if (this.placing) mode = 'placing';
+    if (this.placing && this.canBuild) mode = 'placing';
     else if (t) mode = 'tower';
-    else if (this.selPad >= 0 && this.canBuild) mode = 'build';
     this.sideMode = mode;
     const head = this.sideHead, body = this.sideBody, foot = this.sideFoot;
     head.replaceChildren();
     body.replaceChildren();
     foot.replaceChildren();
-    if (mode === 'build') this._renderBuild(head, body);
-    else if (mode === 'placing') this._renderPlacing(head, body);
+    this._refreshBuildBar(true);
+    if (mode === 'placing') this._renderPlacing(head, body);
     else if (mode === 'tower') this._renderTower(t, head, body);
     else this._renderPreview(head, body);
     // The coach hint docks under the paths in the wave preview (critic M2 P0-1: the night-6 boss hint pushed both
@@ -1414,7 +1599,7 @@ export class DefenseScene {
     this._renderFoot(foot);
     // A different panel (or another tower) starts at the top: the wave preview's THREAT block must not
     // stay scrolled out of view from an earlier panel.
-    const sideKey = `${mode}|${this.selPad}|${this.phase}`;
+    const sideKey = `${mode}|${t ? `${t.rec.x},${t.rec.y}` : ''}|${this.phase}`;
     if (sideKey !== this._sideKey) {
       this._sideKey = sideKey;
       body.scrollTop = 0;
@@ -1515,18 +1700,149 @@ export class DefenseScene {
     if (this._moreCue) this._moreCue.style.visibility = more ? 'visible' : 'hidden';
   }
 
-  _renderBuild(head, body) {
+  /**
+   * The build bar (Stage 9): a row of tower tiles under the panel body in prep and lulls — the tower's portrait with
+   * its hotkey, the price under it; the bar's title names the tower you point at or picked (the full name, its line
+   * and numbers are in each tile's tooltip). 4 to a row (3 with 5–6 towers), so the wave preview above keeps its room
+   * at 720p. Built once per tower list and updated in place (_refreshBuildBar): a click is never lost to a panel
+   * re-render. Clicking a tile (or its key) picks that tower: a ghost follows the cursor on the board. Hidden while a
+   * tower is selected (its panel needs the room) and during pushes.
+   */
+  _renderBuildBar() {
     const run = this.run;
-    const pad = this.pads[this.selPad];
-    const fwd = pad?.forward ? (pad.beacon?.dir ? `Forward pad · your ${pad.beacon.dir} beacon` : 'Forward pad') : null;
-    head.append(el('h2', 'Build a tower'), el('div.small.muted', fwd || 'Pick one · Esc cancels · hover for numbers'));
-    // Compact list (critic K §5.3): one row per tower — icon, name, price, one plain line — so every tower
-    // fits at 1280×720 without scrolling (6 today, room for ~9). Bars and exact numbers are in the tooltip.
-    const list = el('div.df-cards');
-    run.availableTowers(this.game.meta).forEach((type, i) => list.append(this._towerCard(type, i, () => this._build(type, this.selPad))));
-    body.append(list);
+    const types = run.availableTowers(this.game.meta);
+    this._barTypes = types.join(',');
     const locked = Object.keys(TOWERS).filter((k) => !run.isTowerUnlocked(k, this.game.meta));
-    if (locked.length && this.game.meta.lifetime.runs > 1) body.append(el('div.small.muted.df-note', `🔒 ${locked.map((k) => TOWERS[k].name).join(', ')}: unlock with Research (Collection).`));
+    this._barName = el('span.df-bbname');
+    const head = el('div.df-bbhead', {}, el('span.df-tag', 'Build'), this._barName, el('span.grow'),
+      locked.length && this.game.meta.lifetime.runs > 1 ? el('span.small.muted.df-bblock', { title: `${locked.map((k) => TOWERS[k].name).join(', ')}: unlock with Research (Collection).` }, `🔒${locked.length}`) : null,
+      el('span.small.muted.df-bbkeys', `keys 1–${Math.min(6, types.length)}`));
+    this._barCards = types.map((type, i) => {
+      const card = el('button.btn.df-bcard', {
+        onclick: (ev) => { ev.stopPropagation(); this._pickType(type); },
+        onmouseenter: () => { this.hoverType = type; this._barLabel(); },
+        onmouseleave: () => { if (this.hoverType === type) this.hoverType = null; this._barLabel(); },
+      },
+      el('span.df-bicon', {}, this._towerIcon(type, 24), i < 6 ? el('span.df-hk', String(i + 1)) : null),
+      el('span.df-bcost'));
+      card.dataset.type = type;
+      return card;
+    });
+    const cols = types.length <= 4 ? Math.max(1, types.length) : 3;
+    this.buildBar.replaceChildren(head, el(`div.df-bgrid.c${cols}`, {}, this._barCards));
+    this._barKey = null;
+    this._barLabel();
+  }
+
+  /** The bar's title: the tower you point at, else the one you're placing, else nothing. */
+  _barLabel() {
+    const type = this.hoverType || this.placing;
+    const txt = type ? TOWERS[type].name : '';
+    if (this._barName && this._barName.textContent !== txt) this._barName.textContent = txt;
+  }
+
+  /** Update the build bar in place: shown or not, the picked card, prices and what you can afford. */
+  _refreshBuildBar(force = false) {
+    const run = this.run;
+    const types = run.availableTowers(this.game.meta).join(',');
+    if (!this._barCards || types !== this._barTypes) this._renderBuildBar();
+    const show = this.canBuild && this.sideMode !== 'tower';
+    const first = this.phase === 'prep' && this.night === 1 && this.towers.length === 0 && !this.placing;
+    const key = `${show}|${this.placing}|${first}|${RESOURCE_KEYS.map((r) => run.res[r]).join(',')}|${this.towers.length}`;
+    if (!force && key === this._barKey) return;
+    this._barKey = key;
+    if (this.buildBar.style.display !== (show ? '' : 'none')) this.buildBar.style.display = show ? '' : 'none';
+    if (!show) return;
+    this.buildBar.classList.toggle('df-nudge', first);
+    for (const card of this._barCards) {
+      const type = card.dataset.type;
+      const cost = run.buildCost(type);
+      const ok = run.canAfford(cost);
+      const sur = run.buildSurcharge(type);
+      card.classList.toggle('selected', this.placing === type);
+      card.classList.toggle('disabled', !ok);
+      // Under the portrait: the Scrap price as a bare number (amber when raised by towers you own, red when short),
+      // then any Circuits / Biofiber as chips — a 4-wide row fits at 720p. The full price is in the tooltip.
+      const comp = Object.fromEntries(Object.entries(cost).filter(([k, v]) => k !== 'scrap' && v > 0));
+      const sc = el(`b.df-bscrap${(run.res.scrap || 0) < (cost.scrap || 0) ? '.short' : ''}`, { title: `${cost.scrap || 0} Scrap` }, String(cost.scrap || 0));
+      card.querySelector('.df-bcost').replaceChildren(sc, ...(Object.keys(comp).length ? [costLine(comp, run.res)] : []));
+      this._barLabel();
+      card.classList.toggle('df-surch', sur > 0);   // (price raised by the towers of that type you own: amber, why in the tooltip)
+      const notes = (sur ? `<div class="amber">+${sur} Scrap: you own ${run.towerCount(type)} (each ${TOWERS[type].name} raises the next one's price, so mixing types pays)</div>` : '')
+        + (ok ? '' : `<div class="bad">${run.missing(cost)}</div>`);
+      card.dataset.tip = this._towerTip(type, notes);
+    }
+  }
+
+  /**
+   * A tower's build-bar icon: a 1× (or larger, whole-number) portrait crop of its level-1 sprite — the top
+   * `maxH` texels of its opaque box (the turret, not the stand), at most `maxW` wide — so it reads at 720p where
+   * the whole 48 × 64 frame would shrink to a third. Falls back to _iconFor.
+   */
+  _towerIcon(type, sizeU = 24, maxW = 40, maxH = 30) {
+    const a = this.game.assets, k = a.resolveKey?.(type);
+    const img = k && a.textures?.[k]?.image;
+    if (!img) return this._iconFor('tower', type, sizeU);
+    this._ticons ||= {};
+    let f = this._ticons[type];
+    if (!f) {
+      const def = a.manifest[k] || {};
+      const fw = def.fw || Math.floor(img.width / (def.frames || 1)), fh = def.fh || img.height;
+      const c = document.createElement('canvas');
+      c.width = fw; c.height = fh;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.drawImage(img, 0, 0, fw, fh, 0, 0, fw, fh);
+      const d = g.getImageData(0, 0, fw, fh).data;
+      let x0 = fw, y0 = fh, x1 = -1, y1 = -1;
+      for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+        if (d[(y * fw + x) * 4 + 3] < 128) continue;
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+      if (x1 < 0) { x0 = 0; y0 = 0; x1 = fw - 1; y1 = fh - 1; }
+      const w = Math.min(maxW, x1 - x0 + 1), h = Math.min(maxH, y1 - y0 + 1);
+      f = this._ticons[type] = { sx: Math.round((x0 + x1 + 1) / 2 - w / 2), sy: y0, w, h, iw: img.width, ih: img.height, file: def.file };
+    }
+    // Whole-number scale (device px), the crop trimmed to the slot's height at that scale.
+    const dpr = window.devicePixelRatio || 1, px = sizeU * this.game.u * dpr;
+    const ks = Math.max(1, Math.round(px / maxH));
+    const h = Math.min(f.h, Math.floor((px * 1.1) / ks));
+    const scale = ks / dpr;
+    return el('span.df-ico.df-ticon', { style: `background-image:url(${import.meta.env.BASE_URL}sprites/${f.file});background-size:${f.iw * scale}px ${f.ih * scale}px;background-position:${-f.sx * scale}px ${-f.sy * scale}px;width:${f.w * scale}px;height:${h * scale}px;image-rendering:pixelated;background-repeat:no-repeat;` });
+  }
+
+  /** Pick a tower to place (build bar or 1–6): the ghost follows the cursor; picking it again puts it away. */
+  _pickType(type) {
+    if (!this.canBuild) { toast(this.game.ui, 'You can build in the lull after this push', 'amber'); return; }
+    if (this.placing === type) { this._cancelPlacing(); return; }
+    const cost = this.run.buildCost(type);
+    if (!this.run.canAfford(cost)) { this.game.sfx.play('error'); toast(this.game.ui, this.run.missing(cost), 'bad'); return; }
+    this.placing = type;
+    this.selTower = null;
+    this.sellArmed = null;
+    // Keyboard pick with the pointer off the board: the build cursor starts where it last was, else on free ground
+    // near the middle of the field (arrows move it, Enter builds).
+    if (!(this.mouse?.inside && !this.overUi && this.cursor)) {
+      this.cursorKeys = true;
+      if (!this.cursor || !this._inField(this.cursor.x, this.cursor.y)) this.cursor = this._freeTileNear(Math.floor(this.map.width / 2), Math.floor(this.map.height / 2));
+    }
+    this.game.sfx.play('ui_tab');
+    this.sideDirty = true;
+  }
+
+  _cancelPlacing() {
+    this.placing = null;
+    this.hoverType = null;
+    this.sideDirty = true;
+  }
+
+  /** The free tile (ignoring price) nearest (x, y), or (x, y). */
+  _freeTileNear(x, y) {
+    let best = null, bd = Infinity;
+    for (let ty = 0; ty < this.map.height; ty++) for (let tx = 0; tx < this.map.width; tx++) {
+      const d = (tx - x) ** 2 + (ty - y) ** 2;
+      if (d < bd && this._placeCheck(tx, ty, null).ok) { bd = d; best = { x: tx, y: ty }; }
+    }
+    return best || { x, y };
   }
 
   /** HTML for a tower's tooltip: name, plain line, strength bars as text, exact numbers, price notes. */
@@ -1588,11 +1904,26 @@ export class DefenseScene {
     }
   }
 
+  /**
+   * Placing a tower: what it is and how to place it (the ghost follows the cursor; the tag under it says why a tile
+   * is blocked, or how much path it covers), the free-tile legend, and the beacon light when there is one.
+   */
   _renderPlacing(head, body) {
     const def = TOWERS[this.placing];
-    head.append(el('h2', `Place ${def.name}`), el('div.small.muted', 'Click an empty pad · Esc / right-click to cancel'));
-    const i = this.run.availableTowers(this.game.meta).indexOf(this.placing);
-    body.append(this._towerCard(this.placing, i, () => {}));
+    const run = this.run;
+    const cost = run.buildCost(this.placing);
+    head.append(el('div.row', {}, this._towerIcon(this.placing, 26), el('div', {}, el('h2', `Place: ${def.name}`),
+      el('div.small', {}, costLine(cost, run.res)))));
+    body.append(el('div.small', def.line || def.desc));
+    body.append(el('div.small.muted.df-tipnum', this._statSummary(this._previewStats(this.placing))));
+    body.append(el('div.small.df-placehow', {},
+      el('div', {}, el('b', 'Click'), ' free ground to build: ', el('span.df-tick', 'green corners'), ' mark it. ', el('b', 'Shift'), '+click builds another.'),
+      el('div', {}, 'Dots show the path it would cover.'),
+      el('div.muted', {}, el('span.key', 'Esc'), ' / right-click cancels. Keyboard: arrow keys move it, ', el('span.key', 'Enter'), ' builds.')));
+    const why = this._place && !this._place.ok ? this._place.line : '';
+    if (why) body.append(el('div.small.bad.df-placewhy', why));
+    const lit = this._beaconLanes().map((l, li) => (l.length ? this.lanes[li].short : null)).filter(Boolean);
+    if (lit.length) body.append(el('div.small.df-beaconline', {}, el('span.df-zapglyph', 'ϟ '), `Beacon light at the ${lit.join(' and ')} path mouth: enemies in it take +${Math.round(BEACON_LIGHT.bonus * 100)}% damage.`));
   }
 
   _renderTower(t, head, body) {
@@ -1700,7 +2031,7 @@ export class DefenseScene {
 
     // Sell: beside Upgrade (critic K §5.4: one short row, both on screen at 720p); the refund rule is in its tooltip.
     const v = run.sellValue(t.rec);
-    const armed = this.sellArmed && this.sellArmed.pad === t.rec.pad;
+    const armed = this.sellArmed && this.sellArmed.rec === t.rec;
     const sellReason = wave ? 'Not during a wave' : null;
     const refundNote = `Refunds ${Math.round(CONFIG.sellRefund * 100)}% of ${t.rec.spent.scrap || 0} Scrap spent (rounded down). Components aren't refunded.`;
     const sellBtn = button(el('span', {}, armed ? 'Confirm' : 'Sell', resChip('scrap', v, { short: true })), () => this._sell(t), {
@@ -1848,7 +2179,11 @@ export class DefenseScene {
         relics.map((r) => el('div.small.df-relic', { title: relicTitle(r.id) }, relicIcon(this.game, r.id, 11), ` ${r.name}: ${r.text}`,
           r.down ? el('span.rl-down', ` · ${r.down}`) : null))));
     }
-    if (!inWave) body.append(el('div.small.muted.df-note', 'Click a glowing square to build. Click a tower to upgrade it.'));
+    // Beacons switched on in the jungle light their path's mouth (BEACON_LIGHT): say it once here, plainly.
+    const lit = this._beaconLanes().map((l, li) => (l.length ? this.lanes[li].short : null)).filter(Boolean);
+    if (lit.length && !inWave) body.append(el('div.small.df-beaconline', { title: `Every beacon you switched on in the jungle lights ${BEACON_LIGHT.tiles} tiles of the path facing it, where it enters the clearing (up to ${BEACON_LIGHT.max} beacons a path). Towers there hit harder.` },
+      el('span.df-zapglyph', 'ϟ '), `Your beacons light the ${lit.join(' and ')} path mouth: enemies in the light take +${Math.round(BEACON_LIGHT.bonus * 100)}% damage.`));
+    if (!inWave) body.append(el('div.small.muted.df-note', 'Pick a tower below, then click free ground beside a path to build it. Click a tower to upgrade it.'));
   }
 
   _renderFoot(foot) {
@@ -1924,19 +2259,26 @@ export class DefenseScene {
       const armed = this.startArmed && this.game.time < this.startArmed;
       // Not while picking or placing a tower (critic M2 P0-1: not actionable then, and it hid half the build list).
       const showRd = this.sideMode === 'preview';   // (a selected tower pins its Upgrade / Sell here instead, QA 8 P1-2)
+      // Short (critic of Stage 9: with the Build bar in the panel, a 3-line block pushed the South path below the fold at
+      // 720p); the longer sentence is the line's tooltip.
       const say = {
-        weak: this.towers.length ? 'Too weak: expect heavy damage' : 'No towers yet: enemies will walk right in',
-        risky: 'Risky: the Relay will take damage',
+        weak: this.towers.length ? 'Too weak' : 'No towers yet',
+        risky: 'Risky',
         strong: 'Looks strong',
+      }[r.level];
+      const sayLong = {
+        weak: this.towers.length ? 'Too weak: expect heavy damage.' : 'No towers yet: enemies will walk right in.',
+        risky: 'Risky: the Relay will take damage.',
+        strong: 'Looks strong.',
       }[r.level];
       const dots = (n) => '●'.repeat(n) + '○'.repeat(3 - n);
       const expect = r.hi <= 0 ? 'Expect no Relay damage'
-        : r.hi >= run.relayHp ? `Expect −${Math.min(r.lo, Math.round(run.relayHp))} or worse: the Relay may fall`
+        : r.hi >= run.relayHp ? `Expect −${Math.min(r.lo, Math.round(run.relayHp))} or worse: may fall`
         : r.lo <= 0 ? `Expect up to −${r.hi} Relay health` : `Expect −${r.lo} to −${r.hi} Relay health`;
       if (showRd) foot.append(el(`div.df-rd-line.${r.level}`, {
-        title: `Forecast: tonight's pushes replayed against your towers' damage, the stretch of path each one covers, slows and tanks, and the Relay's own zap (${RELAY_ZAP.range} tiles round it)${this.protocols.keys.length ? ', counting your Relay Protocols' : ''}. Predicted Relay loss ~${r.lost}.`,
+        title: `${sayLong} Forecast: tonight's pushes replayed against your towers' damage, the stretch of path each one covers, slows and tanks, and the Relay's own zap (${RELAY_ZAP.range} tiles round it)${this.protocols.keys.length ? ', counting your Relay Protocols' : ''}. Predicted Relay loss ~${r.lost}.`,
       },
-      el('span.df-rd-k', 'Your defense'),
+      el('span.df-rd-k', 'Defense'),
       el('span.df-meter', {}, [0, 1, 2].map((n) => el(`i${n <= ({ weak: 0, risky: 1, strong: 2 })[r.level] ? '.on' : ''}`))),
       el('span.df-rd-t', say)));
       // The weakest path names what gets through it (critic K2 #8: the forecast's top leaker; every path's in its tooltip).
@@ -2002,33 +2344,46 @@ export class DefenseScene {
 
   // =================================================================== actions
 
-  _towerOn(pad) { return pad >= 0 ? this.towers.find((t) => t.rec.pad === pad) || null : null; }
-
-  _select(pad) {
-    if (this.selPad !== pad) this.sellArmed = null;
-    this.selPad = pad;
+  /** Select a tower (its panel: upgrade / sell / targeting), or null to go back to the wave preview. */
+  _select(t) {
+    if (this.selTower !== t) this.sellArmed = null;
+    this.selTower = t || null;
     this.placing = null;
     this.sideDirty = true;
   }
 
-  _build(type, pad) {
+  /**
+   * Build a `type` tower on tile (x, y) (the placement rules: _placeCheck). `keep`: stay in placing mode for the
+   * next one (Shift+click); else the new tower is selected (its Upgrade / Sell panel).
+   */
+  _build(type, x, y, keep = false) {
     const run = this.run;
     const game = this.game;
-    if (!this.canBuild || pad < 0 || this._towerOn(pad)) return false;
-    const cost = run.buildCost(type);
-    if (!run.canAfford(cost)) { game.sfx.play('error'); toast(game.ui, run.missing(cost), 'bad'); return false; }
-    const rec = run.build(type, pad);
+    if (!this.canBuild) return false;
+    const chk = this._placeCheck(x, y, type);
+    if (!chk.ok) {
+      game.sfx.play('error');
+      toast(game.ui, chk.line || chk.word, 'bad', 2);
+      return false;
+    }
+    const rec = run.build(type, x, y);
     if (!rec) { game.sfx.play('error'); return false; }
     const t = new Tower(this, rec);
     this.towers.push(t);
+    this.ground?.setTowers?.(run.towers);   // plants that would hide it are cleared
     game.sfx.play('build');
     this.fx.ring(t.pos, { color: '#feae34', radius: 0.9, life: 0.35 });
     this.fx.burst(t.pos, { color: '#c0cbdc', color2: '#feae34', count: 14, speed: 2, up: 3, life: 0.5, size: 0.07, y: 0.3 });
     if (rec.refunded) toast(game.ui, 'Efficient Assembly: +1 Circuit back', 'good');
     this._saveBuild();
-    this.selPad = pad;
-    this.placing = null;
-    this.hoverType = null;
+    this._dotKey = null;
+    if (keep && run.canAfford(run.buildCost(type))) {
+      this.selTower = null;
+    } else {
+      this.selTower = t;
+      this.placing = null;
+      this.hoverType = null;
+    }
     this.sideDirty = true;
     this._refreshTop();
     return true;
@@ -2065,8 +2420,8 @@ export class DefenseScene {
     const run = this.run;
     const game = this.game;
     if (!this.canBuild || !t) return;
-    if (!this.sellArmed || this.sellArmed.pad !== t.rec.pad) {
-      this.sellArmed = { pad: t.rec.pad, until: game.time + DEFENSE.sellConfirm };
+    if (!this.sellArmed || this.sellArmed.rec !== t.rec) {
+      this.sellArmed = { rec: t.rec, until: game.time + DEFENSE.sellConfirm };
       this.sideDirty = true;
       return;
     }
@@ -2074,6 +2429,9 @@ export class DefenseScene {
     const v = run.sell(t.rec);
     t.dispose();
     this.towers.splice(this.towers.indexOf(t), 1);
+    if (this.selTower === t) this.selTower = null;
+    if (this.hoverTower === t) this.hoverTower = null;
+    this.ground?.setTowers?.(run.towers);
     game.sfx.play('sell');
     this.fx.burst(t.pos, { color: '#c0cbdc', count: 12, speed: 2, up: 2.5, life: 0.4, size: 0.07, y: 0.3 });
     this.fx.text(t.pos, '', { html: `+${v} ${resIconHtml('scrap')}`, color: '#c0cbdc', y: this.padBaseY + t.height + 0.4 });
@@ -2167,7 +2525,7 @@ export class DefenseScene {
       ]);
       this.pauseOv.classList.add('x-pause');
       // In prep, a click on the dimmed map outside the dialog just closes it (Esc there is often a
-      // "deselect" reflex; the next pad click must not land on a menu button).
+      // "deselect" reflex; the next board click must not land on a menu button).
       this.pauseOv.addEventListener('mousedown', (ev) => {
         if (ev.target === this.pauseOv && this.phase === 'prep' && !this.settingsOpen) this.togglePause(false);
       });
@@ -2180,7 +2538,7 @@ export class DefenseScene {
     this._refreshTop(true);
   }
 
-  /** Quitting needs a second, deliberate click (a stray pad click must never quit the run). */
+  /** Quitting needs a second, deliberate click (a stray board click must never quit the run). */
   _confirmQuit() {
     this.confirmOv?.remove();
     const body = el('div.col', {},
@@ -2239,9 +2597,7 @@ export class DefenseScene {
     this.lullT = 0;
     this.placing = null;
     this.hoverType = null;
-    if (this.selPad >= 0 && !this._towerOn(this.selPad)) this.selPad = -1;
     this.sellArmed = null;
-    for (const p of this.pads) p.marker.visible = false;
     if (k > 0) {
       game.sfx.play('wave_horn');
       toast(game.ui, `Push ${k + 1} of ${this.wave.pushes}: here they come!`, 'bad', 1.8);
@@ -2260,7 +2616,6 @@ export class DefenseScene {
   _enterLull(save = true) {
     this.phase = 'lull';
     this.lullT = DEFENSE.lull;
-    this.selPad = this._towerOn(this.selPad) ? this.selPad : -1;
     this.sideDirty = true;
     if (save) {
       this.run.wavePush = this.pushIdx + 1;
@@ -2326,6 +2681,8 @@ export class DefenseScene {
     if (sb && (e.slowMult < 0.999 || e.slows?.size > 0 || e.rootT > 0 || e.stunT > 0)) amount *= sb;
     // Vine Snare protocol: enemies it holds take more damage while it lasts (DefenseProtocols, PROTOCOLS.vine_snare.rootDamage).
     if (e.snaredUntil != null && this.waveTime <= e.snaredUntil) amount *= e.snareDmg || 1;
+    // Beacon light at a lane mouth (BEACON_LIGHT): enemies in it take more damage.
+    if (this._lit) amount *= this.beaconMult(e);
     // Relics (Run.relicHitMult): Rusted Bell vs Razorbacks / Ruin Guards, Cracked Lens on a tower's first hit each push.
     if (opts.source?.rec && this.run.relicHitMult) amount *= this.run.relicHitMult(opts.source, e.type, this.pushIdx);
     const dealt = e.hit(amount, type, opts);
@@ -2619,7 +2976,7 @@ export class DefenseScene {
     // Relay HP lost tonight (from the night's start, or from the lull a Continue resumed at) → salvage picks.
     this.nightLost = Math.max(0, Math.round((this.startHp ?? run.relayHp) - run.relayHp));
     const best = this.towers.reduce((b, t) => ((t.dmgDealt || 0) > (b?.dmgDealt || 0) ? t : b), null);
-    this._bestPad = best?.rec.pad ?? -1;
+    this._bestRec = best?.rec || null;
     run.wavePush = 0;
     this.result = run.nightSurvived(game);
     // Save right away (not after the banner) so quitting during it can't replay the night.
@@ -2726,7 +3083,7 @@ export class DefenseScene {
     const key = this.salvage[i];
     if (!key) return null;
     const run = this.run;
-    const note = run.applySalvage(key, this._bestPad);
+    const note = run.applySalvage(key, this._bestRec);
     this.salvagePicked = key;
     run.save('briefing');
     this.game.sfx.play('salvage_pick');
@@ -2768,6 +3125,7 @@ export class DefenseScene {
     }
 
     this.cam?.update(dt);   // zoom / pan; must read the right button before _handleInput (drag vs click)
+    this._inputDt = dt;
     this._handleInput();
     if (!this._alive) return;   // a key may have quit the scene
 
@@ -2950,28 +3308,24 @@ export class DefenseScene {
     for (const tw of this.towers) {
       if (!tw.buffRing) continue;
       tw.buffRing.visible = tw.buffRate > 0;
-      if (tw.buffRing.visible) tw.buffRing.scale.setScalar(1 + 0.06 * Math.sin(t * 4 + tw.rec.pad));
+      if (tw.buffRing.visible) tw.buffRing.scale.setScalar(1 + 0.06 * Math.sin(t * 4 + tw.rec.x + tw.rec.y));
     }
-    const selT = this._towerOn(this.selPad);
+    const selT = this.selTower;
 
-    // Range indicator priority: card hover at selected pad > placing at hovered pad > selected tower > hovered tower.
-    this.range.visible = false;
-    const run = this.run;
-    if (this.hoverType && this.selPad >= 0 && !selT && prep) {
-      const p = this.pads[this.selPad];
-      this._showRange(p.x, p.z, this._previewStats(this.hoverType), run.canAfford(run.buildCost(this.hoverType)) ? '#2ce8f5' : '#e43b44');
-    } else if (this.placing && prep) {
-      const p = this.pads[this.hoverPad];
-      if (p && !this._towerOn(p.i)) this._showRange(p.x, p.z, this._previewStats(this.placing), run.canAfford(run.buildCost(this.placing)) ? '#63c74d' : '#e43b44');
-    } else if (selT && selT.stats) {
-      this._showRange(selT.pos.x, selT.pos.z, selT.stats, selT.stats.kind === 'support' ? '#fee761' : '#2ce8f5');
-    } else {
-      const ht = this._towerOn(this.hoverPad);
-      if (ht && ht.stats) this._showRange(ht.pos.x, ht.pos.z, ht.stats, '#ead4aa', false);
+    // Range indicator priority: the placement ghost (_updatePlacing, already shown) > selected tower > hovered tower.
+    const placingShown = this.placing && prep && this._place;
+    if (!placingShown) {
+      this.range.visible = false;
+      if (selT && selT.stats) {
+        this._showRange(selT.pos.x, selT.pos.z, selT.stats, selT.stats.kind === 'support' ? '#fee761' : '#2ce8f5');
+      } else {
+        const ht = this.hoverTower;
+        if (ht && ht.stats) this._showRange(ht.pos.x, ht.pos.z, ht.stats, '#ead4aa', false);
+      }
     }
 
     // Hovered tower: name + level tag above it; else a hovered enemy: name + health.
-    const tagT = this._towerOn(this.hoverPad);
+    const tagT = this.placing ? null : this.hoverTower;
     const tagE = !tagT ? this.hoverEnemy : null;
     if ((tagT && tagT !== selT) || tagE) {
       const txt = tagT ? `${TOWERS[tagT.rec.type].name} · L${tagT.rec.level}` : `${tagE.def.name} · ${Math.ceil(tagE.hp)} / ${Math.ceil(tagE.maxHp)}`;
@@ -3050,30 +3404,77 @@ export class DefenseScene {
 
   // =================================================================== input
 
-  _pickPad() {
-    if (!this.mouse.inside || this.overUi) return -1;
+  /**
+   * The tower under the pointer: screen-space distance from the mouse to the tower's vertical span (its foot →
+   * near its top), so clicking a tall sprite selects it, not just its footprint. Null over the UI.
+   */
+  _pickTower() {
+    if (!this.mouse.inside || this.overUi) return null;
     const mx = this.mouse.x, my = this.mouse.y;
     const cam = this.camera;
     const v = new THREE.Vector3();
-    let best = -1, bestD = Infinity;
-    // Screen-space pick: distance from the mouse to the pad's vertical span (base → tower top),
-    // so clicking a tall tower sprite selects it, not just its footprint.
+    let best = null, bestD = Infinity;
     const a0 = this.game.project(v.set(0, 0, 8), cam), a1 = this.game.project(v.set(1, 0, 8), cam);
     const tilePx = Math.abs(a1.x - a0.x);
-    for (const p of this.pads) {
-      if (p.closed) continue;   // a forward slot no beacon has opened
-      const t = this._towerOn(p.i);
-      const b = this.game.project(v.set(p.x, 0, p.z), cam);
-      const top = this.game.project(v.set(p.x, t ? this.padBaseY + t.height * 0.8 : 0.2, p.z), cam);
+    for (const t of this.towers) {
+      const b = this.game.project(v.set(t.pos.x, 0, t.pos.z), cam);
+      const top = this.game.project(v.set(t.pos.x, this.padBaseY + t.height * 0.8, t.pos.z), cam);
       const sx = top.x - b.x, sy = top.y - b.y;
       const len2 = sx * sx + sy * sy || 1;
       let k = ((mx - b.x) * sx + (my - b.y) * sy) / len2;
       k = Math.max(0, Math.min(1, k));
-      const dx = mx - (b.x + sx * k), dy = my - (b.y + sy * k);
-      const d = Math.hypot(dx, dy);
-      if (d < tilePx * 0.6 && d < bestD) { bestD = d; best = p.i; }
+      const d = Math.hypot(mx - (b.x + sx * k), my - (b.y + sy * k));
+      if (d < tilePx * 0.6 && d < bestD) { bestD = d; best = t; }
     }
     return best;
+  }
+
+  /** The field tile under the pointer ({ x, y }), or null (off the field, over the UI). Ground = the y = 0 plane. */
+  _tileUnderMouse() {
+    if (!this.mouse.inside || this.overUi) return null;
+    const cam = this.camera, v = this._v3 || (this._v3 = new THREE.Vector3());
+    const p0 = this.game.project(v.set(0, 0, 0), cam), p1 = this.game.project(v.set(1, 0, 1), cam);
+    const sx = p1.x - p0.x, sz = p1.y - p0.y;
+    if (!sx || !sz) return null;
+    const x = Math.floor((this.mouse.x - p0.x) / sx), y = Math.floor((this.mouse.y - p0.y) / sz);
+    return this._inField(x, y) ? { x, y } : null;
+  }
+
+  /** While placing, the arrow keys move the build cursor (NightCamera leaves them alone; see arrowsTaken). */
+  arrowsTaken() { return !!(this.placing && this.canBuild && !this.paused); }
+
+  /** Arrow-key build cursor: one tile per press, repeating while held (DEFENSE_VIEW.build.cursorKeys tiles / s). */
+  _moveCursorKeys(dt) {
+    const inp = this.game.input;
+    const dirs = [['ArrowLeft', -1, 0], ['ArrowRight', 1, 0], ['ArrowUp', 0, -1], ['ArrowDown', 0, 1]];
+    let dx = 0, dy = 0, held = false, fresh = false;
+    for (const [code, x, y] of dirs) {
+      if (inp.wasPressed(code)) { dx += x; dy += y; fresh = true; }
+      else if (inp.isDown(code)) held = true;
+    }
+    if (fresh) this._curRep = 0.32;
+    else if (held) {
+      this._curRep = (this._curRep ?? 0.32) - dt;
+      if (this._curRep <= 0) {
+        this._curRep += 1 / DEFENSE_VIEW.build.cursorKeys;
+        for (const [code, x, y] of dirs) if (inp.isDown(code)) { dx += x; dy += y; }
+      }
+    }
+    if (!dx && !dy) return;
+    const c = this.cursor || this._freeTileNear(Math.floor(this.map.width / 2), Math.floor(this.map.height / 2));
+    this.cursor = { x: Math.max(0, Math.min(this.map.width - 1, c.x + Math.sign(dx))), y: Math.max(0, Math.min(this.map.height - 1, c.y + Math.sign(dy))) };
+    this.cursorKeys = true;
+    this.cam?.follow?.(this.cursor.x + 0.5, this.cursor.y + 0.5, 1.5);
+  }
+
+  /** Tab / Shift+Tab: select the next / previous tower (keyboard players reach Upgrade / Sell / targeting). */
+  _cycleTower(dir) {
+    if (!this.towers.length) return;
+    const list = [...this.towers].sort((a, b) => a.rec.y - b.rec.y || a.rec.x - b.rec.x);
+    const i = list.indexOf(this.selTower);
+    const t = list[(i + dir + list.length) % list.length] || list[0];
+    this._select(t);
+    this.cam?.follow?.(t.pos.x, t.pos.z, 2);
   }
 
   _handleInput() {
@@ -3081,6 +3482,7 @@ export class DefenseScene {
     const inp = game.input;
     const run = this.run;
     const prep = this.canBuild;   // prep, or a lull between pushes
+    const dt = this._inputDt || 0;
 
     if (this._skipInput) { this._skipInput = false; return; }   // the key that closed Settings
     if (this.paused) {
@@ -3088,25 +3490,34 @@ export class DefenseScene {
       if (inp.wasPressed('Escape') || inp.wasPressed('KeyP') || (inp.wasPressed('Space') && this.phase !== 'prep')) this.togglePause(false);
       return;
     }
+    if (this.placing && !prep) this._cancelPlacing();
 
-    this.hoverPad = this._pickPad();
-    game.stage.style.cursor = this.protocols.aiming ? 'crosshair' : this.hoverPad >= 0 && (prep || this._towerOn(this.hoverPad)) ? 'pointer' : '';
+    // Pointer: the tower under it, and (when the mouse moved) the tile it is on (the build cursor follows the mouse
+    // until an arrow key takes over; moving the mouse hands it back).
+    this.hoverTower = this._pickTower();
+    const moved = !this._lastMouse || this._lastMouse.x !== this.mouse.x || this._lastMouse.y !== this.mouse.y;
+    this._lastMouse = { x: this.mouse.x, y: this.mouse.y };
+    if (moved && this.mouse.inside && !this.overUi) {
+      const tile = this._tileUnderMouse();
+      if (tile) { this.cursor = tile; this.cursorKeys = false; }
+    }
+    game.stage.style.cursor = this.protocols.aiming ? 'crosshair' : this.placing ? (this._place?.ok ? 'pointer' : 'not-allowed') : this.hoverTower ? 'pointer' : '';
 
     // Relay Protocols (Q / W / E, aiming, click to cast) take the input first while a push or lull runs.
     if (this.protocols.handleInput()) return;
 
     // Keyboard
     if (inp.wasPressed('Escape')) {
-      if (this.placing) { this.placing = null; this.sideDirty = true; }
-      else if (this.selPad >= 0) this._select(-1);
+      if (this.placing) this._cancelPlacing();
+      else if (this.selTower) this._select(null);
       else this.togglePause(true);
       return;
     }
     if (inp.wasPressed('KeyP')) { this.togglePause(true); return; }
     if (this.startArmed && game.time >= this.startArmed) { this.startArmed = 0; this.sideDirty = true; }   // "Start anyway" expired
+    const shift = ['ShiftLeft', 'ShiftRight'].some((c) => inp.isDown(c) || inp.wasPressed(c));
     if (inp.wasPressed('Space')) {
       // Shift held (or pressed and let go within this frame) makes it a deliberate "Start anyway".
-      const shift = ['ShiftLeft', 'ShiftRight'].some((c) => inp.isDown(c) || inp.wasPressed(c));
       if (this.phase === 'prep') this._tryStartWave(shift ? 'shift' : 'space');
       else if (!(game.time < (this.spaceGuardT || 0))) this.togglePause(true);
       return;
@@ -3117,18 +3528,19 @@ export class DefenseScene {
       this.speed = s[(s.indexOf(this.speed) + 1) % s.length] ?? 1;
       this._refreshTop(true);
     }
-    if (prep) {
-      const types = run.availableTowers(game.meta);
-      for (let i = 0; i < 6; i++) {
-        if (!inp.wasPressed(`Digit${i + 1}`) && !inp.wasPressed(`Numpad${i + 1}`)) continue;
-        const type = types[i];
-        if (!type) continue;
-        if (this.selPad >= 0 && !this._towerOn(this.selPad)) this._build(type, this.selPad);
-        else { this.placing = this.placing === type ? null : type; this.selPad = -1; this.sideDirty = true; }
-      }
-      if (inp.wasPressed('KeyR')) this._repair();
+    const types = run.availableTowers(game.meta);
+    for (let i = 0; i < 6; i++) {
+      if (!inp.wasPressed(`Digit${i + 1}`) && !inp.wasPressed(`Numpad${i + 1}`)) continue;
+      if (types[i]) this._pickType(types[i]);
     }
-    const selT = this._towerOn(this.selPad);
+    if (prep && inp.wasPressed('KeyR')) this._repair();
+    if (this.placing) {
+      this._moveCursorKeys(dt);
+      if ((inp.wasPressed('Enter') || inp.wasPressed('NumpadEnter')) && this.cursor) this._build(this.placing, this.cursor.x, this.cursor.y, shift);
+    } else if (inp.wasPressed('Tab')) {
+      this._cycleTower(shift ? -1 : 1);
+    }
+    const selT = this.selTower;
     if (selT) {
       if (inp.wasPressed('KeyU')) {
         if (prep) this._upgrade(selT); else toast(game.ui, 'Upgrades wait for the lull after this push', 'amber');
@@ -3143,29 +3555,23 @@ export class DefenseScene {
 
     // Mouse
     if (inp.mouseClicked(2)) {
-      if (this.placing) { this.placing = null; this.sideDirty = true; } else if (this.selPad >= 0) this._select(-1);
+      if (this.placing) this._cancelPlacing(); else if (this.selTower) this._select(null);
     }
     if (inp.mouseClicked(0) && !this.overUi) {
-      const pad = this.hoverPad;
+      const t = this.hoverTower;
       if (this.placing && prep) {
-        if (pad >= 0 && !this._towerOn(pad)) this._build(this.placing, pad);
-        else if (pad >= 0) this._select(pad);
-        else { this.placing = null; this.sideDirty = true; }
-      } else if (pad >= 0) {
-        if (prep || this._towerOn(pad)) this._select(pad === this.selPad ? -1 : pad);
-      } else if (this.selPad >= 0) {
-        this._select(-1);
+        const tile = this._tileUnderMouse();
+        // A click on a tower (its sprite, or the tile it stands on) selects it; anywhere else tries to build.
+        const on = tile && this._towerAt(tile.x, tile.y);
+        if (on || (t && !(tile && this._placeCheck(tile.x, tile.y).ok))) this._select(on || t);
+        else if (tile) this._build(this.placing, tile.x, tile.y, shift);
+        else this._cancelPlacing();
+      } else if (t) {
+        this._select(t === this.selTower ? null : t);
+      } else if (this.selTower) {
+        this._select(null);
       }
     }
-  }
-
-  /** Next to an empty build pad near the Relay, so the "click a glowing square" hint points at one. */
-  _padHintSpot() {
-    const pad = this.pads.filter((p) => !p.closed && !this._towerOn(p.i)).sort((a, b) => Math.hypot(a.x - this.corePos.x, a.z - this.corePos.z) - Math.hypot(b.x - this.corePos.x, b.z - this.corePos.z))[0];
-    if (!pad) return null;
-    const pr = this.game.project(new THREE.Vector3(pad.x, 0, pad.z), this.camera);
-    const sw = this.game.stage.clientWidth, u = this.game.u;
-    return { right: `${Math.round(sw - pr.x + 22 * u)}px`, top: `${Math.round(pr.y - 14 * u)}px`, maxWidth: `${Math.round(230 * u)}px` };
   }
 
   _updateHints() {
@@ -3189,7 +3595,7 @@ export class DefenseScene {
   }
 
   /**
-   * Night hints never eat pad clicks (critic K §5.2): the hint lets the pointer through to the map, and only
+   * Night hints never eat board clicks (critic K §5.2): the hint lets the pointer through to the map, and only
    * its × button takes clicks.
    */
   _clickThroughHint(n) {

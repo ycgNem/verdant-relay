@@ -6,7 +6,8 @@
 //   · every level samples its own seamless texture (128 × 128, PixelLab base tiles when available,
 //     otherwise generated here with ordered dithering on hand-picked ramps)
 //   · edges get a 1 px lit rim on their north side and a darker step on their south side (light from
-//     the top-left), water gets a foam line; deep (impassable) water is darker, fords get stepping stones
+//     the top-left), water gets a foam line; deep (impassable) water is darker; bridges (world.bridges) are plank decks with rope
+//     rails, drawn last over everything (drawBridge)
 //   · ambient occlusion pools under trees, ruins and thickets (dithered, 3 steps)
 //   · ground detail is scattered on top: dec_* sprites from the manifest, plus procedural leaf litter,
 //     twigs, pebbles and flowers drawn texel by texel
@@ -15,7 +16,7 @@
 //     north lip, lit south edge), spread moss over the stone and stain it; then cracks and rubble.
 // Canopy shade, sun dapples and colour grading are applied later, in screen space (src/core/PostFx.js).
 
-import { LEVEL, BRUSH, JUNGLE, PAVING, GROUND, TERRAIN_VALUE, DECALS, REGION_LOOK, EMISSIVE } from '../data/jungle.js';
+import { LEVEL, BRUSH, JUNGLE, PAVING, GROUND, TERRAIN_VALUE, DECALS, REGION_LOOK, EMISSIVE, BRIDGE_LOOK } from '../data/jungle.js';
 import { makeNoise, hash2 } from './noise.js';
 
 export const CHUNK_PX = JUNGLE.chunk * 32;
@@ -253,7 +254,9 @@ export class TerrainBaker {
     const foam = hex('#5f9a86');
     // Deep water (impassable, world.deep): a darker channel with a pale ledge line along its edge.
     const deep = this.world.deep, W = this.world.size;
-    const deepTile = (tx, tz) => (tx < 0 || tz < 0 || tx >= W || tz >= W ? 0 : deep[tz * W + tx]);
+    // (A bridge deck over deep water, world.ford 2, keeps the deep look around and under it: the deck is the only way.)
+    const fordM = this.world.ford;
+    const deepTile = (tx, tz) => (tx < 0 || tz < 0 || tx >= W || tz >= W ? 0 : deep[tz * W + tx] || (fordM && fordM[tz * W + tx] === 2) ? 1 : 0);
     const deepAt = (wx, wy) => {
       const fx = (wx + 0.5) / 32 - 0.5, fy = (wy + 0.5) / 32 - 0.5;
       const ix = Math.floor(fx), iy = Math.floor(fy), u = fx - ix, v = fy - iy;
@@ -322,12 +325,26 @@ export class TerrainBaker {
         D[o] = r * m; D[o + 1] = gg * m; D[o + 2] = b * m; D[o + 3] = 255;
       }
     }
-    if (this.world.ford) this._fordStones(D, cx, cz, lv, B);
     g.putImageData(img, 0, 0);
     // Pass 3: ground detail.
     this._scatter(g, cx, cz, lv, B);
     this._ruinDetail(g, cx, cz, lv, B, paveAt);
     this._markEmissive(g);
+    // Pass 4: bridges (world.bridges) over everything, so no decal or glow shows through a deck.
+    if (this.world.bridges?.length) {
+      const aoMul = (x, y) => {
+        x = Math.max(0, Math.min(P - 1, x)); y = Math.max(0, Math.min(P - 1, y));
+        const ax = x >> 2, ay = y >> 2, fx = (x & 3) / 4, fy = (y & 3) / 4;
+        const av = (ao[ay * AOW + ax] * (1 - fx) + ao[ay * AOW + ax + 1] * fx) * (1 - fy) + (ao[(ay + 1) * AOW + ax] * (1 - fx) + ao[(ay + 1) * AOW + ax + 1] * fx) * fy;
+        return 1 - Math.max(0, Math.floor(Math.min(0.99, av) * 3 + BAYER4[(y & 3) * 4 + (x & 3)])) * 0.16;
+      };
+      const hit = this.world.bridges.filter((br) => { const k = bridgeBox(br); return k.x1 > ox && k.x0 < ox + P && k.y1 > oy && k.y0 < oy + P; });
+      if (hit.length) {
+        const im = g.getImageData(0, 0, P, P);
+        for (const br of hit) drawBridge(im.data, P, ox, oy, br, this.world.seed, aoMul);
+        g.putImageData(im, 0, 0);
+      }
+    }
     return c;
   }
 
@@ -475,32 +492,6 @@ export class TerrainBaker {
     return ao;
   }
 
-  /** Stepping stones across the fords (world.ford): 1–2 flat stones per tile, on water texels only. */
-  _fordStones(D, cx, cz, lv, B) {
-    const P = CHUNK_PX, C = JUNGLE.chunk, W = this.world.size, F = this.world.ford;
-    const ramp = ['#1d2423', '#4f5047', '#6b6a5b', '#8a8571', '#aaa28a'].map(hex);
-    for (let tz = cz * C; tz < cz * C + C; tz++) for (let tx = cx * C; tx < cx * C + C; tx++) {
-      if (!F[tz * W + tx]) continue;
-      const n = hash2(tx, tz, 501) < 0.55 ? 2 : 1;
-      for (let s = 0; s < n; s++) {
-        const sx = (tx - cx * C) * 32 + 8 + (s ? 14 : 0) + Math.floor(hash2(tx, tz, 510 + s) * 10), sy = (tz - cz * C) * 32 + 7 + Math.floor(hash2(tx, tz, 520 + s) * 18);
-        if (lv[(sy + 1) * B + sx + 1] !== 0) continue;
-        const rx = 5 + Math.floor(hash2(tx, tz, 530 + s) * 3), ry = 3 + Math.floor(hash2(tx, tz, 540 + s) * 2);
-        for (let y = -ry - 1; y <= ry + 1; y++) for (let x = -rx - 1; x <= rx + 1; x++) {
-          const px = sx + x, py = sy + y;
-          if (px < 0 || py < 0 || px >= P || py >= P) continue;
-          const d = (x * x) / (rx * rx) + (y * y) / (ry * ry);
-          let c;
-          if (d <= 1) c = ramp[Math.max(1, Math.min(4, 4 - Math.floor(((y + ry) / (2 * ry)) * 3) - (x > rx * 0.4 ? 1 : 0)))];
-          else if (d <= 1.7 && y > 0) c = ramp[0];                                  // wet shadow under the stone
-          else continue;
-          const o = (py * P + px) * 4;
-          D[o] = c[0]; D[o + 1] = c[1]; D[o + 2] = c[2];
-        }
-      }
-    }
-  }
-
   /**
    * Decal candidates of chunk (cx, cz), deterministic (cached): position (world texels), a first and a backup
    * pick (weighted, districts favouring their own set: REGION_LOOK.decals) and a priority. Neighbouring chunks
@@ -626,4 +617,143 @@ function tileArt(art) {
     out[o] = art.data[si]; out[o + 1] = art.data[si + 1]; out[o + 2] = art.data[si + 2]; out[o + 3] = 255;
   }
   return { data: out, w: TEX, h: TEX };
+}
+
+// ---------------------------------------------------------------- bridges (Stage 9)
+// A bridge (world.bridges: { axis 'ns' | 'ew', x0, z0, x1, z1 } in tiles) is drawn texel by texel into the baked ground,
+// in deck coordinates u (along the bridge) and v (across it): planks across the deck with dark gaps, a lit leading edge
+// and grain, a few old mossy planks and one broken corner; an edge log (kerb) along both sides; posts on the kerbs
+// (upright: drawn up the screen, BRIDGE_LOOK.post texels, like a card would be) joined by a sagging rope; the deck's
+// thickness (fascia) and piles on its south face, and its shadow on the water (light from the top-left). The deck runs
+// BRIDGE_LOOK.end texels onto each bank. Everything is whole texels, multiplied by the ground's AO.
+
+/** World-texel box a bridge can touch (deck, ends, posts above, shadow below). */
+export function bridgeBox(b) {
+  const L = BRIDGE_LOOK, ns = b.axis === 'ns';
+  return {
+    x0: Math.floor(b.x0 * 32) - (ns ? 4 : L.end + 4), x1: Math.ceil(b.x1 * 32) + (ns ? 8 : L.end + 8),
+    y0: Math.floor(b.z0 * 32) - (ns ? L.end : 0) - L.post - 4, y1: Math.ceil(b.z1 * 32) + (ns ? L.end : 0) + 12,
+  };
+}
+
+/** Draw bridge `b` into RGBA bytes D (P × P, world texel origin ox, oy). aoMul(x, y) = the ground's AO factor. */
+export function drawBridge(D, P, ox, oy, b, seed, aoMul) {
+  const L = BRIDGE_LOOK, ns = b.axis === 'ns';
+  const R = L.wood.map(hex), rope = hex(L.rope), ropeDark = hex(L.ropeDark), moss = hex(L.moss), foam = hex(L.foam);
+  // Deck extents in world texels: u along the bridge, v across.
+  const u0 = Math.round((ns ? b.z0 : b.x0) * 32) - L.end, u1 = Math.round((ns ? b.z1 : b.x1) * 32) + L.end;
+  const v0 = Math.round((ns ? b.x0 : b.z0) * 32), v1 = Math.round((ns ? b.x1 : b.z1) * 32);
+  const XY = (u, v) => (ns ? [v, u] : [u, v]);
+  const H = (a, c, k) => hash2(a, c, seed + k);
+  const put = (wx, wy, c, m = 1) => {
+    const x = wx - ox, y = wy - oy;
+    if (x < 0 || y < 0 || x >= P || y >= P) return;
+    const o = (y * P + x) * 4, a = aoMul(x, y) * m;
+    D[o] = c[0] * a; D[o + 1] = c[1] * a; D[o + 2] = c[2] * a; D[o + 3] = 255;
+  };
+  const darken = (wx, wy, k) => {
+    const x = wx - ox, y = wy - oy;
+    if (x < 0 || y < 0 || x >= P || y >= P) return;
+    const o = (y * P + x) * 4;
+    D[o] *= k; D[o + 1] *= k; D[o + 2] *= k; D[o + 3] = 255;
+  };
+  const onDeck = (wx, wy) => { const [u, v] = ns ? [wy, wx] : [wx, wy]; return u >= u0 && u < u1 && v >= v0 && v < v1; };
+  // 1. Shadow on the water / bank: the deck shifted down-right, outside the deck.
+  const [sx, sy] = L.shadow;
+  for (let u = u0; u < u1; u++) for (let v = v0; v < v1; v++) {
+    const [wx, wy] = XY(u, v);
+    const qx = wx + sx, qy = wy + sy;
+    if (!onDeck(qx, qy)) darken(qx, qy, L.shadowK);
+  }
+  // 2. The south face: deck thickness + piles (an E–W deck's long side, an N–S deck's south end).
+  const face = (wx, wy, k) => {
+    for (let d = 0; d < L.fascia; d++) put(wx, wy + d, R[d ? 1 : 2]);
+    if (k) for (let d = L.fascia; d < L.fascia + L.pile; d++) put(wx, wy + d, R[d === L.fascia ? 2 : 1]);
+    if (k) put(wx, wy + L.fascia + L.pile, foam);
+  };
+  if (ns) {
+    for (let x = v0; x < v1; x++) face(x, u1, false);
+  } else {
+    for (let x = u0; x < u1; x++) {
+      const pu = ((x - u0) % L.postEvery + L.postEvery) % L.postEvery;
+      face(x, v1, x > u0 + L.end && x < u1 - L.end && pu >= L.postEvery / 2 - 1 && pu < L.postEvery / 2 + 2);
+    }
+  }
+  // 3. Planks across the deck.
+  const nP = Math.ceil((u1 - u0) / L.plank);
+  const broken = nP >= 8 ? 2 + Math.floor(H(b.x0 * 7 + b.z0, b.x1, 31) * (nP - 4)) : -1;
+  const brokenLeft = H(b.x0, b.z0 * 3, 32) < 0.5;
+  for (let k = 0; k < nP; k++) {
+    const pu0 = u0 + k * L.plank;
+    const r = H(pu0, b.z0 * 131 + b.x0, 33);
+    const tone = r < 0.1 ? 2 : r < 0.42 ? 3 : 4;   // old / weathered / fresh
+    const old = tone === 2;
+    const j0 = Math.floor(H(pu0, 1, 34) * 3), j1 = Math.floor(H(pu0, 2, 35) * 3);   // ragged plank ends
+    const gapLen = 6 + Math.floor(H(pu0, 3, 36) * 6);
+    for (let du = 0; du < L.plank; du++) {
+      const u = pu0 + du;
+      if (u >= u1) break;
+      for (let v = v0; v < v1; v++) {
+        const [wx, wy] = XY(u, v);
+        const inKerb = v < v0 + L.kerb || v >= v1 - L.kerb;
+        if (inKerb) continue;   // the edge logs (below) cover it
+        let c;
+        if (du === L.plank - 1) c = R[0];                                       // gap
+        else if (v < v0 + L.kerb + j0 - 1 || v >= v1 - L.kerb - j1 + 1) c = R[0];   // ragged end: dark under the log
+        else if (k === broken && (brokenLeft ? v < v0 + L.kerb + gapLen : v >= v1 - L.kerb - gapLen)) c = R[0];
+        else {
+          let t = du === 0 ? tone + 1 : du === L.plank - 2 ? tone - 1 : tone;   // lit leading edge, dark trailing edge
+          if (H(v >> 2, pu0 + du, 37) < 0.08) t -= 1;                            // grain
+          c = R[Math.max(1, Math.min(5, t))];
+          if (old && H(v, u, 38) < 0.1) c = moss;
+          if ((v === v0 + L.kerb + 1 || v === v1 - L.kerb - 2) && du === 2) c = R[0];   // nails over the stringers
+        }
+        put(wx, wy, c);
+      }
+    }
+  }
+  // 4. Edge logs along both sides: lit, mid, dark across (light from the top-left).
+  const kerbT = [5, 3, 1];
+  for (let u = u0; u < u1; u++) for (let d = 0; d < L.kerb; d++) {
+    const t = kerbT[Math.min(2, Math.floor((d * 3) / L.kerb))];
+    const knot = H(u >> 3, d, 39) < 0.12 ? -1 : 0;
+    for (const v of [v0 + d, v1 - L.kerb + d]) { const [wx, wy] = XY(u, v); put(wx, wy, R[Math.max(1, t + knot)]); }
+  }
+  // 5. Posts on both kerbs (every postEvery texels + both ends) and the rope between them.
+  const us = [];
+  for (let u = u0 + 3; u < u1 - 6; u += L.postEvery) us.push(u);
+  us.push(u1 - 4);
+  const sides = [v0 + 1, v1 - 2];
+  const posts = [];
+  for (const v of sides) for (const u of us) { const [wx, wy] = XY(u, v); posts.push({ wx, wy, v }); }
+  // Ropes first (behind the posts they hang from), sorted far (north) to near (south) with the posts.
+  const ropeUp = L.post - L.ropeDrop;
+  for (const v of sides) {
+    for (let i = 0; i + 1 < us.length; i++) {
+      const [ax, ay] = XY(us[i], v), [bx, by] = XY(us[i + 1], v);
+      const n = Math.max(Math.abs(bx - ax), Math.abs(by - ay));
+      for (let s = 0; s <= n; s++) {
+        const t = s / (n || 1);
+        const x = Math.round(ax + (bx - ax) * t), base = Math.round(ay + (by - ay) * t);
+        const sag = ns ? 0 : Math.round(Math.sin(Math.PI * t) * L.sag);
+        const y = base - ropeUp + sag;
+        if (ns) { put(x - 1, y, rope); put(x, y, ropeDark); }
+        else { put(x, y, rope); put(x, y + 1, ropeDark); }
+      }
+    }
+  }
+  posts.sort((p, q) => p.wy - q.wy);
+  for (const p of posts) {
+    // Shadow down-right of the post's foot.
+    for (let dy = -1; dy <= 1; dy++) for (let dx = 2; dx <= 4; dx++) darken(p.wx + dx, p.wy + dy, L.shadowK);
+    const cols = [5, 4, 2, 1];
+    for (let h = 0; h <= L.post; h++) {
+      for (let i = 0; i < 4; i++) {
+        let t = cols[i];
+        if (h >= L.post - 1) t = i < 3 ? 5 : 3;      // cut top, lit
+        put(p.wx - 2 + i, p.wy - h, R[t]);
+      }
+    }
+    put(p.wx - 2, p.wy - L.post - 1, R[1]); put(p.wx - 1, p.wy - L.post - 1, R[1]); put(p.wx, p.wy - L.post - 1, R[1]);   // dark rim above the cap
+  }
 }

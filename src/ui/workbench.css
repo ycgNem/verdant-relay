@@ -32,6 +32,9 @@
 .wb-warn { color: var(--amber); border-top: 1px dashed rgba(254, 174, 52, 0.45); padding-top: round(calc(var(--u) * 2), 1px); }
 .wb-tip { text-shadow: var(--ol); }
 .wb-intro { max-width: round(calc(var(--u) * 420), 1px); color: var(--text); }
+/* The footer's stock as icon + number, like the cards' costs (Stage 9: with the resource names the wider text face put
+   "Stored at base" on three rows at 1024 × 600 and the cards scrolled). */
+.wb-panel ~ .scr-foot .stat-res .res .lbl { display: none; }
 
 /* ---------------------------------------------------------------- night prep: the tower's mod socket */
 .df-modrow { display: flex; flex-direction: column; gap: round(calc(var(--u) * 3), 1px); margin: round(calc(var(--u) * 3), 1px) 0; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq))); }

@@ -45,3 +45,11 @@
 /* an opening (punish window): the fill turns hot yellow and the note reads "Overheated: hit it! (×1.5 damage)" */
 .j-bossbar.open .bb-fill { background: #fee761; }
 .j-bossbar.open .bb-sub { color: #fee761; }
+
+/* ---- briefing: the day's quest on an area card (Stage 9): an amber-edged block, its reward line in green / gold */
+.dc-line.dc-obj {
+  margin: 0 round(calc(var(--u) * -6), 1px); padding: round(calc(var(--u) * 4), 1px) round(calc(var(--u) * 6), 1px);
+  background: rgba(254, 174, 52, 0.08); border-left: round(calc(var(--u) * 3), 1px) solid var(--amber); border-radius: round(calc(var(--u) * 2), 1px);
+}
+.dc-obj .dc-reward { color: #8ce06a; }
+.dc-rk { color: #fee761; }

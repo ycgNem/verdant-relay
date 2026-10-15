@@ -38,8 +38,10 @@
 /* ---- top-right corner: round minimap; its ring is the daylight left (--day 1 → 0) */
 .j-tr {
   position: absolute; right: round(calc(var(--u) * 8), 1px); top: round(calc(var(--u) * 8), 1px); width: round(calc(var(--u) * 120), 1px);
-  display: flex; flex-direction: column; align-items: center; text-shadow: var(--ol);
+  display: flex; flex-direction: column; align-items: safe center; text-shadow: var(--ol);
+  direction: rtl;   /* with "safe center": a line wider than the column (a long area name) sits flush right, running left */
 }
+.j-tr > * { direction: ltr; }
 .j-ring {
   --day: 1; position: relative; width: round(calc(var(--u) * 96), 1px); height: round(calc(var(--u) * 96), 1px); border-radius: 50%; box-sizing: border-box;
   padding: round(calc(var(--u) * 3), 1px);
@@ -73,40 +75,136 @@
 .j-daylbl.amber { color: var(--amber); }
 .j-daylbl.bad { color: var(--danger); }
 .j-district {
-  max-width: round(calc(var(--u) * 130), 1px); text-align: center; line-height: 1.2; color: var(--text);   /* #a9b6cc was 2.2:1 on dirt */
+  white-space: nowrap; text-align: center;   /* one line, never wrapped under the clock */ line-height: 1.2; color: var(--text);   /* #a9b6cc was 2.2:1 on dirt */
   font-size: var(--hud-f);
   text-shadow: var(--ol);
 }
 .x-time.amber { color: var(--amber); }
 .x-time.bad { color: var(--danger); }
 
-/* ---- bottom: one slim objective strip */
-.j-strip {
+/* ---- bottom centre: the quest tracker (Stage 9, JungleQuest.js): QUEST + name + distance / the step to do now / the
+   reward (+ ford, home, bonus chips). One text density (the HUD's), an amber spine on the left so it reads as the quest. */
+.j-quest {
   position: absolute; left: 50%; bottom: round(calc(var(--u) * 6), 1px); transform: translateX(-50%);
-  display: flex; align-items: center; gap: round(calc(var(--u) * 8), 1px); max-width: round(calc(var(--u) * 700), 1px); white-space: nowrap;
-  padding: round(calc(var(--u) * 3), 1px) round(calc(var(--u) * 8), 1px); background: rgba(24, 20, 37, 0.72);
-  border: round(calc(var(--u) * 1), 1px) solid #3a4466; border-radius: round(calc(var(--u) * 3), 1px);
-  font-size: var(--hud-f); line-height: 1.1; text-shadow: var(--ol);
+  display: flex; flex-direction: column; gap: round(calc(var(--u) * 2), 1px);
+  min-width: round(calc(var(--u) * 280), 1px); max-width: round(calc(var(--u) * 600), 1px); box-sizing: border-box; white-space: nowrap;
+  padding: round(calc(var(--u) * 4), 1px) round(calc(var(--u) * 9), 1px) round(calc(var(--u) * 5), 1px) round(calc(var(--u) * 8), 1px);
+  background: rgba(24, 20, 37, 0.86); border: round(calc(var(--u) * 2), 1px) solid #8a5a2a; border-left: calc(var(--tx) * 3) solid var(--amber);
+  box-shadow: 0 0 0 calc(var(--u) * 1) #181425; border-radius: round(calc(var(--u) * 3), 1px);
+  font-size: var(--hud-f); line-height: 1.25; text-shadow: var(--ol);
 }
-.j-objk { color: var(--amber); font-size: var(--hud-f); }
-.j-step { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.j-step .x-step { color: var(--text); }
-.x-step.claim { color: var(--good); text-decoration: none; }
-.j-dir { display: inline-flex; align-items: center; gap: round(calc(var(--u) * 3), 1px); }
-.j-dir.obj { color: var(--amber); }
-.j-dir.ford { color: #c8e4f0; padding-left: round(calc(var(--u) * 8), 1px); border-left: 1px solid #3a4466; }
+.j-qhead, .j-qstep, .j-qfoot { display: flex; align-items: center; gap: round(calc(var(--u) * 6), 1px); min-width: 0; }
+.j-qicon { flex: none; width: calc(var(--tx) * 9); height: calc(var(--tx) * 9); image-rendering: pixelated; }
+.j-qtag {
+  flex: none; color: #181425; background: var(--amber); text-shadow: none; padding: 0 round(calc(var(--u) * 4), 1px);
+  border-radius: round(calc(var(--u) * 2), 1px); line-height: 1.2;
+}
+.j-qtag.good { background: var(--good); }
+.j-qtag.bad { background: var(--danger); color: #fff; }
+.j-qname { color: #fff; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.j-qgrow { flex: 1; min-width: round(calc(var(--u) * 6), 1px); }
+.j-qdist { flex: none; display: inline-flex; align-items: center; gap: round(calc(var(--u) * 3), 1px); color: var(--amber); }
+.j-qdist.home { color: var(--accent); }
+.j-qdarr { width: calc(var(--tx) * 11); height: calc(var(--tx) * 11); image-rendering: pixelated; }
+.j-qbox { flex: none; color: var(--amber); width: 1em; text-align: center; }
+.j-qbox.good { color: var(--good); }
+.j-qbox.bad { color: var(--danger); }
+/* The step wraps to a second line when the tracker is at its widest (1024×600), never an ellipsis. */
+.j-qlbl { min-width: 0; white-space: normal; color: var(--text); }
+.j-qstep { align-items: flex-start; }
+.j-qlbl.good { color: var(--good); }
+.j-qlbl.bad { color: var(--danger); }
+.j-qlbl.ticked { color: var(--good); text-decoration: line-through; text-decoration-color: rgba(99, 199, 77, 0.6); }
+.j-qnum { flex: none; margin-left: auto; color: #c0cbdc; padding-left: round(calc(var(--u) * 6), 1px); }
+.j-qnum:empty { display: none; }
+.j-qrew { color: #8ce06a; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.j-qrew:empty { display: none; }
+/* A step ticked off: the tracker flashes once; the quest done: a longer gold flash (two hard steps, no blur). */
+.j-quest.step { animation: j-qstep 0.5s steps(2) 2; }
+.j-quest.won { animation: j-qwon 0.6s steps(2) 3; }
+@keyframes j-qstep { 50% { border-color: var(--good); } }
+@keyframes j-qwon { 50% { border-color: #fee761; background: rgba(90, 64, 20, 0.92); } }
+.j-dir { display: inline-flex; align-items: center; gap: round(calc(var(--u) * 3), 1px); flex: none; }
+.j-dir.ford { color: #e4a672; padding-left: round(calc(var(--u) * 8), 1px); border-left: 1px solid #3a4466; }
 .j-dir.ext { color: var(--accent); padding-left: round(calc(var(--u) * 8), 1px); border-left: 1px solid #3a4466; }
 .j-dir .x-dirarrow { font-size: var(--hud-f); color: inherit; }
-.j-opts { color: #c47bff; }
+.j-opts { color: #c47bff; flex: none; }
 .j-opts:empty { display: none; }
 
-/* The interaction prompt sits just above the strip. */
-.jungle-ui .x-prompt { bottom: round(calc(var(--u) * 36), 1px); }
+/* The interaction prompt sits just above the tracker (--qh: the tracker's top, set by JungleQuest). */
+.jungle-ui .x-prompt { bottom: calc(var(--qh, round(calc(var(--u) * 36), 1px)) + round(calc(var(--u) * 6), 1px)); }
 .jungle-ui .x-ptext { font-size: var(--hud-f); }
+/* A bottom-anchored hint (hints.js: 80 units up) never sits on a tall tracker either. */
+.jungle-ui .hint[style*="bottom"] { bottom: max(round(calc(var(--u) * 80), 1px), calc(var(--qh, 0px) + round(calc(var(--u) * 6), 1px))) !important; }
 
-/* Off-screen arrows: positioned by their top-left corner (JungleScene._edgeArrow). */
-.jungle-ui .x-edge { width: round(calc(var(--u) * 34), 1px); height: round(calc(var(--u) * 34), 1px); }
-.x-edge.crate { color: var(--amber); }
+/* ---- the quest card (the day's start / the quest key): a panel in the banner lane (centred at 22% of the height) */
+/* Left-aligned (whole pixels: centred lines in a box of the other parity sat on x.5, critic M2 P1-3). */
+.jungle-ui .x-banner.j-qcard {
+  display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: round(calc(var(--u) * 3), 1px);
+  min-width: round(calc(var(--u) * 260), 1px); padding: round(calc(var(--u) * 7), 1px) round(calc(var(--u) * 14), 1px) round(calc(var(--u) * 8), 1px);
+  background: rgba(24, 20, 37, 0.92); border: round(calc(var(--u) * 2), 1px) solid var(--amber); box-shadow: 0 0 0 calc(var(--u) * 1) #181425;
+  border-radius: round(calc(var(--u) * 3), 1px); font-size: var(--hud-f); line-height: 1.3; text-shadow: var(--ol); white-space: normal;
+}
+.j-qc-head { display: flex; align-items: center; gap: round(calc(var(--u) * 5), 1px); color: var(--amber); }
+.j-qc-area { color: #c0cbdc; }
+.j-qc-name { color: #fff; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 24 - 0.01px), var(--fq))); line-height: 1.1; animation: x-in 0.35s ease-out; }
+.j-qc-brief { color: #c0cbdc; }
+.j-qc-steps { display: flex; flex-direction: column; align-items: flex-start; margin-top: round(calc(var(--u) * 2), 1px); }
+.j-qc-step { display: flex; gap: round(calc(var(--u) * 5), 1px); color: var(--text); }
+.j-qc-step.done { color: var(--good); }
+.j-qc-box { color: var(--amber); }
+.j-qc-step.done .j-qc-box { color: var(--good); }
+.j-qc-rew { color: #8ce06a; margin-top: round(calc(var(--u) * 2), 1px); }
+.j-qc-k { color: #fee761; }
+.j-qc-sp { color: #c0cbdc; }
+.j-qc-keys { color: #a9b6cc; margin-top: round(calc(var(--u) * 2), 1px); }
+.j-qc-keys .key { line-height: 1.1; }
+/* QUEST COMPLETE: a gold-edged panel, the reward line in green under the gold title. */
+.jungle-ui .x-banner.j-qdone {
+  padding: round(calc(var(--u) * 6), 1px) round(calc(var(--u) * 16), 1px) round(calc(var(--u) * 8), 1px);
+  background: rgba(24, 20, 37, 0.9); border: round(calc(var(--u) * 2), 1px) solid #fee761; box-shadow: 0 0 0 calc(var(--u) * 1) #181425;
+  border-radius: round(calc(var(--u) * 3), 1px);
+}
+.j-qdone .x-banner-t { color: #fee761; }
+.j-qdone .j-qd-rew { color: #8ce06a; }
+/* One line each (centred lines snap to whole px; a wrapped one couldn't): a little wider than other banners. */
+.jungle-ui .x-banner.j-qdone { max-width: min(96%, round(calc(var(--u) * 470), 1px)); white-space: nowrap; }
+.j-qdone .x-banner-x { color: #c0cbdc; }
+
+/* ---- the quest's edge arrows (JungleQuest._edge): a pixel arrow (questArt.js, 16 directions) bobbing toward its
+   target by whole texels and flashing, with a distance badge inward of it. Positioned by translate (whole px). */
+.j-qedge { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; z-index: 6; }
+.j-qarr { position: absolute; left: 0; top: 0; }   /* sized by JungleQuest (QUEST.arrow: size × scale texels) */
+.j-qarr canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; animation: j-qbob 0.9s steps(1) infinite; }
+.j-qarr canvas.hi { animation: j-qbob 0.9s steps(1) infinite, j-qflash 0.9s steps(1) infinite; }
+@keyframes j-qbob { 50% { transform: translate(var(--bx, 0), var(--by, 0)); } }
+@keyframes j-qflash { 0% { visibility: hidden; } 50% { visibility: visible; } }
+.j-qbadge {
+  position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: round(calc(var(--u) * 3), 1px); white-space: nowrap;
+  padding: round(calc(var(--u) * 1), 1px) round(calc(var(--u) * 5), 1px); background: rgba(24, 20, 37, 0.9);
+  border: round(calc(var(--u) * 2), 1px) solid var(--amber); box-shadow: 0 0 0 calc(var(--u) * 1) #181425; border-radius: round(calc(var(--u) * 3), 1px);
+  font-size: var(--hud-f); line-height: 1.2; color: #fee761; text-shadow: var(--ol);
+}
+.j-qbicon { width: calc(var(--tx) * 9); height: calc(var(--tx) * 9); image-rendering: pixelated; }
+.j-qedge.home .j-qbadge { border-color: var(--accent); color: var(--accent); }
+
+/* ◆ + ▼ over a quest target on screen, bobbing by whole texels. */
+.j-qmark {
+  position: absolute; left: 0; top: 0; z-index: 4; pointer-events: none; display: flex; flex-direction: column; align-items: center;
+  gap: calc(var(--tx) * 1); animation: j-bob 0.9s steps(2) infinite;
+}
+/* The marker is in the world: the corner HUD and the tracker draw over it. */
+.jungle-ui .j-tr, .jungle-ui .j-quest { z-index: 5; }
+.j-qm-d { width: calc(var(--tx) * 15); height: calc(var(--tx) * 15); image-rendering: pixelated; }
+.j-qm-c { width: calc(var(--tx) * 13); height: auto; image-rendering: pixelated; }
+/* The pointer by the player toward a far quest. */
+.j-qorbit { position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none; }
+.j-qorbit canvas { display: block; width: calc(var(--tx) * 13); height: calc(var(--tx) * 13); image-rendering: pixelated; }
+
+/* The big map's quest panel: QUEST + name, every step, the reward. */
+.j-qbig { margin-bottom: round(calc(var(--u) * 2), 1px); }
+.j-qbig b { color: #fff; font-weight: normal; }
+.j-bigsteps .j-qrew { margin-top: round(calc(var(--u) * 2), 1px); white-space: normal; }
 
 /* Banners stay in the upper band (~22% of the height), off the player and clear of the corner HUD: at most 410 units
    wide, so they never reach the top-left column (panel, coach line, toasts: 8 + 260 units) — critic H2 §5.1. */
@@ -136,7 +234,7 @@
 .jungle-ui .x-bigbox { width: round(calc(var(--u) * 760), 1px); max-width: 96%; padding: round(calc(var(--u) * 8), 1px) round(calc(var(--u) * 10), 1px); box-sizing: border-box; }
 .jungle-ui .x-bigtitle { align-self: stretch; margin-bottom: round(calc(var(--u) * 5), 1px); }
 .jungle-ui .x-bigcanvas {
-  width: 100%; height: round(calc(var(--u) * 360), 1px); image-rendering: pixelated; display: block; cursor: grab; touch-action: none;
+  width: 100%; height: round(calc(var(--u) * 344), 1px); image-rendering: pixelated; display: block; cursor: grab; touch-action: none;
   border: round(calc(var(--u) * 1), 1px) solid #3a4466; box-sizing: border-box;
 }
 .jungle-ui .x-bigcanvas.drag { cursor: grabbing; }
@@ -148,13 +246,14 @@
   align-self: stretch; display: flex; justify-content: space-between; align-items: flex-start; gap: round(calc(var(--u) * 10), 1px);
   margin-top: round(calc(var(--u) * 5), 1px); font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 12 - 0.01px), var(--fq)));
 }
-.j-bigsteps { line-height: 1.35; }
-.j-bighelp { text-align: right; white-space: nowrap; }
+.j-bigsteps { line-height: 1.35; flex: 1 1 0; min-width: 0; }
+.j-bighelp { text-align: right; flex: 0 1 auto; max-width: 50%; }   /* wraps (Stage 9 text face: nowrap squeezed the steps) */
 .jungle-ui .x-legend { width: auto; align-self: stretch; justify-content: flex-start; }
 .x-legicon { width: round(calc(var(--u) * 12), 1px); height: round(calc(var(--u) * 12), 1px); image-rendering: pixelated; }
 /* While the big map is open the world is frozen: hide the live overlays that would sit on top of it. */
-.j-mapopen .toasts, .j-mapopen .x-edge, .j-mapopen .x-prompt, .j-mapopen .hint, .j-mapopen .j-mark { visibility: hidden; }
-.j-tl, .j-tr, .j-strip, .j-coach { transition: opacity 0.15s steps(2); }
+.j-mapopen .toasts, .j-mapopen .x-edge, .j-mapopen .x-prompt, .j-mapopen .hint, .j-mapopen .j-mark,
+.j-mapopen .j-qedge, .j-mapopen .j-qmark, .j-mapopen .j-qorbit { visibility: hidden; }
+.j-tl, .j-tr, .j-quest, .j-coach { transition: opacity 0.15s steps(2); }
 
 /* ---- "tired" stamina, the coach / tip line */
 .j-stambar.tired { animation: j-tired 0.5s steps(2) infinite; }
@@ -192,3 +291,6 @@
   flex: none; color: var(--accent); font-size: var(--hud-f); line-height: 1.2;
   border: 1px solid var(--accent); border-radius: round(calc(var(--u) * 2), 1px); padding: 0 round(calc(var(--u) * 4), 1px);
 }
+/* Paused: the quest arrows and markers dim and stop with the world. */
+.x-hud.paused .j-qedge, .x-hud.paused .j-qmark, .x-hud.paused .j-qorbit { opacity: 0.35; }
+.x-hud.paused .j-qarr canvas, .x-hud.paused .j-qmark { animation: none; }

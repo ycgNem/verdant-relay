@@ -41,6 +41,7 @@ import { SporePods } from '../entities/SporePods.js';
 import { Forage } from '../entities/Forage.js';
 import { JungleMap, MAP_MARKERS, drawMarker } from '../ui/JungleMap.js';
 import { MAP_VIEW, HUD, TEXT_LANE } from '../data/hud.js';
+import { DEFAULT_KEYS } from '../data/controls.js';
 import { el, button, bar, toast, modal, fmtTime, resChip, resIcon, resIconHtml, setToastsPaused, showBanner, pinWhole, snapLine, snapBox } from '../ui/ui.js';
 import { showHint } from '../ui/hints.js';
 import { GUIDE, FIRST_DAY, RETURN_PROMPT, HOME_HINT, WORDS, TIPS } from '../data/guide.js';
@@ -48,6 +49,7 @@ import { openSettingsOverlay } from './SettingsScene.js';
 import { keyLabel } from '../core/Input.js';
 import { JungleRelics } from './JungleRelics.js';
 import { Goals } from './JungleGoals.js';
+import { JungleQuest, stepText, stepVerb } from './JungleQuest.js';
 import { AreaBosses } from '../entities/AreaBoss.js';
 import { makeEnemy, tickSpeedBuffs } from '../entities/DayCreatures.js';
 import { Weather } from '../world/Weather.js';
@@ -175,6 +177,7 @@ export class JungleScene {
     this._buildHud();
     this.weather.apply();         // the grade, fog / rain, light radius, rain sound
     this.weather.hud(this.hud);   // its tag under the clock
+    for (const n of [this.hud.timerSub, this.hud.tr.querySelector('.j-weather')]) if (n) snapBox(n);   // centred lines on whole px
     // Relics, landmark shrines, data logs, named places (Stage 7; src/scenes/JungleRelics.js).
     this.relicsCtl = new JungleRelics(this);
 
@@ -194,11 +197,12 @@ export class JungleScene {
     if (!this.coach) {
       this._hint('jungle_move', `Move with ${this._moveKeys()}. <b>Click</b> to swing your machete. ${this._key('map')} opens the map.`, 'bottom-left', 10);
       this.later(5, () => this._hint('jungle_cut', 'Your machete <b>cuts through plants</b>: click to clear a path. Thorny red brambles need a <b>heavy chop</b> (hold right-click). Cutting is <b>loud</b>.', 'bottom-left', 11));
-      this.later(18, () => this._hint('jungle_return', `Follow the <span style="color:#feae34">amber ◆ arrow</span> to today's goal. What you pick up is yours once you get <span style="color:#2ce8f5">home</span> (the Relay or a ${WORDS.pylon} you switched on). After sunset the jungle hunts you.`, 'bottom-left', 11));
+      this.later(18, () => this._hint('jungle_return', `Follow the <span style="color:#feae34">amber arrow</span> to today's quest (◆). What you pick up is yours once you get <span style="color:#2ce8f5">home</span> (the Relay or a ${WORDS.pylon} you switched on). After sunset the jungle hunts you.`, 'bottom-left', 11));
     }
 
     this.debug = this._makeDebug();
-    toast(game.ui, `${this.D.name}: ${this.objDef.name}`, 'amber', 3.5);
+    // The day's quest card (Stage 9, JungleQuest): QUEST, its name, steps and reward, in the top-centre lane.
+    this.quest.showCard();
   }
 
   /** The Relay drone drops you at the activated pylon closest to today's objective (or at the Relay). */
@@ -221,7 +225,7 @@ export class JungleScene {
     if (!best) return;
     this.player.pos.set(best.x, 0, best.z + 1.6);
     this.startPylon = best;
-    this.later(1.2, () => this.toast(`The drone dropped you at your ${WORDS.pylon}: ${Math.round(bd)} m from today's goal`, 'good', 3.2));
+    this.later(1.2, () => this.toast(`The drone dropped you at your ${WORDS.pylon}: ${Math.round(bd)} m from today's quest`, 'good', 3.2));
   }
 
   later(t, fn) { this.timers.push({ t, fn }); }
@@ -275,7 +279,7 @@ export class JungleScene {
     this.world.addCollider({ kind: 'prop', type: 'relay', x: c.x, z: c.z, r: 1.3 });
     this.relayIt = this._addInteractable({
       kind: 'extract', x: c.x, z: c.z, radius: DAY.relayRadius, hold: DAY.extractHold, keepProgress: false, objectiveHold: true,
-      verb: () => (this.objectiveDone ? 'Head home (keep your loot)' : 'Head home early (goal not done)'),
+      verb: () => (this.objectiveDone ? 'Head home (keep your loot)' : 'Head home early (quest not done)'),
       // Not offered at the drop-off right away: only once there is something to bring home (or a reason to leave).
       hidden: () => !this._homeOffered(),
       onComplete: (it) => { it.done = false; this._extract(); },
@@ -416,7 +420,7 @@ export class JungleScene {
           radius: step.type === 'pickup' ? 1.2 : 1.5, hold: step.type === 'pickup' ? 0 : step.hold || 1.5, walkOver: step.type === 'pickup',
           keepProgress: true, spawnDuring: step.spawnDuring ? Math.min(step.spawnDuring, nightTune('holdSpawns', this.game.run.night), this._firstDay ? FIRST_DAY.holdSpawns : 99) : 0, spawned: 0,
           guards: step.guards ? Math.min(step.guards, nightTune('guards', this.game.run.night), this._firstDay ? FIRST_DAY.guards : 99) : 0,
-          verb: () => step.label,
+          verb: () => stepVerb(step),
           enabled: () => si === this.objStep,
           onComplete: (t) => this._stepDone(t, step, count),
         });
@@ -452,7 +456,12 @@ export class JungleScene {
     this.objStep += 1;
     this.stepCount = 0;
     if (this.objStep >= this.objDef.steps.length) this.completeObjective();
-    else { this.game.sfx.play('step_done'); this.toast(`Next: ${this.objDef.steps[this.objStep].label}`, 'amber', 3); }
+    else {
+      // The tracker ticks the step off, then shows the next one (JungleQuest.onStep).
+      this.game.sfx.play('step_done');
+      this.quest?.onStep(this.objStep - 1);
+      this.toast(`Next: ${stepText(this.objDef.steps[this.objStep], this.quest?._site(this.objStep))}`, 'amber', 3);
+    }
   }
 
   completeObjective() {
@@ -461,9 +470,9 @@ export class JungleScene {
     this.objStep = this.objDef.steps.length;
     this._grantSkillPoint();
     this.game.sfx.play('goal_done');
-    this._banner('GOAL DONE', this.objDef.rewardAtDelivery
-      ? 'The drone has it: the reward is yours. Keep exploring, or head home'
-      : `Head home to claim the reward (follow the cyan arrow), or keep exploring`);
+    // QUEST COMPLETE + the reward, a burst, the tracker flashes (JungleQuest.complete).
+    if (this.quest) this.quest.complete();
+    else this._banner('QUEST COMPLETE', this.objDef.rewardAtDelivery ? 'The drone has it: the reward is yours' : 'Head home to claim the reward');
     for (const it of this.interactables) if (it.kind === 'primary') it.done = true;
   }
 
@@ -836,7 +845,7 @@ export class JungleScene {
       const h = inArc(t.x, t.z, t.radius || 0.3);
       if (!h) continue;
       if (t.forage) { t.hit(); continue; }   // shelf fungus (Forage.js): a plant, so the swing costs plant stamina
-      t.hit(spec.damage * dm, h.dx, h.dz, spec.knockback, src, spec.stagger || 0);
+      t.hit(spec.damage * dm, h.dx, h.dz, spec.knockback, src, spec.stagger || 0, spec);   // (spec: a riposte isn't also a punish)
       spec.onHit?.(t);   // the machete kit (src/entities/BladeKit.js): Serrated Edge bleeding
       hits++;
       if (t.dead) kills++;
@@ -1299,12 +1308,14 @@ export class JungleScene {
       if (meds > 0) lost.push(el('span.res', { style: { '--c': '#e43b44' }, html: `${resIconHtml('pick_med')} <b>${meds}</b> <span class="lbl">${meds === 1 ? 'Med kit' : 'Med kits'}</span>` }));
       const run = this.game.run;
       const dawn = run.dawnHp ? run.dawnHp(CONFIG.expedition.deathReturnHp) : CONFIG.expedition.deathReturnHp;
+      const note = this.player.deathNote?.();   // what got you, and what to do about it (Player.deathNote, Stage 9)
       const body = el('div.col', {},
         el('p.small.muted', 'You collapse in the undergrowth, and a Relay drone drags you home.'),
+        note ? el('div', {}, el('p.bad', note.line), el('p.small', note.tip), note.wounds.length > 1 ? el('p.small.muted', `Today's wounds: ${note.wounds.join(' · ')}`) : null) : null,
         lost.length ? el('div', {}, el('p.bad', 'Carried loot lost:'), el('div.resrow', {}, lost)) : el('p.muted', 'You weren\'t carrying anything.'),
         kept.length ? el('div', {}, el('p.good', 'The drone salvaged:'), el('div.resrow', {}, kept)) : null,
         this.relicsCtl?.lostLines(),   // relics you carried are lost (never salvaged)
-        this.objectiveDone ? el('p', {}, el('span.good', this.objDef.rewardAtDelivery ? 'Your goal keeps its skill point and its reward (the drone already has it).' : 'Your goal still earns its skill point'),
+        this.objectiveDone ? el('p', {}, el('span.good', this.objDef.rewardAtDelivery ? 'Your quest keeps its skill point and its reward (the drone already has it).' : 'Your quest still earns its skill point'),
           this.objDef.rewardAtDelivery ? null : el('span.bad', this.objDef.boon ? ', but its reward tonight needed you home.' : '.')) : null,
         el('p', `You start tomorrow with ${dawn} health. Everything stored at base, and your towers, are safe.`));   // the consequence: body text (critic M P2-5)
       // Keys too (critic L §2.3): Enter / Space / E / Esc, after a short guard so a key mashed in the fight can't skip it.
@@ -1325,7 +1336,7 @@ export class JungleScene {
     if (this.pauseModal) this.pauseModal.style.display = 'none';   // the pause menu waits behind the question
     this.confirmModal?.remove();
     const body = el('div.col', {},
-      el('p', 'You carry no loot and the goal isn\'t done.'),
+      el('p', 'You carry no loot and the quest isn\'t done.'),
       el('p.muted.small', 'Going home now ends today\'s trip with nothing to show for it. Tonight\'s attack still comes.'));
     this.confirmModal = modal(this.game.ui, 'Head home with nothing?', body, [
       button('Keep exploring', () => this.setPaused(false), { cls: 'primary', hotkey: 'Esc' }),
@@ -1344,7 +1355,7 @@ export class JungleScene {
     this.fx.burst(p, { color: '#2ce8f5', color2: '#ffffff', count: 40, speed: 2, up: 6, life: 1, gravity: -2 });
     this.fx.ring(p, { color: '#2ce8f5', radius: 3, life: 0.6 });
     this.game.flash('#2ce8f5', 0.3);
-    this._banner('BACK HOME SAFE', this.objectiveDone ? 'Loot stored, goal done' : 'Loot stored', { prio: 3 });
+    this._banner('BACK HOME SAFE', this.objectiveDone ? 'Loot stored, quest done' : 'Loot stored', { prio: 3 });
     this.later(1.4, () => this._finish('extracted'));
   }
 
@@ -1409,7 +1420,7 @@ export class JungleScene {
     if (p) {
       const body = el('div.col', {},
         el('p.muted.small', { html: `${this._moveKeys()} move · <b>Click</b> slash (hold while walking: hack through) · hold <b>right-click</b> heavy chop (tap just before a hit: deflect) · ${this._key('roll')} roll · ${this._key('throw')} throw machete · ${this._key('interact')} interact (hold) · ${this._key('med')} med kit · ${this._key('map')} map · keys in Settings` }),
-        el('p', {}, 'Objective: ', el('b.amber', this.objDef.name), this.objectiveDone ? el('span.good', ' (done)') : null),
+        el('p', {}, 'Quest: ', el('b.amber', this.objDef.name), this.objectiveDone ? el('span.good', ' (done)') : null),
         this.relicsCtl?.pauseLine());   // your relics (working / carried), when you have any
       this.pauseModal = modal(this.game.ui, 'Paused', body, [
         button('Resume', () => this.setPaused(false), { cls: 'primary', hotkey: 'Esc' }),
@@ -1444,7 +1455,7 @@ export class JungleScene {
     return [
       el(carried ? 'p.bad' : 'p.muted', !carried ? 'You carry nothing, so nothing is lost.'
         : saved ? `What you carry is lost, except what the drone saves (${saved}).` : 'Everything you carry is lost.'),
-      this.objectiveDone && this.objDef.boon ? el('p.small', {}, el('span.good', this.objDef.rewardAtDelivery ? 'The goal keeps its skill point and its reward (the drone already has it).' : 'The goal keeps its skill point'),
+      this.objectiveDone && this.objDef.boon ? el('p.small', {}, el('span.good', this.objDef.rewardAtDelivery ? 'The quest keeps its skill point and its reward (the drone already has it).' : 'The quest keeps its skill point'),
         this.objDef.rewardAtDelivery ? null : el('span.bad', ', but its reward tonight needs you home.')) : null,
       this.relicsCtl?.lostLines(),
       el('p.muted.small', `You start tomorrow with ${run.dawnHp(CONFIG.expedition.deathReturnHp)} health. Stored resources and towers are safe.`),
@@ -1486,7 +1497,7 @@ export class JungleScene {
       this._mapOpened = true;   // (the guided day's "map" coach step)
       h.fillLegend?.();
       for (const b of this.game.ui.querySelectorAll('.x-banner')) b.remove();
-      h.bigSteps.innerHTML = this._stepsHtml(true);
+      h.bigSteps.innerHTML = this.quest.bigHtml();   // the quest: every step ✔ / ☐ and its reward
       this._sizeBig();
       // Frame the explored area (plus the Relay and you); a far objective sticks to the map edge.
       const extra = this._markers().filter((m) => m.type === 'relay' || m.type === 'player');
@@ -1590,6 +1601,8 @@ export class JungleScene {
       else if (!this.ending) this.setPaused(!this.paused);
     }
     if ((input.wasPressed('Tab') || input.wasPressed('KeyM')) && !this.paused) this.toggleMap();
+    // The quest key (Settings → Controls 'quest', default J; it reads as its default code): the quest card again.
+    if (input.wasPressed(DEFAULT_KEYS.quest) && !this.paused && !this.mapOpen && !this.ending) this.quest?.toggleCard();
     if (this.paused || this.finished) return;
     // The big map pauses the day: the world, the timer and every entity freeze while it is open.
     if (this.mapOpen) { this._updateBigMap(dt); return; }
@@ -1687,7 +1700,8 @@ export class JungleScene {
         }
       }
       // A red "!" over a creature winding up an attack (on top of its ground telegraph): plain "it's about to hit".
-      if (e.state === 'windup' && !e._bang && !e.dead) {
+      // (Stage 9: it pops with the red commit flash, e.committed — "red flash = roll"; ranged wind-ups have no commit.)
+      if (e.state === 'windup' && (e.committed || !/^(lunge|thrust2|charge2?|stomp)$/.test(e.mv || '')) && !e._bang && !e.dead) {
         e._bang = true;
         this.fx.text({ x: e.x, z: e.z }, '!', { color: JUICE.attackBang?.color || '#ff2e2e', cls: 'big', life: JUICE.attackBang?.life || 0.55, y: (e.vis?.userData.vis?.height || 1) + 0.3 });
       } else if (e.state !== 'windup') e._bang = false;
@@ -1852,13 +1866,12 @@ export class JungleScene {
     h.dayLbl = el('div.j-daylbl', 'Daylight');
     h.timerSub = el('div.j-district', this.D.name);
     h.tr = el('div.j-tr', {}, h.ring, el('div.j-clock', { title: 'Daylight left: at sunset the jungle starts hunting you' }, h.sun, h.timer), h.dayLbl, h.timerSub);
-    // Bottom strip: the current objective step, where it is, and the nearest return point.
-    h.steps = el('span.j-step');
-    h.objDir = el('span.j-dir.obj', {}, el('span.x-dirarrow', '➤'), el('span', ''));
-    h.ford = el('span.j-dir.ford', { title: 'Deep water is in the way: cross where the stepping stones are (◇ on the minimap)' }, el('span.x-dirarrow', '➤'), el('span', ''));
-    h.extract = el('span.j-dir.ext', {}, el('span.x-dirarrow', '➤'), el('span', ''));
-    h.optList = el('span.j-opts');
-    h.strip = el('div.j-strip', { title: this.objDef.name }, el('span.j-objk', 'GOAL'), h.steps, h.objDir, h.ford, h.extract, h.optList);
+    // Bottom centre: the quest tracker (Stage 9, src/scenes/JungleQuest.js): QUEST + name + distance, the step to do
+    // now, the reward; the ford / home / bonus chips on its last line. It also owns the edge arrows and the markers.
+    h.ford = el('span.j-dir.ford', { title: 'Deep water is in the way: cross on the bridge (the plank sign on the minimap)' }, el('span.x-dirarrow', '➤'), el('span', ''));
+    this.quest = new JungleQuest(this);
+    const questNodes = this.quest.build(h);   // (sets h.extract, h.optList)
+    h.strip = this.quest.root;
     h.coach = el('div.j-coach', { style: { display: 'none' } });
     h.tlcol.append(h.coach);
     // Toasts queue under the coach line, one at a time (critic H2 §5.1: the top centre belongs to banners and the
@@ -1871,9 +1884,6 @@ export class JungleScene {
     h.promptText = el('span.x-plabel');
     h.promptTime = el('span.x-ptime');
     h.prompt = el('div.x-prompt', {}, el('div.x-ptext', {}, h.promptRing, h.promptText, h.promptTime));
-    h.arrowObj = el('div.x-edge.obj', {}, el('span', '▲'));
-    h.arrowExt = el('div.x-edge.ext', {}, el('span', '▲'));
-    h.arrowCrate = el('div.x-edge.crate', {}, el('span', '▲'));   // the coached crate (guided day)
     // In-world ◆ over the coached crate and the guided route's crates (pixel diamonds at the world's texel scale).
     h.marks = [];
     h.lowhp = el('div.j-lowhp');   // red screen-edge pulse at low health
@@ -1900,13 +1910,13 @@ export class JungleScene {
         el('div.x-bigtitle', {}, el('b', 'The Jungle'), el('span.muted', ` · ${this.D.name}: `), el('span.amber', this.objDef.name),
           el('span.j-paused', 'DAY PAUSED'), el('span.muted.x-bigclose', 'Tab / Esc close')),
         h.big,
-        el('div.j-bigfoot', {}, h.bigSteps, el('div.j-bighelp.muted', {}, `Drag / ${['up', 'left', 'down', 'right'].map((a) => keyLabel(this.game.input.keyFor(a))).join('')} / arrows pan · wheel / + − zoom · Space: you`, el('br'), 'Dark blue: deep water · pale strips: crossings')),
+        el('div.j-bigfoot', {}, h.bigSteps, el('div.j-bighelp.muted', {}, `Drag / ${['up', 'left', 'down', 'right'].map((a) => keyLabel(this.game.input.keyFor(a))).join('')} / arrows pan · wheel / + − zoom · Space: you`, el('br'), 'Dark blue: deep water · plank strips: bridges (the only way across)')),
         legend));
     this._bindBigMap(h.big);
-    h.root = el('div.x-hud', {}, h.lowhp, h.tlcol, h.tr, h.strip, h.prompt, h.arrowObj, h.arrowExt, h.arrowCrate, h.bigmap);
+    h.root = el('div.x-hud', {}, h.lowhp, h.tlcol, h.tr, h.prompt, ...questNodes, h.bigmap);
     h.root.style.setProperty('--hudfade', String(JUICE.hudFade?.opacity ?? 0.5));
     ui.append(h.root);
-    // Whole pixels (critic M2 P1-3): the centred GOAL strip is pinned, the clock lines are snapped when they change.
+    // Whole pixels (critic M2 P1-3): the centred quest tracker is pinned, the clock lines are snapped when they change.
     pinWhole(h.strip);
     snapBox(h.bigmap.firstElementChild);
     h.timer._snap = h.dayLbl._snap = true;
@@ -1998,41 +2008,12 @@ export class JungleScene {
   _hudRects() {
     const st = this.game.stage.getBoundingClientRect();
     const out = [];
-    for (const n of [this.hud.tl, this.hud.tr, this.hud.strip, this.hud.prompt, this.hud.coach, this.hud.toasts]) {
+    for (const n of [this.hud.tl, this.hud.tr, this.hud.timerSub, this.hud.strip, this.hud.prompt, this.hud.coach, this.hud.toasts]) {
       if (n.style.display === 'none') continue;
       const r = n.getBoundingClientRect();
       if (r.width > 0) out.push({ n, l: r.left - st.left, t: r.top - st.top, r: r.right - st.left, b: r.bottom - st.top });
     }
     return out;
-  }
-
-  /** Off-screen arrow on the stage edge toward `target`, slid clear of the HUD boxes in `avoid`. */
-  _edgeArrow(node, target, avoid) {
-    if (!target) { node.style.display = 'none'; return null; }
-    const pr = this.game.project(new THREE.Vector3(target.x, 0.5, target.z), this.camera);
-    const sw = this.game.stage.clientWidth, sh = this.game.stage.clientHeight;
-    const u = this.game.u, m = HUD.edgeMargin * u, half = 17 * u;
-    if (pr.x > m && pr.y > m && pr.x < sw - m && pr.y < sh - m) { node.style.display = 'none'; return null; }
-    const cx = sw / 2, cy = sh / 2;
-    const a = Math.atan2(pr.y - cy, pr.x - cx);
-    const k = Math.min((sw / 2 - m) / Math.abs(Math.cos(a) || 1e-6), (sh / 2 - m) / Math.abs(Math.sin(a) || 1e-6));
-    let x = cx + Math.cos(a) * k, y = cy + Math.sin(a) * k;
-    const side = Math.abs(x - m) < 1 || Math.abs(x - (sw - m)) < 1;   // on the left/right edge: slide vertically
-    for (let pass = 0; pass < 3; pass++) {
-      let moved = false;
-      for (const r of avoid) {
-        if (x + half <= r.l || x - half >= r.r || y + half <= r.t || y - half >= r.b) continue;
-        if (side) y = y < cy ? r.b + half : r.t - half;
-        else x = x < cx ? r.r + half : r.l - half;
-        moved = true;
-      }
-      if (!moved) break;
-    }
-    node.style.display = '';
-    node.style.left = `${x - half}px`;
-    node.style.top = `${y - half}px`;
-    node.firstChild.style.transform = `rotate(${(a * 180) / Math.PI + 90}deg)`;
-    return { l: x - half, t: y - half, r: x + half, b: y + half };
   }
 
   /** Fade a HUD box while a live enemy is behind it (so the corners never hide a threat). */
@@ -2082,33 +2063,7 @@ export class JungleScene {
     return out;
   }
 
-  /**
-   * The objective as HTML: always the objective's own sentence (the same words as the briefing card, the
-   * start banner and the summary); multi-step objectives add the current sub-step ("name: find the fuse").
-   * `all` (the big map) lists every sub-step.
-   */
-  _stepsHtml(all) {
-    const def = this.objDef;
-    if (this.objectiveDone) return `<span class="x-step claim">✔ ${def.name}: done. Head home to claim the reward</span>`;
-    if (this.objectiveFailed) return `<span class="x-step fail">✘ ${def.name}: failed. Loot what you can and head home</span>`;
-    const multi = def.steps.length > 1 || (def.steps[0].count || 1) > 1;
-    const cnt = (s, i) => (s.count && i === this.objStep ? ` (${this.stepCount}/${s.count})` : '');
-    const note = this.goals?.note() || '';   // live: the engineer's health, the uplink's time left, nests popped…
-    if (!all) {
-      const s = def.steps[this.objStep];
-      // The step and its count only (critic M2 P1-1: "goal: goal again (0/2)" lost the count to the ellipsis); the
-      // goal's name is the strip's tooltip and on the big map. A step that says "him" / "it" keeps the name in front.
-      const lbl = s && (/\b(him|it|its)\b/.test(s.label) ? `${def.name}: ${s.label}` : s.label[0].toUpperCase() + s.label.slice(1));
-      return `<span class="x-step cur">${multi && s ? `${lbl}${cnt(s, this.objStep)}` : def.name}${note}</span>`;
-    }
-    if (!multi) return `<span class="x-step cur">☐ ${def.name}</span>`;
-    return [`<span class="x-step cur">${def.name}</span>`, ...def.steps.map((s, i) => {
-      const cls = i < this.objStep ? 'done' : i === this.objStep ? 'cur' : '';
-      return `<span class="x-step ${cls}">${cls === 'done' ? '✔' : '☐'} ${s.label}${cnt(s, i)}</span>`;
-    })].join('<br>');
-  }
-
-  _updateHud() {
+  _updateHud(dt = 0) {
     const h = this.hud;
     const pl = this.player;
     const hpf = pl.hp / pl.maxHp;
@@ -2148,29 +2103,19 @@ export class JungleScene {
     // Keycaps follow the bindings (Settings → Controls can change them from the pause menu).
     this._set('tabk', h.tabKey, 'text', keyLabel(this.game.input.keyFor('map')));
     this._set('promptk', h.promptKey, 'text', keyLabel(this.game.input.keyFor('interact')));
-    // Objective strip.
-    this._set('steps', h.steps, 'html', this._stepsHtml(false));
+    // The quest tracker, edge arrows and markers are drawn by JungleQuest.update (below).
     const ot = this._objectiveTarget();
-    h.objDir.style.display = ot ? '' : 'none';
-    if (ot) {
-      this._dirArrow(h.objDir.firstChild, ot.x, ot.z);
-      this._set('objd', h.objDir.lastChild, 'text', `${Math.round(ot.d)} m`);
-    }
     // River wayfinding (critic L §3): deep water on the straight line to the goal → the crossing to use.
     this._updateFord(ot);
     const fd = this._ford;
     this._set('fordd', h.ford, 'display', fd ? '' : 'none');
     if (fd) {
       this._dirArrow(h.ford.firstChild, fd.x, fd.z);
-      this._set('fordt', h.ford.lastChild, 'text', `cross at the stepping stones ${Math.round(Math.hypot(fd.x - pl.pos.x, fd.z - pl.pos.z))} m`);
+      this._set('fordt', h.ford.lastChild, 'text', `cross at the bridge ${Math.round(Math.hypot(fd.x - pl.pos.x, fd.z - pl.pos.z))} m`);
     }
     const ex = this._nearestExit();
     // "Home N m" only when going home is the next thing to do (goal done, sunset close, low health).
     const homeNow = this.objectiveDone || this.dayT > DAY.length - HOME_HINT.lastSeconds || pl.hp / pl.maxHp < HOME_HINT.lowHp;
-    h.extract.style.display = homeNow ? '' : 'none';
-    this._dirArrow(h.extract.firstChild, ex.x, ex.z);
-    this._set('ext', h.extract.lastChild, 'text', `${ex.name} ${Math.round(ex.d)} m`);
-    this._set('opts', h.optList, 'text', this.optionalsDone.length ? `+${this.optionalsDone.length} bonus` : '');
     this._updateCoach();
     // Prompt.
     const t = this.promptTarget;
@@ -2190,11 +2135,10 @@ export class JungleScene {
     // near); while "open the crate" is the step, its arrow replaces the goal's at the screen edge (one arrow at a time).
     const cc = this._coachCrate();
     this._placeMarks(this.mapOpen ? [] : this._coachMarks(cc));
-    // Off-screen arrows: clear of the HUD boxes and of each other.
+    // The quest (JungleQuest): the tracker, the off-screen arrows (clear of the HUD boxes and of each other), the
+    // markers over on-screen targets, the pointer by the player, the light beams over the quest site.
     const rects = this._hudRects();
-    const ra = this._edgeArrow(h.arrowObj, cc ? null : ot, rects);
-    const rc = this._edgeArrow(h.arrowCrate, cc, ra ? [...rects, ra] : rects);
-    this._edgeArrow(h.arrowExt, homeNow && ex.d > 6 ? ex : null, [...rects, ra, rc].filter(Boolean));
+    this.quest.update(dt, { ot, ex, homeNow, cc, rects });
     // Minimap and threat fade (a few times a second).
     this._mapT = (this._mapT || 0) - 1;
     if (this._mapT <= 0) {
@@ -2249,9 +2193,9 @@ export class JungleScene {
           done: (t) => opened() > this.coach.opened0 || this.coach.crate?.done || t > C.crateWait },
         { id: 'map', text: () => `Lost? ${this._key('map')} opens the map. The day waits while it is open`,
           done: (t) => this._mapOpened || t > C.mapWait },
-        { id: 'goal', text: () => `Goal: <b>${this.objDef.name}</b>. Follow the <span class="amber">amber ◆ arrow</span>`,
+        { id: 'goal', text: () => `Your quest: <b>${this.objDef.name}</b>. Follow the big <span class="amber">amber arrow</span> to the <span class="amber">◆</span>`,
           done: () => this.objectiveDone },
-        { id: 'loot', text: () => { const n = this.coach.loot.filter((it) => !it.done).length; return `Goal done! Open the ${n === 1 ? 'crate' : `${n} crates`} here (◆): the Scrap you bring home builds towers`; },
+        { id: 'loot', text: () => { const n = this.coach.loot.filter((it) => !it.done).length; return `Quest done! Open the ${n === 1 ? 'crate' : `${n} crates`} here (◆): the Scrap you bring home builds towers`; },
           start: () => { this.coach.loot = this._siteCrates(); return this.coach.loot.length > 0; },
           done: (t) => !this.coach.loot.some((it) => !it.done) || t > C.crateWait },
         { id: 'home', text: () => `Head home: follow the <span class="accent">cyan arrow</span> to the Relay and hold ${this._key('interact')}`,
@@ -2357,7 +2301,7 @@ export class JungleScene {
     return best;
   }
 
-  /** River wayfinding: when the straight line to the goal crosses deep water, the ford to use (this._ford) or null. */
+  /** River wayfinding: when the straight line to the goal crosses deep water, the bridge to use (this._ford) or null. */
   _updateFord(ot) {
     this._fordT = (this._fordT || 0) - 1;
     if (this._fordT > 0) return;
@@ -2373,7 +2317,17 @@ export class JungleScene {
       if (x >= 0 && z >= 0 && x < W && z < W && deep[z * W + x]) crosses = true;
     }
     if (!crosses) return;
-    // The ford tile with the shortest walk you → ford → goal (a pond with no crossing nearby: walk round it).
+    // The bridge with the shortest walk you → its middle → goal (a pond with no crossing nearby: walk round it).
+    if (this.data.bridges?.length) {
+      let best = null, bd = len * 2.5;
+      for (const b of this.data.bridges) {
+        const x = (b.x0 + b.x1) / 2, z = (b.z0 + b.z1) / 2;
+        const d = Math.hypot(x - p.x, z - p.z) + Math.hypot(ot.x - x, ot.z - z);
+        if (d < bd) { bd = d; best = { x, z }; }
+      }
+      this._ford = best;
+      return;
+    }
     const pad = 30;
     const x0 = Math.max(0, Math.floor(Math.min(p.x, ot.x) - pad)), x1 = Math.min(W - 1, Math.ceil(Math.max(p.x, ot.x) + pad));
     const z0 = Math.max(0, Math.floor(Math.min(p.z, ot.z) - pad)), z1 = Math.min(W - 1, Math.ceil(Math.max(p.z, ot.z) + pad));
@@ -2624,6 +2578,7 @@ export class JungleScene {
     this.player.dispose();
     this.relicsCtl?.dispose();
     this.goals?.dispose();
+    this.quest?.dispose();
     this.bosses?.dispose();
     this.weather?.dispose();
     this.spores?.dispose();

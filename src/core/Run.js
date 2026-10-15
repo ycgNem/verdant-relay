@@ -30,7 +30,7 @@ import { DEFENSE, SALVAGE, healthMult } from '../data/waves.js';
 import { PROTOCOLS, PROTOCOL_ORDER } from '../data/protocols.js';
 import { RELICS, relicMod as relicFx, relicLive } from '../data/relics.js';
 import { makeRng, newSeed, subSeed } from './rng.js';
-import { pickMapKey } from '../data/defenseMap.js';
+import { pickMapKey, mapFor, legacyPadTile } from '../data/defenseMap.js';
 import { saveRun, clearRun, patchRun } from './Save.js';
 
 const emptyRes = () => ({ scrap: 0, circuits: 0, biofiber: 0, intel: 0 });
@@ -66,7 +66,7 @@ export class Run {
     this.meds = 0;
     this.weapon = 'machete';
     this.res = { ...CONFIG.startResources };
-    this.towers = [];            // [{ pad, type, level, target, spent: {scrap,...} }]
+    this.towers = [];            // [{ x, y (tile), type, level, target, spent: {scrap,...} }] (old saves: pad → tile in fromSave)
     this.skills = [];
     this.skillPoints = 0;
     // Camp crafting (src/data/crafting.js; the Workbench step after the summary). Older saves have none:
@@ -153,7 +153,7 @@ export class Run {
     // Records as they stood when the run began (Results says "new best" against these).
     if (r.mode === 'long') r.stats.longBefore = meta.longNight?.best || 0;
     if (r.mode === 'daily') r.stats.dailyBefore = meta.daily?.[r.dailyDate]?.nights || 0;
-    r.mapKey = pickMapKey(r.seed);   // the night map, fixed for the run (towers stay on their pads)
+    r.mapKey = pickMapKey(r.seed);   // the night map, fixed for the run (towers stay where they were built)
     r.relayHp = r.relayMax;
     r.stats.peak = { ...r.res };   // after unlock bonuses (Hidden Stockpile, kits)
     // Lifetime run count is bumped by startNewRun (TitleScene), so debug runs don't inflate it.
@@ -293,6 +293,14 @@ export class Run {
     r.items = { ...(obj.items || {}) };
     r.blade = [...(obj.blade || [])];
     r.crafted = { ...(obj.crafted || {}) };
+    // Stage 9 (build anywhere): towers saved on an old build pad stand on that pad's tile.
+    const map = mapFor(r.mapKey);
+    r.towers = (obj.towers || []).map((t) => {
+      if (Number.isInteger(t.x) && Number.isInteger(t.y)) return t;
+      const at = legacyPadTile(map, t.pad);
+      const { pad, ...rest } = t;
+      return at ? { ...rest, x: at.x, y: at.y } : null;
+    }).filter(Boolean);
     return r;
   }
 
@@ -688,12 +696,12 @@ export class Run {
     return Math.floor((tower.spent.scrap || 0) * (this.sellRefund || CONFIG.sellRefund));
   }
 
-  /** Place a tower on a pad. Returns the tower record or null. */
-  build(type, pad) {
-    if (this.towers.some((t) => t.pad === pad)) return null;
+  /** Place a tower on tile (x, y) (the scene checks the spot: DefenseScene._placeCheck). Returns the record or null. */
+  build(type, x, y) {
+    if (!Number.isInteger(x) || !Number.isInteger(y) || this.towers.some((t) => t.x === x && t.y === y)) return null;
     const cost = this.buildCost(type);
     if (!this.spend(cost)) return null;
-    const tower = { pad, type, level: 1, target: TOWERS[type].target, spent: { ...cost } };
+    const tower = { x, y, type, level: 1, target: TOWERS[type].target, spent: { ...cost } };
     // Efficient Assembly (it absorbed Circuit Recovery): a build that uses Circuits may give one back.
     if (this.hasSkill('efficient_assembly') && (cost.circuits || 0) > 0 && Math.random() < SKILLS.efficient_assembly.circuitBack) {
       this.res.circuits += 1;
@@ -997,15 +1005,15 @@ export class Run {
     return out;
   }
 
-  /** Apply a salvage pick. `bestPad`: the pad of tonight's top-damage tower (for a tune-up). Returns a note. */
-  applySalvage(key, bestPad) {
+  /** Apply a salvage pick. `best`: tonight's top-damage tower record (for a tune-up). Returns a note. */
+  applySalvage(key, best) {
     const o = SALVAGE.options[key];
     if (!o) return null;
     if (o.give) this.add(o.give);
     if (o.relayHp) this.relayHp = Math.min(this.relayMax, this.relayHp + o.relayHp);
     if (o.freeUpgrades) this.salvage = { freeUpgrades: (this.salvage?.freeUpgrades || 0) + o.freeUpgrades };
     if (o.rangeMod) {
-      const t = this.towers.find((x) => x.pad === bestPad && !x.rangeMod) || this.towers.find((x) => !x.rangeMod);
+      const t = this.towers.find((x) => x === best && !x.rangeMod) || this.towers.find((x) => !x.rangeMod);
       if (!t) return null;
       t.rangeMod = o.rangeMod;
       return `${TOWERS[t.type].name}: +${Math.round((o.rangeMod - 1) * 100)}% range`;

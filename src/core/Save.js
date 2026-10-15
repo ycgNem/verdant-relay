@@ -127,14 +127,18 @@ export const RUN_PHASES = ['briefing', 'explore', 'summary', 'prep', 'wave'];
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
 /**
- * One placed tower record: known type, level 1..max, a real pad, a known targeting rule. Optional (Stage 7):
- * `branch` 'a' | 'b' (the level-3 choice; missing = 'a'), `rangeMod` (salvage tune-up, 1–1.5).
+ * One placed tower record: known type, level 1..max, a tile of the map's field (`x`, `y`; Stage 9 build anywhere)
+ * or, in a save from before, a real old build pad (`pad`: Run.fromSave moves it to that pad's tile), a known
+ * targeting rule. Optional (Stage 7): `branch` 'a' | 'b' (the level-3 choice; missing = 'a'), `rangeMod` (salvage
+ * tune-up, 1–1.5).
  */
-function validTower(t, pads = padCount(mapFor('twin'))) {
+function validTower(t, map = mapFor('twin')) {
   const def = t && TOWERS[t.type];
+  const tile = t && Number.isInteger(t.x) && Number.isInteger(t.y) && t.x >= 0 && t.y >= 0 && t.x < map.width && t.y < map.height;
+  const pad = t && !tile && Number.isInteger(t.pad) && t.pad >= 0 && t.pad < padCount(map);
   return !!def
     && Number.isInteger(t.level) && t.level >= 1 && t.level <= def.upgrades.length + 1
-    && Number.isInteger(t.pad) && t.pad >= 0 && t.pad < pads
+    && (tile || pad)
     && (TARGET_RULES.includes(t.target) || def.target === 'none')
     && !!t.spent && typeof t.spent === 'object'
     && (t.branch == null || t.branch === 'a' || t.branch === 'b')
@@ -175,12 +179,13 @@ export function validRun(r) {
   if (!Array.isArray(r.skills) || !r.skills.every((k) => typeof k === 'string' && (SKILLS[k] || Object.prototype.hasOwnProperty.call(SKILL_RENAMED, k)))) return false;
   if (r.skillPoints != null && (!Number.isInteger(r.skillPoints) || r.skillPoints < 0)) return false;
   if (!validCrafting(r)) return false;
-  // The night map (Stage 7 map variants; missing in older saves = 'twin'): tower pads are checked against it
-  // (its pads + its beacon forward-pad slots).
+  // The night map (Stage 7 map variants; missing in older saves = 'twin'): tower tiles (or, in an older save, pads)
+  // are checked against it. One tower per tile (per pad).
   if (r.mapKey != null && !DEFENSE_MAPS[r.mapKey]) return false;
-  const pads = padCount(mapFor(r.mapKey));
-  if (!Array.isArray(r.towers) || !r.towers.every((t) => validTower(t, pads))) return false;
-  if (new Set(r.towers.map((t) => t.pad)).size !== r.towers.length) return false;   // one tower per pad
+  const map = mapFor(r.mapKey);
+  if (!Array.isArray(r.towers) || !r.towers.every((t) => validTower(t, map))) return false;
+  const spot = (t) => (Number.isInteger(t.x) ? `${t.x},${t.y}` : `pad${t.pad}`);
+  if (new Set(r.towers.map(spot)).size !== r.towers.length) return false;
   if (r.district != null && !DISTRICTS[r.district]) return false;
   if (r.tonight != null && typeof r.tonight !== 'object') return false;
   if (r.stats != null && typeof r.stats !== 'object') return false;

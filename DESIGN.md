@@ -58,8 +58,8 @@ abandoning the trip and quitting mid-day are the same outcome:
 | Screen | Contents |
 |---|---|
 | Title | Only what is unlocked (§8): a first visit sees New Run, Collection, Settings. Continue (only with a valid save; says the mode and where: "Day trip (counts as abandoned)"), Daily Run (after the first run: today's two modifiers and today's best), Long Night and the Overgrowth row ◂ level ▸ (Left / Right; after the first win). With modes open the column goes compact (New Run + Long Night, Collection + Settings side by side). The records box (Research, best run, Overgrowth won, Long Night best, runs, research unlocks) only once there is a record, with the "You can afford N research unlocks" nudge under it |
-| Briefing | Night N/6 (pips, the last one a ☠ boss night; Long Night: "+N" past six and a boss warning every 3rd night), the mode tag (Overgrowth N / Daily: modifier names, all of them on hover; Long Night), Relay (your base) and your health, med kits, resources stored at base (Scrap always, others once you have some), two (Scout Report: three) area cards: **Goal** (the objective sentence) with its **Reward** "(get home to claim it)", **Finds** ("Twice the Circuits in all you loot today": the area's loot multipliers apply to every container you open that day) and **Danger** tonight (green "None: you killed the …" once its boss is dead) and, from night 3, **Boss** (☠ its name, "Optional"); where / creatures behind **Details**. Today's weather, if any, sits under "Where to today?" (☂ Rain / ≋ Fog / ☀ Heat and what it does). "New areas" (R, Second Look) re-rolls the offer once a night. Side: **tonight's attack per path** (the wave the night will build: variant name, enemy count, pushes, split by path, with the picked area's danger added to the path facing it, "Includes: …"), Field Dressing's med-kit shop, towers and skills once there are any. Head out. The guided first night shows one pre-selected area |
-| Exploration HUD | Top-left: Health (green → yellow → red; the screen edge pulses red under 30%), Stamina (flashes "tired" when empty), med kits (once carried), carried loot (Scrap always, other currencies as found) with carried relics' icons under it; under that panel the coach / tip line. Top-right: minimap ringed by the daylight left (Tab/M big map: deep water dark blue, crossings pale), the clock with a pixel sun (a moon after sunset) and its "Daylight" label, the area name (and today's weather). Bottom: the GOAL strip (the objective sentence, "name: sub-step" for multi-step ones) with distance/direction, "cross at the stepping stones" when deep water is in the way, "Home N m" only when going home is next (goal done, last minute of daylight, low health); the interact prompt above it. The top centre stays free (an area boss's bar) |
+| Briefing | Night N/6 (pips, the last one a ☠ boss night; Long Night: "+N" past six and a boss warning every 3rd night), the mode tag (Overgrowth N / Daily: modifier names, all of them on hover; Long Night), Relay (your base) and your health, med kits, resources stored at base (Scrap always, others once you have some), two (Scout Report: three) area cards: **◆ Quest** (its name, in an amber-edged block) with "★ **Reward**: …" "(get home to claim it)" (its one-line `brief` on hover), **Finds** ("Twice the Circuits in all you loot today": the area's loot multipliers apply to every container you open that day) and **Danger** tonight (green "None: you killed the …" once its boss is dead) and, from night 3, **Boss** (☠ its name, "Optional"); where / creatures behind **Details**. Today's weather, if any, sits under "Where to today?" (☂ Rain / ≋ Fog / ☀ Heat and what it does). "New areas" (R, Second Look) re-rolls the offer once a night. Side: **tonight's attack per path** (the wave the night will build: variant name, enemy count, pushes, split by path, with the picked area's danger added to the path facing it, "Includes: …"), Field Dressing's med-kit shop, towers and skills once there are any. Head out. The guided first night shows one pre-selected area |
+| Exploration HUD | Top-left: Health (green → yellow → red; the screen edge pulses red under 30%), Stamina (flashes "tired" when empty), med kits (once carried), carried loot (Scrap always, other currencies as found) with carried relics' icons under it; under that panel the coach / tip line. Top-right: minimap ringed by the daylight left (Tab/M big map: deep water dark blue, crossings pale), the clock with a pixel sun (a moon after sunset) and its "Daylight" label, the area name (and today's weather). Bottom centre: the **quest tracker** (Stage 9, §3 "Quests on screen"): ◆ QUEST + the quest's name + a pixel arrow and the distance; the step to do now (☐, "(1/2)" counts, the step number "1/2" on multi-step quests, a live note); ★ the reward hint, then "cross at the bridge N m" when deep water is in the way, "Home N m" only when going home is next (last minute of daylight, low health), "+N bonus"; the interact prompt above it. The quest's edge arrow, the ◆ ▼ marker over the target and the light beam over its site (§3). The top centre stays free (banners, the quest card, an area boss's bar) |
 | Summary | One card: You got (or Saved / Lost), **Found** (relics brought home, each with what it does now; or the relics **Lost** out there), Goal ✓/✗ ("failed" when the engineer died), Reward(s) tonight (or "Reward lost" after going down), Bonus tasks and events, **Boss** (an area boss killed today and what it cleared), Danger tonight (green when its boss is dead) (both dangers with Restless Jungle), Health (after a bad day), skill points, Intel note (only with Intel), Research in one line; then the skill pick (only with points; "Re-roll cards" R with Fresh Ideas; icon + number on each card, ★ keystones gold-framed) and Continue ("Workbench ▶" when something can be made, else "Prepare for the night"). The **Workbench** step: recipe cards by group (tower mods, machete, supplies) with what you have vs need, Back (Esc) and Prepare for the night. The status strip shows "Health at dawn". Saved as phase `summary`, so a reload comes back here |
 | Preparation | Defense map, Relay HP, resources (full words, zeros hidden), tower list (name, price, one plain line, Power/Speed/Range bars; exact numbers on hover; "+5 Scrap: you own N" when the price rises), selected tower (line, bars, its **Mod** socket when you have a mod — fit / swap / take out, targeting from night 2, upgrade, sell), Intel actions (Read / Disrupt, only with Intel), Repair (only when damaged), tonight's attack (danger, rewards, enemies per path, "also tonight", where each owned night relic says what it does tonight, a cursed one's price in red-violet), the readiness line (Your defense: weak / risky / strong) and Start Wave |
 | Defense HUD | Relay HP, wave progress, "N to go" (alive + still coming, matching the per-path counts), resources, pause, 1×/2× speed, boss bar |
@@ -85,7 +85,8 @@ they break out. Terrain blends organically (no tile grid). Foliage in front of y
 
 **Controls:** WASD move · mouse aim · **LMB** machete slash (3-hit combo; hold it while walking to hack through brush) ·
 hold **RMB** charge a heavy chop, release to swing (the first instant of an RMB press **deflects**) · **Space** dodge roll
-(i-frames, stamina) · **F** throw the machete · E interact (hold where needed) · Q med kit · Tab/M map · Esc pause.
+(i-frames, stamina) · **F** throw the machete · E interact (hold where needed) · Q med kit (takes 0.7 s: walking slowly,
+a hit or a roll stops it and keeps the kit — heal when it's safe) · Tab/M map · Esc pause.
 Every key but Esc can be rebound (Settings → Controls, §8); the mouse buttons are fixed.
 
 **Player:** 100 HP, ~5.6 tiles/s (shallow water ×0.55, mud ×0.82, ferns ×0.5; a roll in ferns ×0.6). Movement is snappy:
@@ -98,7 +99,7 @@ flowing verb, not a stamina tax. Roll 20; regen 40/s after 0.35 s; empty = exhau
 regen at full rate; spending while exhausted doesn't restart the regen delay, so it always ends; exhausted swings and
 chops are ×1.35 slower and ×0.7 weaker). A Space press is buffered for 0.15 s (late in a roll, in its cooldown, before a chop lands).
 - **Machete** (`WEAPONS.machete`): 13 / 13 / 28 damage combo (7 / 7 / 12 stamina), 120° arcs, range ~1.5; each swing
-  lunges a step. The heavy **chop** (0.42 s charge) hits 36 in a 165° arc, staggers (interrupts wind-ups), knocks hard
+  lunges a step. The heavy **chop** (0.42 s charge) hits 36 in a 165° arc, staggers (interrupts a wind-up before its red flash), knocks hard
   and clears brambles; it costs 30 stamina and holds regen 0.45 s. Critic I2: the combo is the damage option (paced
   ~31–35 DPS against a dummy), the chop the stagger / crowd / brush tool (chop spam ~26 DPS, was 37).
   **Hack-through:** holding LMB while you walk swings on its own every ~0.28 s, along where you walk (unless you aim within
@@ -136,10 +137,13 @@ containers (opened ones too), objective props, pylons and the Relay. Each footpr
 rounded box), never the canopy, so you slide smoothly along it. Ground decals and leaf litter stay walkable. No
 undergrowth grows on or right in front of a log, rock or ruin, so nothing solid hides in the ferns.
 **Water:** shallow edges, ponds' rims and mud only slow you. Deep water (the dark channel with a pale drop-off line)
-can't be crossed by anyone: rivers are crossed at **fords** — where a trail meets the river, plus ~3 more per river —
-drawn as stepping stones in shallow water. Generation guarantees that every site, pylon and container can be walked
-to from the Relay (brush counts as passable, since you can cut it); anything cut off gets a ford, or the trees in the
-way are removed.
+can't be crossed by anyone: rivers are crossed on **bridges** (Stage 9) — straight wooden plank decks two tiles wide
+with posts and a rope rail, laid N–S or E–W from bank to bank, one where each trail meets the river (a short dirt landing
+joins the trail on both banks) plus ~3 more per river across its flow. The walkable crossing is exactly the deck (the
+water beside it stays deep and dark); on the deck you walk at full speed, dry (no wading), with wooden footsteps.
+Generation guarantees that every site, pylon and container can be walked to from the Relay (brush counts as passable,
+since you can cut it); anything cut off gets a bridge, or the trees in the way are removed. The Ford night map's stream
+is crossed on the same plank bridges.
 
 **A day:**
 1. The Relay drone drops you at the Relay, or at an activated pylon if that still leaves a trek of ≥ 50 m to the
@@ -167,6 +171,35 @@ way are removed.
   pylons, towers, banked resources and research are kept. (Critic G: one early death used to decide whole runs.)
   The death modal and the abandon / quit confirms list what's lost, what the drone saves and tomorrow's health.
 
+**Skillful combat (Stage 9, `POISE`; "you just hit the enemy, then it hits you, no dodging").** Measured cause: light
+slashes knocked a creature ~0.85 tiles back and froze its steering for 0.14 s, so mashing kept it out of its own reach,
+the finisher interrupted any wind-up, and a full combo (54) killed most things before their lunge landed — a masher took
+0–42 HP per arena fight on nights 1–5 and never died. The rules now:
+- **Red flash = committed.** Every lunge, charge and stomp has an aim phase (the telegraph follows you) and then
+  *commits*: the whole creature blinks red (`Fx.tell`) and the red "!" pops. From then on no blow stops it — roll
+  (through it) or deflect. Commit windows: Feral 0.4 s, Crawler 0.35 s, Skitter 0.3 s (after its chitter), Razorback
+  ~0.6 s of a 0.9 s lane; day 1 wind-ups are ×1.2 (day 2 ×1.1).
+- **Poise.** Light slashes don't flinch Ferals, Crawlers or Razorbacks any more (a ×0.3 shove, no hit-stun) — only a
+  blow with more stagger than the creature's poise (Skitter 0, Crawler 0.3: the finisher; Feral 0.5: the chop or a
+  riposte; Razorback 1.0: nothing but a deflect, a tree or an opening) interrupts the aim phase.
+- **It hits back.** Hit a creature as it walks in and it starts its attack at once (no cooldown or attack token; once per
+  2.2 s). A **Feral** you keep slashing from the front while it can't hit back raises its **guard** (steel tint, "GUARD"):
+  frontal slashes are BLOCKED and it thrusts out of it after 0.8 s; a chop or a blow from its side / back breaks it
+  (stunned 1 s).
+- **Openings.** An attack that misses you leaves the creature standing spent (panting puffs) for its `recover` time —
+  Feral 0.8 s, Crawler 0.7, Skitter 0.45 (then it darts back out), Razorback 1.0 (elites ×0.6). Blade hits on an open
+  (or stunned / staggered / exposed) creature deal **×1.5** (a gold number). An attack that lands hops back instead.
+- **Trading loses.** Getting hit stops your swing (the combo too) and you can't attack for 0.28 s (a roll still works);
+  the next attacker may wind up 0.5 s after a hit lands (was 1 s). Damage up (Feral 12 → 17, Crawler 10 → 13, Skitter
+  6 → 8, Razorback 20 → 26), HP re-cut so a face-traded combo (54) doesn't kill a Feral (66) but a punished one (82) does:
+  Feral 42 → 66, Crawler 26 → 34, Skitter 13 → 16 (one punished slash), Razorback 90 → 110, Feral Chief 72 → 96.
+- **Rhythm.** Attack tokens are granted at least 0.4 s apart (was 0.2), so a pack's attacks come one after another —
+  you can roll them one by one; 3 attackers at once from day 4.
+- **Fair:** ranged wind-ups and the Feral spear only start from on screen. Every hit is logged with its move; going
+  down says what got you and what to do about it ("Taken down by a Feral Scavenger's second thrust. Ferals often stab
+  twice: after you roll the first, roll the second.") plus today's wounds by cause.
+- The coach's roll tip: "Red flash = roll! Space through it, then hit it while it's open".
+
 **Wildlife** (`POP`): rolled per 16 × 16 chunk per day, denser further from the Relay and in today's district,
 scaled by night. It appears ≥ 15 tiles away (off screen), despawns far behind you, and stays dead for the day once killed.
 Feral camps hold 2–4 Feral Scavengers. Walkers never spawn inside brush (an open tile with ≥ 3 open neighbours).
@@ -178,8 +211,8 @@ Feral camps hold 2–4 Feral Scavengers. Walkers never spawn inside brush (an op
   Lunge reach: Feral 2.8, Crawler 2.4, Skitter 1.9 (they wind up from 1.7 / 1.5 / 1.5 tiles).
 - **Bramble Crawler** (lunge; its bite bleeds), **Skitter** (fast; it takes a slot behind you and chitters for 0.15 s
   before its wind-up), **Feral Scavenger** (spear thrust; from night 2 it may thrust twice — a second, shorter lunge
-  0.35 s later at 60% damage; if it can see you but can't reach you for 1.5 s, or you're > 4 tiles off in the brush, it
-  **throws its spear** — a 0.9 s line telegraph that leads a walking target until 0.4 s before the throw, 14 damage,
+  0.45 s later at 80% damage; if it can see you but can't reach you for 1.5 s, or you're > 4 tiles off in the brush, it
+  **throws its spear** (only from on screen) — a 0.9 s line telegraph that leads a walking target until 0.4 s before the throw, 15 damage,
   3.5 s cooldown, no attack token, one spear at a time — and if it can't see you it hacks a brush
   tile toward you every 0.8 s), Spitter (rooted, lobs sap over the brush: its sight ignores undergrowth, only walls,
   trees and ruins block it), Razorback (wind-up, charge, crashes through brush; its lane is drawn as wide as the hit and
@@ -195,7 +228,8 @@ Feral camps hold 2–4 Feral Scavengers. Walkers never spawn inside brush (an op
   **launches** it 3.5 tiles along the swing, where it bursts away from you. Back off from the swell, or chop it away.
 - **Feral Chief** (day 5+, `DAY_CREATURES.chief`): leads every Feral camp (72 HP, gold-tinted Feral); Ferals within 8
   tiles of it move 20% faster. Kill it first.
-- HP breakpoints: one light slash kills a Skitter on nights 1–3, two kill a Crawler through night 3.
+- HP breakpoints (Stage 9): one *punished* slash (20) kills a Skitter through night 5, two kill a Crawler through night 4,
+  a punished combo (82) kills a Feral through night 5; face-trading needs more than a combo.
 Every big attack is telegraphed. A creature's dim red ground ring shows only while it is a threat (critic H2 §5.8,
 `HUD.ringNear`): winding up or attacking, holding an attack slot, alerted and within 2.6 tiles of you, and always on
 elites and area bosses; the rest keep only their blob shadow, so a calm herd doesn't paint the ground red. Kills leave
@@ -203,11 +237,11 @@ a splat in the creature's colour (sap for Crawlers / Burrowers / Seed Carriers, 
 magenta for Skitters, acid for Spitters / Bloaters) stained into the ground under it: never darker than that ground.
 Kills sometimes drop 1–3 Scrap (a top-up, not income).
 **Attack tokens** (`CONFIG.expedition.attackers`): at most 2 melee/charge attackers wind up on you at once (3 from
-night 5), no new wind-up starts for 1 s after a melee hit lands. Anything that can't attack yet (no token, or still on
+night 4; a counter or a thrust out of a guard skips the cap), granted ≥ 0.4 s apart; no new wind-up starts for 0.5 s after a melee hit lands. Anything that can't attack yet (no token, or still on
 cooldown) holds a slot ~2.4 tiles out on your flanks or back (120–180° off your aim; Skitters right behind you) instead
-of walking in; after a lunge the attacker hops 0.7 tiles back; bodies keep 1.45× their radii from you (`CROWD`). With
-the 0.6 s post-hit i-frames a pack can't chain hits: a Feral + 2 Crawlers on night 2 deals ~30 HP in 6 s to a player
-standing still.
+of walking in; after a lunge that hits, the attacker hops 0.7 tiles back (one that misses stands open); bodies keep 1.45× their
+radii from you (`CROWD`). The 0.6 s post-hit i-frames stay, but standing still is no longer survivable: a night-3 pack of
+2 Ferals + 2 Crawlers + a Skitter kills a player who stands still in ~10 s (was 55 HP in 12 s).
 **Environmental kills:** a creature knocked back at ≥ 2.5 t/s into a trunk, rock or ruin (with 0.3 tiles of slack: a
 knock that ends just short still slams it) takes +10 and reels 0.5 s; into a bramble +14 and 0.6 s, and nicks it; a
 Razorback charging into a trunk, rock or ruin takes +12 and its stun (`SPLAT`). Bark chips, falling leaves, a dust ring,
@@ -260,8 +294,10 @@ carry at most 2.
 (a site used for an objective is never reused): Restore the Relay Box (fuse at a side site, power box at a ruin),
 Recover Route Data (hold 7 s, enemies come), Activate Pumps (two sites), Salvage a Power Cell (guards burst out),
 Clear the Blockage (an elite Razorback appears when you get near). **From day 2** five more join the deal (`minNight`;
-run by `src/scenes/JungleGoals.js`, tuning in `GOALS`). Each has one plain sentence used word for word on the card, the
-start banner, the GOAL strip and the summary, and a live note on the strip (his health, time left, nests popped):
+run by `src/scenes/JungleGoals.js`, tuning in `GOALS`). The player sees each as a **quest** (Stage 9): its name is used
+word for word on the briefing card, the quest card, the tracker, the big map and the summary; each step has a plain
+label saying what and where ("Open the guarded cache at Awning Square and take its power cell": `{at}` = the site's
+place name), and the tracker carries a live note (his health, time left, nests popped):
 
 | Goal (sentence) | How it plays | Reward tonight |
 |---|---|---|
@@ -274,6 +310,32 @@ start banner, the GOAL strip and the summary, and a live note on the strip (his 
 The first five goals pay +20 Scrap on top too (power box +20 and a free upgrade, route data +20 and −10%, pumps +20 and
 the North path slowed, power cell +20 and +10% fire rate, Razorback +45 Scrap). The guided first day keeps
 `GUIDE.objective`. On an escort day there is no "Rescue the trapped mechanic" bonus task.
+
+**Quests on screen** (Stage 9, user feedback: "salvage a power cell isn't an apparent objective; make the arrow more
+obvious"; `src/scenes/JungleQuest.js`, tuning `QUEST` in `src/data/hud.js`, art `src/ui/questArt.js`):
+- **Quest card** at the day's start (the guided day too): a panel in the top-centre banner lane — ◆ QUEST · the area,
+  the name, its `brief` (multi-step quests only), every step ☐, "★ Reward: …" (`boon.short`), "+1 skill point when it
+  is done", "Follow the amber arrow · J this card · Tab map". On screen at least 2.5 s, gone once you walk 1.5 tiles
+  (else after 8 s); the quest key (**J**, rebindable in Settings → Controls as "Quest card") opens / closes it again. The card is left-aligned (whole pixels). The big map (Tab) shows the
+  same: QUEST + name, every step ✔ / ☐ with counts, the reward.
+- **Tracker** (bottom centre, where the GOAL strip was): three lines with an amber spine — ◆ QUEST · name · ↗ N m; ☐ the
+  step to do now (+ "1/2" step number, `stepNums: false` for the Alpha whose labels count the tracks); ★ `boon.hint`
+  (+ ford / home / bonus chips). A finished step stays ✔ struck through for 1.4 s (the tracker flashes green), then the
+  next shows; done → QUEST COMPLETE (green tag, "Head home to claim the reward" or "Reward secured", the distance home in
+  cyan); failed → QUEST FAILED. The interact prompt and bottom hints sit above it (`--qh`).
+- **QUEST COMPLETE** banner (gold-edged panel): the title, "★ <reward>" in green, then "Head home to claim it: follow
+  the cyan arrow" (or "The drone has it"); an amber ring + burst at the player, the tracker flashes gold.
+- **Edge arrow** (target off screen; the user asked for it "much more obvious"): a 25-pixel pixel-art arrow drawn at
+  **2× the world's texel size** (100 px at 720p, 150 at 1080p), 8 directions, rasterised per direction with an ink
+  outline, a top-left bevel and a two-pixel glow (a pale ring + a dithered one), so it stays pixel-exact; it bobs 2 of
+  its pixels toward the target and flashes amber ↔ yellow, with a "◆ N m" badge inward of it. It slides along the edge to
+  the nearest spot clear of every HUD box, the quest card, banners and the boss bar (in a crowded corner it goes round to
+  the other edge). The guided day's crate ("◆ Crate N m") and home ("Home N m", cyan) arrows use the same art.
+- **On screen:** a bobbing ◆ ▼ over each target of the current step (hidden within 1.6 tiles: the prompt takes over;
+  under the corner HUD), and an amber light pool + light column over each target (like a switched-on beacon's, visible
+  above the canopy; hidden within 5 tiles). A small 8-way pointer orbits the player toward a quest 22 m+ away and off
+  screen, unless a creature is after you within 8 tiles.
+- Words: "goal" became **quest** everywhere the player reads it (briefing, coach, map legend, pause menu, summary).
 
 **Bonus tasks** (`OPTIONAL`): Destroy the enemy nest (+10 Scrap, +5 Research, next wave −15%), Rescue the trapped
 mechanic (+10 Scrap, +5 Research, free Relay repair), Recover the intel drive (+10 Scrap, 2 Intel, +10 Research), Open
@@ -438,21 +500,42 @@ logs are kept forever and re-readable in the Collection's Codex. A spot with not
 right, and two waypoint trails come in from the jungle on the left. Each run plays one of three layouts, picked from the
 run seed (`run.mapKey`; old saves use Twin Paths): **Twin Paths** (two winding trails that meet at the Relay),
 **Crossing** (the trails cross mid-map, so towers in the middle cover both) and **Ford** (a stream runs down the map and
-both trails cross it on stepping stones). 11–12 build pads sit beside the trails (stone plinths,
-a few timber ones); towers can never block a route. The trails are labelled by compass (North / South path), and each
+both trails cross it on stepping stones). The trails are labelled by compass (North / South path), and each
 lane faces a direction in the jungle: **tonight's area danger enters from the lane facing the area you visited**
-(⚠ on that lane's tag, "Comes down the South path (Flooded Transit lies south-west)" in the preview). **Every beacon you
-switched on in the jungle opens a forward pad** out on the lane facing it (up to 2 per lane; cyan lamp; the build list
-says "Forward pad · your north-west beacon"); a pad with a tower on it stays for the rest of the run.
+(⚠ on that lane's tag, "Comes down the South path (Flooded Transit lies south-west)" in the preview).
+
+**Build anywhere** (Stage 9; there are no build pads): a tower goes on **any free tile** of the field, one per tile.
+A tile is free unless it is a trail, the tile right under a trail (a 2-tile-tall tower there would hide it), the Relay's
+plaza, a lamp, water, or a tree or rock that would stand in front of the tower; and towers keep **one empty tile between
+them** (their 48 × 64 art never overlaps). Towers can never block a route (enemies walk their trails). Each blocked tile
+has a one-word reason (`BUILD` in `src/data/defenseMap.js`): Path, Hides path, Relay, Lamp, Water, Tree, Rocks, Too
+close, Can't afford. Plants under a new tower are cleared. A built tower stands on a hand-made stone **footing**
+(`tower_footing`); its level 2 / 3 rank plate sits on the footing's front.
+**Building** (side panel): under the wave preview the **Build** bar shows a tile per tower — its portrait, hotkey
+(1–6) and price (Scrap as a number, Circuits / Biofiber as chips; amber when your own towers of that type raised it);
+pointing at one names it in the bar's title, its tooltip has the numbers. Pick one (click or its key): a **ghost** of the
+tower follows the cursor snapped to the tiles, green where it can go and red with the reason where it can't, with its
+range ring, **a dot on every stretch of path it would cover** and a tag "Covers 12 tiles · North" (a Pulse Totem:
+"Boosts 3 towers"); faint green corners mark every free tile. Click to build (the new tower is selected: Upgrade / Sell),
+**Shift+click** to keep building the same type, right-click or **Esc** to put it away. Keyboard: the number key picks,
+the **arrow keys** move the build cursor (the camera follows), **Enter** builds (Shift+Enter keeps building); **Tab** /
+Shift+Tab select the next / previous tower. Clicking a tower selects it. The bar shows in prep and lulls, not while a
+tower is selected (its panel needs the room) and not during a push.
+**Beacon light** (the old forward pads): every beacon you switched on in the jungle lights 5 tiles of the path facing it
+where it enters the clearing (up to 2 beacons a path: 10 tiles; cyan light pools on the trail); **enemies in the light
+take +15% damage** (not the Colossus). The wave preview says so in one line ("Your beacons light the North path mouth:
+enemies in the light take +15% damage"), and the readiness forecast counts it. A tower near the mouth makes the most
+of it (`BEACON_LIGHT` in `src/data/defenseMap.js`).
 
 **Board** (critic H §4, K §4–5): the night is drawn like the day — whole-number zoom, 32 px per tile, texel-exact. It opens
 on the largest zoom that shows the whole field (×1 at 1280×720 / 1366×768, ×2 at 1080p and 1440p; ×2 when only ×1 would fit
 on a big screen and ×2 still shows most of it). Mouse wheel or **+ / −** (and the zoom buttons in the top bar) step the
-zoom; **right- or middle-drag** or the **arrow keys** pan (clamped to the field); **Home** re-frames. Built pads carry no
-marker; empty pads glow only when they matter (hover, affordable while building, the first prep); a hostile ring shows only
+zoom; **right- or middle-drag** or the **arrow keys** pan (clamped to the field; while placing a tower the arrows move
+the build cursor instead); **Home** re-frames. Nothing marks the ground until you place a tower (then the free-tile
+corners, the ghost and its path dots); in the very first prep the build bar's tiles pulse. A hostile ring shows only
 under the enemy you point at and the selected tower's target, and during a push only those, the boss and the big ones
-(Tank / Elite: Razorbacks, Ruin Guards) carry a health bar. Pads are hand-made stone, timber or rubble plinths (varied by
-seed; timber on wood pads); a level 2 / 3 tower shows its rank as a 2- or 3-chevron plate on the plinth's front face.
+(Tank / Elite: Razorbacks, Ruin Guards) carry a health bar. A level 2 / 3 tower shows its rank as a 2- or 3-chevron
+plate on its footing's front face.
 Protocols are pixel art: the aim is a 1-px dashed ring in the protocol's colour, Vine Snare wraps each rooted enemy in
 roots that burst up then hold, a Flare is a stepped amber light pool with the burning canister in the middle, Arc
 Discharge is lightning bolts; no translucent discs. Moonlit blue with amber lamp pools at the plaza; enemy eyes
@@ -478,9 +561,9 @@ twice a night (`DEFENSE.exchange`). Every prep action re-saves the run.
 "Your defense ●●○ Risky" and one line per path: "North ●●● · South ○○○ · expect −20 to −45 Relay health". It is a fast
 1-D replay of tonight's pushes (variant, district threat, Overgrowth) against the real tower stats, the stretch of path
 each tower covers, slows (multiplicative), Spitters, Burrowers, seed bursts, the boss's roots and siege, and your Relay
-Protocols as a damage-equivalent. Calibrated on the balance sim (raw prediction × 0.65 matches the sim's losses; a path no
-tower reaches is always ○○○, so a one-path build never reads strong). **Too weak** = predicted loss ≥ 35% of the Relay's
-health ("Too weak: expect heavy damage"; 5 level-1 towers on night 3 read weak); **Looks strong** = predicted loss ≤ 2 with
+Protocols as a damage-equivalent. Calibrated on the balance sim (raw prediction × 0.54 matches the sim's losses, Stage 9; a path no
+tower reaches is always ○○○, so a one-path build never reads strong). **Too weak** = predicted loss ≥ 50% of the Relay's
+health ("Too weak: expect heavy damage"; Stage 9, was 35%); **Looks strong** = predicted loss ≤ 2 with
 every path ●●○ or better (critic K2 #8: never "strong" when −3 or worse is predicted); otherwise **Risky**. A path at
 ●○○ or ○○○ names its top leaker ("South ●○○ Razorbacks"; every path's in its tooltip), and the line says the Relay
 zap is counted. Starting a weak night asks first: the button becomes **Start anyway** for 8 s,
@@ -505,7 +588,7 @@ ring on the board, click to cast (right-click / Esc cancels). Each button shows 
 | Protocol | Key | Cost | Cooldown | Effect |
 |---|---|---|---|---|
 | Vine Snare | Q | free | 28 s | Roots every non-boss enemy within 1.6 tiles for 2 s (after a 0.4 s telegraph); **held enemies take +25% damage** while it lasts. The Colossus is held 1 s and a charge wind-up is cancelled ("CHARGE STOPPED"). 2 charges from night 4. |
-| Arc Discharge | W | 20 Scrap | 18 s | 25 × that night's health multiplier energy damage (N3 118, N4 185, N6 230) to everything within 1.4 tiles (0.6 s telegraph). Research: Arc Discharge. |
+| Arc Discharge | W | 20 Scrap | 18 s | 25 × that night's health multiplier energy damage (N3 150, N4 230, N6 360) to everything within 1.4 tiles (0.6 s telegraph). Research: Arc Discharge. |
 | Flare | E | 15 Scrap | 30 s | Lights a 3-tile circle for 6 s: burrowed enemies inside can be shot, and towers inside deal +25% damage. Research: Flare. |
 
 (Critic K2 #3: Q on crowds was worth ~0 and W / E only spent spare Circuits / Intel; now all three cost Scrap or nothing,
@@ -559,7 +642,7 @@ nights bite a good build without killing a thin one.
 | Burrower | Ambusher | Underground for part of its route; bullet towers can't target it there |
 | Seed Carrier | Swarm | Bursts into seedlings unless killed by a blast (a blast hit tags it for 3 s, so a turret can finish it cleanly) |
 | Ruin Guard | Elite | 190 HP, shield halves kinetic damage (a Piercer ignores it); 10 Relay damage |
-| Canopy Colossus | Boss | 1020 HP (×4.5 on N6 = 4590; the Codex shows both). Its first walk is longer (14 s) so its first root happens in tower range. Loops approach → rooted (telegraph, a Crawler sprouts) → charge (wind-up, then fast; a Vine Snare cancels the wind-up); has a big HP bar. At 60% health it stops and roars (red ring, shake, toast "The Colossus is enraged!"; it takes only 30% damage while roaring), turns red and loops faster: 4.5 s approach, faster and longer charges, and each root also spawns 3 Skitters. It never "leaks": 2.5 tiles before the end of its lane it stops on the plaza and **besieges** the Relay ("SIEGE — slamming the Relay!"): a 0.8 s ring telegraph, then 5 damage, every 3 s, until it is killed; after 8 slams it collapses, spent (the night still holds, and Results says "The Relay held the Colossus off"). Night 6 prep says to set one or two towers deep on its path to Toughest and keep the rest on First in line |
+| Canopy Colossus | Boss | 1020 HP (×6 on N6 = 6120; the Codex shows both). Its first walk is longer (14 s) so its first root happens in tower range. Loops approach → rooted (telegraph, a Crawler sprouts) → charge (wind-up, then fast; a Vine Snare cancels the wind-up); has a big HP bar. At 60% health it stops and roars (red ring, shake, toast "The Colossus is enraged!"; it takes only 30% damage while roaring), turns red and loops faster: 4.5 s approach, faster and longer charges, and each root also spawns 3 Skitters. It never "leaks": 2.5 tiles before the end of its lane it stops on the plaza and **besieges** the Relay ("SIEGE — slamming the Relay!"): a 0.8 s ring telegraph, then 5 damage, every 3 s, until it is killed; after 8 slams it collapses, spent (the night still holds, and Results says "The Relay held the Colossus off"). Night 6 prep says to set one or two towers deep on its path to Toughest and keep the rest on First in line |
 
 **Waves** (`src/data/waves.js`, critic K / J M2 / M6):
 - N1: Crawlers + Skitters. N2: the first Razorback (one per variant). N3: Spitters and Razorbacks (tank-heavy).
@@ -572,11 +655,35 @@ nights bite a good build without killing a thin one.
   lane facing tonight's area (the board's lane-facing helper).
 - **Long Night** (nights past 6): `waveFor(night, variant)` reuses nights 4–6's patterns in turn without their boss, counts
   +10% per night past 6, health ×1.2 per night, and a Colossus in the last push every 3rd night (night 9, 12, …).
-- Enemy health ×1.25 / 3.5 / 4.7 / 6.8 / 7.3 / 9.2 for N1–N6 (`HEALTH_MULT`; N4 was 7.4 until the final fixes; the boss uses its own ×4.5), × the map's
-  `hpMult` (Twin Paths 0.95, Crossing 1.07, Ford 1.18: maps whose pads see both trails get tougher enemies, so the three
-  layouts play alike). Total wave health (variant A, no threat, ×1 map): ~660 / 2200 / 7000 / 10100 / 16300 / 12700 + the
-  4590-HP Colossus. District threats (extra groups, added to the second push) are half size on night 1 and 60% on night 2.
-- **Balance** (Stage 7 sim: `.playwright-mcp/nightmech/campaign.mjs` drives the real DefenseScene through full runs:
+- Enemy health ×1.5 / 4.3 / 6.0 / 9.2 / 10.8 / 14.4 for N1–N6 (`HEALTH_MULT`; Stage 9 "build anywhere + a little harder":
+  was ×1.25 / 3.5 / 4.7 / 6.8 / 7.3 / 9.2; the boss uses its own ×6, was ×4.5), × the map's `hpMult` (Twin Paths 0.95,
+  Crossing 1.07, Ford 1.18: maps where one spot sees both trails get tougher enemies, so the three layouts play alike;
+  the sim's typical wins 8–9 of 12 on each with free placement). Total wave health (variant A, no threat, ×1 map):
+  ~790 / 2700 / 8900 / 13700 / 24100 / 19900 + the 6120-HP Colossus. Arc Discharge and the Relay's zap scale with the
+  same curve (N3 150 / N4 230 / N6 360 for Arc Discharge). District threats (extra groups, added to the second push) are half size on night 1 and 60% on night 2.
+- **Balance, Stage 9** (build anywhere; the user called the nights a cakewalk). The sim (`.playwright-mcp/build9/sim/`,
+  the Stage 7 one below taught free placement: every free tile, scored by the path it covers, weighted toward the
+  less-covered path; the newcomer takes the best of the 10 free tiles nearest the Relay) first showed free placement
+  makes the old curve easier (typical 36/36, its N4–N6 losses −9 / −15 / −28), so health rose ×1.2 (N1) to ×1.56 (N6)
+  and the Colossus ×4.5 → ×6. 36 runs per profile over the three maps, mean Relay HP lost per night among runs that
+  reached it:
+
+  | Profile | Wins | Falls | N1 | N2 | N3 | N4 | N5 | N6 | Boss killed |
+  |---|---|---|---|---|---|---|---|---|---|
+  | newcomer, pads (before) | 0/36 | N4 ×24, N5 ×12 | −5 | −22 | −53 (36/36 hold) | −64 (12/36 hold) | −66 | — | — |
+  | newcomer, now | 0/36 | N3 ×17, N4 ×18, N5 ×1 | −13 | −32 | −70 (18/36 hold) | −58 (1/18 hold) | −69 | — | — |
+  | typical, pads (before) | 33/36 (92%) | N6 ×3 | 0 | −4 | −7 | −16 | −28 | −59 | 27/36 |
+  | typical, now | 26/36 (72%; 25/36 in a second batch) | N5 ×4, N6 ×6 | 0 | −7 | −9 | −23 | −38 | −75 | 10/32 |
+  | strong, pads (before) | 36/36 | — | 0 | −3 | −1 | −7 | −11 | −14 | 36/36 |
+  | strong, now | 34/36 (94%) | N5 ×2 | 0 | −3 | −4 | −10 | −28 | −25 | 34/34 |
+
+  So a newcomer reaches night 3–4 and is out by night 5; a typical run wins about 7 in 10, and its nights 4–6 now cost
+  −23 / −38 / −75 (the Colossus is killed in 1 of 3 typical runs; otherwise its slams run out and the Relay holds it
+  off); a strong build still wins. The readiness forecast was recalibrated on these runs (`lossScale` 0.65 → 0.54, the
+  replay over-predicted ×1.2 with free placement; "Too weak" at a predicted loss ≥ 50% of the Relay's health, was 35%:
+  it still flags every sim night that fell and ~85% of nights that cost half the Relay, and no longer most of a typical
+  run's nights 5–6).
+- **Balance, Stage 7** (sim: `.playwright-mcp/nightmech/campaign.mjs` drives the real DefenseScene through full runs:
   days give resources, skill picks from the real offers and crafted tower mods, prep builds through the scene's own
   build/upgrade code, the night steps the real `_step`, lulls spend and call the next push, Protocols are cast, salvage is
   picked; 36 runs per profile over the three maps). Profiles: **newcomer** ≈ 45 Scrap a day, 2 skill picks (often not
@@ -603,8 +710,7 @@ nights bite a good build without killing a thin one.
   toward 90% (this profile repairs between nights, so falls need big single nights). The readiness forecast tracks the
   sim: typical N4 / N5 / N6 predict −39 / −60 / −51, newcomer N3 −55; it over-predicts the strong build because it
   counts Protocols conservatively. **Tall vs wide** (night 4, 9 map/variant combos, before the zap pass): 11 towers with
-  five at level 2 (639 Scrap) lose ~18, six level-3 towers (710 Scrap) ~14. Two pads per map moved to spots that see
-  both trails (pad indices kept), so a wide build's 9th–11th towers aren't wasted. (With level 2 at 0.6× and a
+  five at level 2 (639 Scrap) lose ~18, six level-3 towers (710 Scrap) ~14. (With level 2 at 0.6× and a
   12-Scrap surcharge the gap was 25–35.)
 - Wave-size boons (and Intel Sabotage) scale the whole wave and remove enemies from the largest groups, so −10% always removes some.
   Together they are capped at −20%.
@@ -744,7 +850,8 @@ localStorage with a versioned schema (`src/core/Save.js`):
   a normal run. Relics: `run.relics` (owned, known unique ids) and `run.world.relics / lore / visited` (strongboxes
   opened, shrines used, log spots read, places named) — an older save without them starts with none.
 
-Invalid or outdated saves are discarded, never half-loaded: unknown tower types, bad levels or pads, duplicate pads,
+Invalid or outdated saves are discarded, never half-loaded: unknown tower types, bad levels, tiles off the field (or, in
+a save from before Stage 9, unknown build pads — a known pad loads as the tile it stood on), two towers on one tile,
 unknown skills, bad resources or Relay HP all discard the whole run save. Skills removed by the Stage 7 rework are not
 unknown: they map to their replacement (or a refunded point) when the run loads, so those saves still Continue. The
 Workbench fields (`items`, `blade`, `crafted`, a tower's `mod`) must name real recipes / mods; missing ones mean nothing
@@ -768,19 +875,18 @@ and don't overwrite the real run save (add `&save=1` to test Continue).
 - Clicks are ignored for 0.3 s after a screen change, so the click that dismissed one screen can't press a button on the next.
   The "Night survived" / "Relay has fallen" banner waits for a click, Enter or Space (it no longer auto-advances under
   the player's click), and the briefing ignores pointer input for its first 0.7 s.
-- On the night map each occupied pad's corner brackets take the tower's type colour, and hovering a tower shows its name
-  and level. The briefing's wave row labels the boss and tags new enemy types (names on hover).
+- On the night map hovering a tower shows its name and level. The briefing's wave row labels the boss and tags new enemy types (names on hover).
 - **Simplicity pass (Stage 6, critic "newcomer").** Plain words in the UI (code keys unchanged): Boon → Reward,
   Threat → Danger tonight, Expedition / Extract → trip / Head home, Banked → Stored at base, District → area,
-  Pylon → beacon, Objective → Goal, Optional → Bonus task, Lead → First in line, Nearest → Closest, lanes → paths,
+  Pylon → beacon, Objective → Quest (Goal until Stage 9), Optional → Bonus task, Lead → First in line, Nearest → Closest, lanes → paths,
   Decrypt / Sabotage → Read / Disrupt; no SCR/CIR/BIO/INT/ST/RD codes (costs are icon + number, names in the tooltip).
-  One objective sentence (`PRIMARY[*].name`) is used word for word on the briefing card, the start banner, the GOAL
-  strip and the summary. Things show up when they matter: zero currencies, Intel buttons, Repair (Relay full), skills,
+  One quest name (`PRIMARY[*].name`) is used word for word on the briefing card, the quest card, the quest tracker,
+  the big map and the summary. Things show up when they matter: zero currencies, Intel buttons, Repair (Relay full), skills,
   the weapon line, med kits (none carried), beacon legend entries (none met), targeting (night 1), Research (title,
   summary one-liner, results). Tuning for all of it lives in `src/data/guide.js`.
 - **One colour language:** red = danger / enemies (hot-red silhouettes and ground rings, a red "!" over a creature
   winding up an attack), cyan = you / the Relay / home (calm mid-cyan player outline, dimmer than enemies), amber =
-  the goal and loot (the ◆ arrow, the GOAL strip, crates), green = rewards.
+  the quest and loot (the quest arrow, ◆ markers, the quest tracker, crates), green = rewards.
 - **The guided first run** (the player's very first run, `run.guided`): night 1 offers one area (`GUIDE.district`,
   pre-selected) with an easy objective (`GUIDE.objective`) at a trail-side site 32–60 m out (the closest trail-side one
   when the world has none in range); the jungle coaches one step at a time in the top-left line: move → cut through
@@ -795,7 +901,7 @@ and don't overwrite the real run save (add `&save=1` to test Continue).
   each in a cleared nook just off the trail, Scrap ×1 instead of the near-Relay ×0.45; `GUIDE.routeCrates`, JungleGen
   `guidedRoute`). The coached crate is one of them, or else one with a walking path over open ground ≤ 1.3 × the
   straight line within 2 tiles of a trail (`GUIDE.coach.cratePath / crateTrail`); it gets an amber ◆ over it and the
-  screen-edge arrow (the goal's arrow steps aside meanwhile), and the route's crates show a ◆ when you're near. After the
+  screen-edge arrow ("◆ Crate N m"; the quest's arrow steps aside meanwhile), and the route's crates show a ◆ when you're near. After the
   goal, a "loot the crates here" step points at the goal site's containers. Measured (fresh profile, 1280×720): **63
   Scrap + 3 Circuits + 1 Biofiber banked** at t = 142 s, against the ≥ 45 target.
 - **Every verb taught when it first matters** (Stage 7, critic L §2.2; `TIPS` in guide.js, `JungleScene._tip`): one
@@ -807,7 +913,7 @@ and don't overwrite the real run save (add `&save=1` to test Continue).
   50% with a kit. Beacons: the first dead beacon within 10 m ("Beacons are a way home: hold E"). Sunset: 1:00 of
   daylight left (after the first time it's a toast). The map is a step of the guided day; the clock has a sun icon and
   a "Daylight" label (a moon and "After dark: head home" after sunset).
-- **One text lane** (critic H2 §5.1, `TEXT_LANE`): banners (place names, goal / sunset, boss intro and kill, back home)
+- **One text lane** (critic H2 §5.1, `TEXT_LANE`): banners (place names, the quest card / QUEST COMPLETE / sunset, boss intro and kill, back home)
   own the top centre, one at a time — a more important one cuts a lesser one, a waiting place name is dropped after 4 s.
   Toasts queue under the top-left panel, one on screen at a time (the next one hurries the current one off after 1.6 s,
   stale ones are dropped after 10 s) and wait while a banner is up. At most one coach / verb tip and one toast show at
@@ -816,7 +922,7 @@ and don't overwrite the real run save (add `&save=1` to test Continue).
 - **HUD legibility** (critic L §3 / H §5): all HUD text sits on the world's texel grid — 12 design px = 16 px at 720p,
   24 px at 1080p, 32 px at 1440p, one font pixel per world texel, never under 12 CSS px (the clock is twice that); the
   HP number has a one-font-pixel dark outline; pixel icons in the HUD scale by whole texels (`--tx`). Health is green →
-  yellow → red (`HUD.health`), never the stamina bar's orange. "GOAL DONE"-style banners sit at 22% of the height, off
+  yellow → red (`HUD.health`), never the stamina bar's orange. "QUEST COMPLETE"-style banners sit at 22% of the height, off
   the player. A HUD panel with a creature behind it fades to 50% (`JUICE.hudFade`), so the clock stays readable.
   Creature icons (Codex, briefing, night panel) show the side view cropped to the creature, at 1× or 2×, never ½
   (`Assets.iconFrame` / `iconScale`).
@@ -824,15 +930,15 @@ and don't overwrite the real run save (add `&save=1` to test Continue).
   the bound interact key), arrows / W S / Tab to move, Esc = cancel (the death dialog too, after 0.6 s so a key mashed
   in the fight can't skip it). A dialog keeps those keys to itself, so the Esc that closes it never reaches the game.
 - **Settings** (three tabs, keys 1–3, so each fits 720p): Sound; Game (screen shake, full screen, picture size, hints,
-  reset); Controls — rebind move, roll, interact, throw, med kit and map (click or Enter, then press the key; Esc
+  reset); Controls — rebind move, roll, interact, throw, med kit, map and the quest card (click or Enter, then press the key; Esc
   cancels; a key already in use swaps; Esc / F2 / browser keys can't be bound; "Reset to default"). Bindings live in
   `meta.settings.keys` (only what differs from the defaults; validated on load) and apply in the jungle, where every
   tip, prompt and keycap shows them. No text-size option: the HUD text already sits on the texel grid, and a free size
   would break it.
 - **Wayfinding:** when the straight line to the goal runs into deep water, the minimap and big map mark the crossing
-  to use (a pale hollow ◇: the ford tile with the shortest walk you → ford → goal) and the GOAL strip adds "cross at
-  the stepping stones N m" with its own arrow. The summary's "spend it in Collection" Research note shows once.
+  to use (a plank-bridge glyph: the bridge with the shortest walk you → bridge → goal; decks show as plank strips on
+  both maps) and the quest tracker adds "cross at the bridge N m" with its own arrow. The summary's "spend it in Collection" Research note shows once.
 - **Readiness check:** night prep rates the defense (towers' damage over the wave vs the wave's total health,
   `READINESS`); a weak rating asks once before the wave starts ("Start anyway").
 - Hints never cover what they explain: the briefing hint sits beside / under the cards (and closes when Details
-  opens), the build hint sits next to an empty pad near the Relay.
+  opens); the night's build hint docks in the side panel above the Build bar it points to.

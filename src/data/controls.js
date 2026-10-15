@@ -17,6 +17,7 @@ export const KEY_ACTIONS = [
   { id: 'throw', label: 'Throw machete', def: 'KeyF' },
   { id: 'med', label: 'Med kit', def: 'KeyQ' },
   { id: 'map', label: 'Map', def: 'Tab' },
+  { id: 'quest', label: 'Quest card', def: 'KeyJ' },   // (Stage 9: the day's quest card, JungleQuest)
 ];
 
 export const DEFAULT_KEYS = Object.fromEntries(KEY_ACTIONS.map((a) => [a.id, a.def]));

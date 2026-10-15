@@ -221,8 +221,14 @@ export class JungleWorld {
     return this.cut[i] ? 0 : this.w.brush[i];
   }
 
-  /** Deep water: nobody crosses it (fords are shallow). */
+  /** Deep water: nobody crosses it (rivers are crossed on bridges). */
   deepAt(tx, tz) { return this.inBounds(tx, tz) && this.deep[tz * this.size + tx] === 1; }
+
+  /** On a bridge deck (world.ford, tile-aligned decks): dry footing, full speed, no wading, wooden footsteps. */
+  onBridge(x, z) {
+    const tx = Math.floor(x), tz = Math.floor(z);
+    return this.inBounds(tx, tz) && !!this.w.ford?.[tz * this.size + tx];
+  }
 
   /** Solid for movement: uncut thicket/bramble, deep water, or the map edge. */
   solidAt(tx, tz) { return !this.inBounds(tx, tz) || this.deep[tz * this.size + tx] === 1 || this.brushAt(tx, tz) >= BRUSH.thicket; }
@@ -255,6 +261,7 @@ export class JungleWorld {
    * `fernDrag` scales the fern slow (the player's Tapir-hide Boots relic: 0.5 → ferns ×0.75 instead of ×0.5).
    */
   speedAt(x, z, brushFree = false, fernDrag = 1) {
+    if (this.onBridge(x, z)) return 1;
     const lv = this.levelAt(x, z);
     let m = lv === LEVEL.water ? GROUND.shallow : lv === LEVEL.mud ? GROUND.mud : 1;
     if (!brushFree && this.inFern(x, z)) m *= 1 - (1 - GROUND.fern) * fernDrag;
@@ -762,7 +769,7 @@ export class JungleWorld {
     return this._covered;
   }
 
-  /** Debug: outline every footprint (yellow), deep water (blue) and fords (cyan) on the ground. */
+  /** Debug: outline every footprint (yellow), deep water (blue ×) and bridge decks (cyan +) on the ground. */
   showColliders(on = true) {
     this._dbg?.removeFromParent();
     this._dbg?.geometry.dispose();

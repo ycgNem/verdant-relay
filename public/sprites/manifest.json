@@ -3403,6 +3403,18 @@
     "flat": true,
     "shadow": 0
   },
+  "tower_footing": {
+    "file": "tower_footing.png",
+    "ppu": 32,
+    "flat": true,
+    "shadow": 0,
+    "top": [
+      1,
+      1,
+      37,
+      18
+    ]
+  },
   "tree": {
     "file": "tree.png",
     "ppu": 32,

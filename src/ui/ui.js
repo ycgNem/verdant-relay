@@ -376,6 +376,17 @@ function endBanner(parent, it, cut = false) {
   if (!cut) nextBanner(parent);
 }
 
+/** End this banner early (it fades out first), or drop it if it is still waiting (the quest card once you walk off). */
+export function dismissBanner(parent, node) {
+  const L = parent?._lane;
+  if (!L) return;
+  const it = L.cur?.node === node ? L.cur : null;
+  if (!it) { L.q = L.q.filter((q) => q.node !== node); return; }
+  for (const t of it.timers || []) clearTimeout(t);
+  node.classList.add('out');
+  it.timers = [setTimeout(() => endBanner(parent, it), TEXT_LANE.banner.fade * 1000)];
+}
+
 /** True while a banner is up (or waiting) in this parent's lane. */
 export function bannerBusy(parent) { const L = parent?._lane; return !!(L && (L.cur || L.q.length)); }
 

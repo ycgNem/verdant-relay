@@ -14,7 +14,7 @@
   --amber: #feae34;
   --leaf: #3e8948;
   /* Pixel fonts (Google Fonts, linked in index.html); the monospace stack is the offline fallback. */
-  --font: 'VR Glyphs', 'Tiny5', 'Consolas', 'Courier New', monospace;   /* body + HUD (8 px grid) */
+  --font: 'VR Glyphs', 'Tiny5', 'Consolas', 'Courier New', monospace;   /* body + HUD (8 px grid; VR Glyphs = our text face) */
   --font-display: 'Silkscreen', 'VR Glyphs', 'Tiny5', 'Consolas', monospace;   /* logo + headlines (chunky caps) */
   --font-label: 'Silkscreen', 'VR Glyphs', 'Tiny5', 'Consolas', monospace;     /* small uppercase labels (8 px grid) */
   /* One-font-pixel ink outline, 8 directions (critic M P1-3): 0.125em is exactly one font pixel because every
@@ -23,14 +23,17 @@
     0.125em 0.125em 0 var(--ink), -0.125em 0.125em 0 var(--ink), 0.125em -0.125em 0 var(--ink), -0.125em -0.125em 0 var(--ink);
 }
 
-/* Glyph fixes for Tiny5, drawn on its exact pixel grid by tools/make_glyph_font.py: 4-wide digits with % / + (critic M:
-   Tiny5's 3-wide "88" read as two dominoes), "~" (a flat dash in Tiny5), and pixel bitmaps for the UI symbols that
-   otherwise fell back to Consolas / Segoe UI Symbol (critic M). unicode-range keeps every other character on Tiny5
-   (and Tiny5's line metrics, since this face has no space). Keep the list in step with GLYPHS in the script. */
+/* The body font (Stage 9, "make the text slightly easier to read"): all of printable ASCII, the digits and the UI
+   symbols, drawn on Tiny5's 8-unit grid and line box by tools/make_glyph_font.py. Tiny5's lowercase was 3 px wide and
+   4 tall with 1-px descenders; here caps are 6 tall, the x-height 5, descenders 2, the common letters 4 wide (text
+   ~20% wider at the same size, line heights unchanged). Digits 4 wide (critic M: Tiny5's "88" read as two dominoes)
+   and pixel bitmaps for the UI symbols (critic M: no Consolas / Segoe UI Symbol fallbacks). Tiny5 stays behind it for
+   anything outside the unicode-range (Latin-1 letters). Keep the list in step with GLYPHS in the script
+   (`npm run check:glyphs`). */
 @font-face {
   font-family: 'VR Glyphs';
   src: url('./fonts/vr-glyphs.ttf') format('truetype');
-  unicode-range: U+0025, U+002B, U+002F-0039, U+007E, U+00A7, U+00B7, U+00BD, U+00D7, U+03DF, U+2013-2014, U+2022,
+  unicode-range: U+0020-007E, U+00A7, U+00B0, U+00B7, U+00BD, U+00D7, U+03DF, U+2013-2014, U+2022,
     U+2026, U+2058, U+2192, U+21BB, U+21C4, U+2212, U+224B, U+229A, U+2301, U+2316, U+23F1, U+25A0, U+25A3, U+25A6,
     U+25B2, U+25B4, U+25B6, U+25B8, U+25BC, U+25BE, U+25C0, U+25C2, U+25C6-25C9, U+25CB, U+25CD-25CF, U+25E3, U+25EB,
     U+2600, U+2602, U+2605, U+2610, U+2620, U+2641, U+265B, U+2663, U+2665, U+2691-2692, U+2694, U+2699, U+26A0,
@@ -62,7 +65,8 @@ html, body {
 
 body { display: flex; align-items: center; justify-content: center; }
 
-/* Pixel-font grid. Tiny5 and Silkscreen are both drawn on an 8-unit em (cap height 5 px at 8 px), so a glyph
+/* Pixel-font grid. VR Glyphs, Tiny5 and Silkscreen are all drawn on an 8-unit em (VR Glyphs: cap height 6, x-height
+   5; the others cap height 5), so a glyph
    is only crisp when font-size is a whole multiple of 8 DEVICE px — anything else drops or doubles pixel rows
    ("Finish" losing the F's top bar). Game.fit sets --fq = 8 px / devicePixelRatio, and every font-size is
      max(calc(var(--fq) * 2), round(calc(var(--u) * N - 0.01px), var(--fq)))

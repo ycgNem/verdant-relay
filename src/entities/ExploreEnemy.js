@@ -22,7 +22,7 @@
 // A deflect (Player.tryDeflect) turns a lunge, charge, spear or glob away and leaves the attacker reeling.
 
 import * as THREE from 'three';
-import { CONFIG, JUICE, SPLAT, DEFLECT, ROLL } from '../data/config.js';
+import { CONFIG, JUICE, SPLAT, DEFLECT, ROLL, POISE } from '../data/config.js';
 import { EXPLORE_ENEMIES } from '../data/enemies.js';
 import { setAnim, setFacing, updateVisual, flashVisual, setBaseColor, animLength, animHitFrac, setAnimSpeed, CARD_MASK_REF } from '../core/Assets.js';
 import { shade } from '../core/Fx.js';
@@ -112,8 +112,8 @@ export class ExploreEnemy {
     this.hp = this.maxHp;
     this.damage = Math.round(this.def.damage * nightTune('enemyDamage', night) * (this.elite ? X.elite.damageMult : 1));
     if (this.def.spear) this.spearDamage = Math.round(this.def.spear.damage * nightTune('enemyDamage', night));
-    // Elites telegraph longer, so their big attacks are always readable.
-    this.windup = this.def.windup * (this.elite ? X.elite.windupMult : 1);
+    // Elites telegraph longer, so their big attacks are always readable; day 1 telegraphs are slower (it teaches).
+    this.windup = this.def.windup * (this.elite ? X.elite.windupMult : 1) * nightTune('enemyWindup', night);
     this.radius = Math.max(0.22, this.def.size * 0.45 * scale);
     this.x = x; this.z = z;
     this.home = { x, z };
@@ -146,6 +146,14 @@ export class ExploreEnemy {
     this.sporeT = 0;
     this.knockT = 0;             // a player blow knocked it back recently (wall splats)
     this.splatCd = 0;
+    // Stage 9 (POISE): committed = past the red flash of its wind-up (no blow stops it now); openT = standing spent after
+    // an attack that missed you (punish it); counterQ / counterCd = it hits back when you hit it; guard (Ferals).
+    this.committed = false;
+    this.openT = 0;
+    this.counterQ = false;
+    this.counterCd = 0;
+    this.guardCd = 0;
+    this.flurry = [];
 
     // Sprites stay 1:1 (whole-number scales only, no mixels): an elite reads through its tint and an
     // amber ground ring instead of being drawn bigger. `scale` still sizes its hitbox. The always-on ring is a dim
@@ -191,11 +199,29 @@ export class ExploreEnemy {
 
   // ---------------------------------------------------------------- damage
 
-  hit(dmg, dx, dz, kb = 0, src = '', stagger = 0) {
+  /** Is it open to a punish (POISE.punish): spent after a missed attack, or reeling? */
+  get open() { return (this.state === 'recover' && this.openT > 0) || this.state === 'stunned' || this.state === 'exposed'; }
+
+  hit(dmg, dx, dz, kb = 0, src = '', stagger = 0, spec = null) {
     if (this.dead || this.state === 'spawn' || this.hidden) return;
-    // A heavy blow interrupts a wind-up (elites shrug most of it off).
+    const blade = src === 'slash' || src === 'chop' || src === 'blade';
+    // A Feral's raised guard turns frontal slashes (POISE / EXPLORE_ENEMIES.feral.guard); a chop or a blow from the
+    // side or back breaks it open.
+    if (this.state === 'guard' && blade) {
+      const G = this.def.guard;
+      const frontal = -(dx * this.face.x + dz * this.face.z) > Math.cos((G.arc / 2) * Math.PI / 180);
+      if (frontal && src !== 'chop') { this._block(dx, dz); return; }
+      this.stun(G.break, 'GUARD BROKEN', '#fee761');
+      this.game.sfx.playAt('crack', this.x, this.z);
+    }
+    // Committed (past its red flash): no blow stops it. Otherwise a blow with at least its poise in stagger interrupts
+    // (elites shrug most of it off); an open creature is staggered by anything heavier than a light slash.
+    const open = this.open;
+    const committed = this.state === 'windup' && this.committed;
     const st = stagger * (this.elite ? 0.35 : 1);
-    if (st > 0.15 && (this.state === 'windup' || this.state === 'chase' || this.state === 'recover' || this.state === 'stunned' || this.state === 'exposed' || this.state === 'idle')) {
+    const poise = this.def.poise ?? 0.15;
+    const staggers = !committed && st > 0.15 && (open || st > poise);
+    if (staggers && (this.state === 'windup' || this.state === 'chase' || this.state === 'recover' || this.state === 'stunned' || this.state === 'exposed' || this.state === 'idle' || this.state === 'guard')) {
       const keep = this.state === 'stunned' ? this.stateT : 0;
       this.tele?.cancel();
       this.tele = null;
@@ -203,6 +229,11 @@ export class ExploreEnemy {
       this.stateT = Math.max(keep, st);
       setAnim(this.vis, 'hurt', true);
     }
+    // Punish: an open creature takes x POISE.punish.mult from your blade (a riposte keeps its own; bosses have theirs).
+    const punished = open && blade && !spec?.riposte && !this.lordOf;
+    if (punished) dmg *= POISE.punish.mult;
+    // Hitting it while it walks at you makes it hit back (POISE.counter); a Feral that can't, raises its guard.
+    if (blade && this.state === 'chase' && !staggers) this._provoked(dx, dz, src);
     dmg = Math.round(dmg);
     this.hp -= dmg;
     this.barT = 2.5;
@@ -216,7 +247,7 @@ export class ExploreEnemy {
     else flashVisual(this.vis, '#ffffff', 0.09);
     const big = this.elite || this.objective;
     fx.text({ x: this.x, z: this.z }, String(dmg), {
-      color: big ? '#feae34' : src === 'chop' ? '#fee761' : src === 'spore' ? '#c9d65a' : '#ead4aa', cls: big ? 'elite' : '',
+      color: big ? '#feae34' : punished ? POISE.punish.color : src === 'chop' ? '#fee761' : src === 'spore' ? '#c9d65a' : '#ead4aa', cls: big ? 'elite' : punished ? 'crit' : '',
       y: this.vis.userData.vis.height + 0.55, life: 0.6, key: this, value: dmg,
     });
     fx.burst({ x: this.x, z: this.z }, { color: this.bloodColor, color2: shade(this.bloodColor, 1.3), count: melee ? 7 : 4, speed: 2.2, up: 1.6, life: 0.32, size: 2 / 32, vx: dx * 2.4, vz: dz * 2.4 });
@@ -227,13 +258,16 @@ export class ExploreEnemy {
     this.game.sfx.playAt('hit', this.x, this.z);
     // Knockback (heavier enemies resist; lunges and charges carry through). A short hit-stun stops the
     // enemy steering against it, so the shove reads.
+    // Below its poise (and not open) a blow barely shoves it and doesn't stop it steering (POISE.lightKb): it stays in
+    // your face and hits back - slashes no longer knock it out of its own reach (the old stun-lock).
     if (this.state !== 'attack' && kb > 0) {
+      const flinch = staggers || open || (this.def.poise ?? 0) <= 0 || this.state === 'idle' || this.state === 'stunned';
       const resist = this.def.size * this.scale;
-      const k = melee ? M.knockback : 1;
+      const k = (melee ? M.knockback : 1) * (flinch ? 1 : POISE.lightKb);
       this.kb.x += dx * kb * k / resist;
       this.kb.z += dz * kb * k / resist;
-      this.knockT = 0.45;   // a hard shove into a trunk or bramble now splats (SPLAT)
-      if (melee || src === 'blade') { this.stunT = M.hitStun; this.vel.x *= 0.2; this.vel.z *= 0.2; }
+      this.knockT = flinch ? 0.45 : 0;   // a hard shove into a trunk or bramble now splats (SPLAT)
+      if (flinch && (melee || src === 'blade')) { this.stunT = M.hitStun; this.vel.x *= 0.2; this.vel.z *= 0.2; }
     }
     if (!this.alerted) this.alert(true);
     if (this.hp <= 0) this.die();
@@ -242,6 +276,7 @@ export class ExploreEnemy {
   /** Reel for `t` seconds (deflects, wall splats): cancels whatever it was doing. */
   stun(t, label = 'STUNNED', color = '#fee761') {
     if (this.dead) return;
+    if (this.state === 'guard') this._endGuard();
     this.tele?.cancel();
     this.tele = null;
     const keep = this.state === 'stunned' ? this.stateT : 0;
@@ -250,6 +285,71 @@ export class ExploreEnemy {
     this.vel.x *= 0.1; this.vel.z *= 0.1;
     setAnim(this.vis, 'hurt', true);
     if (label) this.scene.fx.text({ x: this.x, z: this.z }, label, { color, y: this.vis.userData.vis.height + 0.3, life: 0.8 });
+  }
+
+  /** You hit it as it came at you: it hits back at once (POISE.counter), or - a Feral that can't - raises its guard. */
+  _provoked(dx, dz, src) {
+    const d = this.def, P = POISE.counter;
+    if (d.attack !== 'melee' || this.lordOf) return;
+    const p = this.scene.player.pos;
+    const dist = Math.hypot(p.x - this.x, p.z - this.z);
+    if (this.counterCd <= 0 && dist <= (d.reach || 1.5) + P.reach) { this.counterQ = true; return; }
+    const G = d.guard;
+    if (!G || this.guardCd > 0 || src === 'chop') return;
+    const now = this._now();
+    this.flurry = this.flurry.filter((t) => now - t < G.window);
+    this.flurry.push(now);
+    if (this.flurry.length >= G.hits) this._raiseGuard();
+  }
+
+  /** A Feral raises its guard (EXPLORE_ENEMIES.feral.guard): frontal slashes are blocked, then it thrusts out of it. */
+  _raiseGuard() {
+    const G = this.def.guard;
+    this.flurry = [];
+    this.tele?.cancel();
+    this.tele = null;
+    this.state = 'guard';
+    this.stateT = G.time;
+    this.guardCd = G.cooldown;
+    this.vel.x *= 0.1; this.vel.z *= 0.1;
+    const p = this.scene.player.pos;
+    const dx = p.x - this.x, dz = p.z - this.z, l = Math.hypot(dx, dz) || 1;
+    this.face = { x: dx / l, z: dz / l };
+    setAnim(this.vis, 'windup', true);
+    setAnimSpeed(this.vis, 0);
+    setBaseColor(this.vis, POISE.guardTint);   // steel-pale while the guard is up
+    flashVisual(this.vis, POISE.guardColor, 0.15);
+    this.scene.fx.text({ x: this.x, z: this.z }, 'GUARD', { color: POISE.guardColor, y: this.vis.userData.vis.height + 0.3, life: 0.7, key: 'guard' });
+    sfxAt(this.game, this.x, this.z, 'guard', 'deflect', 'crack');
+  }
+
+  /** The guard drops (it thrusts out of it, or the guard is broken): back to its own colours. */
+  _endGuard() {
+    setAnimSpeed(this.vis, 1);
+    setBaseColor(this.vis, this.elite ? CONFIG.expedition.elite.tint : this.look.tint || '#ffffff');
+  }
+
+  /** A frontal slash on a raised guard: a clang, sparks, nothing gets through (and you're pushed off it). */
+  _block(dx, dz) {
+    const sc = this.scene, fx = sc.fx, h = this.vis.userData.vis.height;
+    const cx = this.x - dx * this.radius * 0.8, cz = this.z - dz * this.radius * 0.8;
+    fx.flash({ x: cx, y: h * 0.55, z: cz }, { color: '#ffffff', size: 0.5, life: 0.06 });
+    fx.spark({ x: cx, y: h * 0.55, z: cz }, { color: POISE.guardColor, dir: { x: -dx, z: -dz }, count: 6, size: 0.4 });
+    flashVisual(this.vis, POISE.guardColor, 0.1);
+    fx.text({ x: this.x, z: this.z }, 'BLOCKED', { color: POISE.guardColor, y: h + 0.3, life: 0.5, key: 'block' });
+    fx.hitStop(0.03);
+    const pl = sc.player;
+    pl.kb.x -= dx * 3; pl.kb.z -= dz * 3;
+    sfxAt(this.game, this.x, this.z, 'block', 'deflect', 'crack');
+  }
+
+  /** The commit tell (POISE.tell): it stops aiming - the sprite blinks red; nothing short of a deflect stops it now. */
+  _commit() {
+    if (this.committed) return;
+    this.committed = true;
+    const T = POISE.tell;
+    this.scene.fx.tell(this.vis, { color: T.color, time: T.time, blink: T.blink });
+    this._glint();
   }
 
   /**
@@ -275,6 +375,7 @@ export class ExploreEnemy {
   /** The player went down: stop attacking and step back off the body (critic I #12). */
   stepBack(px, pz, dist) {
     if (this.dead || this.hidden) return;
+    if (this.state === 'guard') this._endGuard();
     this.tele?.cancel();
     this.tele = null;
     this._dropToken();
@@ -338,6 +439,9 @@ export class ExploreEnemy {
     this.chokeT -= dt;
     this.knockT -= dt;
     this.splatCd -= dt;
+    this.counterCd -= dt;
+    this.guardCd -= dt;
+    this.openT -= dt;
     const dx = p.pos.x - this.x, dz = p.pos.z - this.z;
     const dist = Math.hypot(dx, dz);
     const toP = dist > 1e-4 ? { x: dx / dist, z: dz / dist } : { x: 1, z: 0 };
@@ -394,13 +498,19 @@ export class ExploreEnemy {
         // Not allowed to attack yet (cooldown / no free token / choking): hold a slot round the player.
         const waiting = dist < A.holdDist + 1.2 && (this.cd > A.circleCd || choking || !this._tokenFree());
         if (d.attack === 'melee') {
+          // Hit back (POISE.counter): you struck it as it came in - no cooldown or token cap.
+          if (this.counterQ) {
+            this.counterQ = false;
+            if (this.los && !choking && dist <= d.reach + POISE.counter.reach && this._takeToken(true)) { this.counterCd = POISE.counter.cooldown; this._startWindup(toP, dist, 'lunge'); break; }
+          }
           if (this.los && !choking && this.cd <= 0 && (dist <= d.reach || this._predDist() <= d.reach) && this._takeToken()) { this._startWindup(toP, dist, 'lunge'); break; }
           // The spear doesn't take a melee attack token (it would starve the pack up close); one spear in the air at a time.
           if (d.spear && !choking && this._wantSpear(dist) && this._spearFree()) { this._startWindup(toP, dist, 'spear'); break; }
           if (waiting) { move = this._circle(toP, dist, dt); speed *= A.circleSpeed; this.stuckT = 0; this.bestD = Infinity; }
           else { move = this._pathTo(p.pos.x, p.pos.z); this._trackStuck(dt, dist, toP); }
         } else if (d.attack === 'ranged') {
-          if (this.los && !choking && dist <= d.range && this.cd <= 0) { this._startWindup(toP, dist, d.shot === 'glob' ? 'glob' : 'bolt'); break; }
+          // (Stage 9: only from where you can see it — nothing shoots you from off screen.)
+          if (this.los && !choking && dist <= d.range && this.cd <= 0 && this._onScreen()) { this._startWindup(toP, dist, d.shot === 'glob' ? 'glob' : 'bolt'); break; }
           if (d.speed > 0) {
             this.strafeT -= dt;
             if (this.strafeT <= 0) { this.strafeT = 1.2 + Math.random() * 1.5; this.strafeSign *= -1; }
@@ -421,9 +531,11 @@ export class ExploreEnemy {
         const mv = this.mv;
         const el = this.windT - this.stateT;   // seconds into the wind-up
         if (LUNGES[mv]) {
-          // The landing ring tracks where you're heading for the first part, then locks (critic I #1).
+          // The landing ring tracks where you're heading for the first part, then locks (critic I #1) - with the red
+          // commit flash (Stage 9): from here on no blow stops it.
           const tr = mv === 'thrust2' ? d.thrust2.track : (d.track ?? 0);
-          if (playerTarget && el < this.windT * tr) {
+          if (el >= this.windT * tr) this._commit();
+          else if (playerTarget) {
             this.lungeTarget = this._lungeAim(mv);
             this.tele?.move?.(this.lungeTarget.x, this.lungeTarget.z);
             this.face = { ...this.aimDir };
@@ -432,6 +544,7 @@ export class ExploreEnemy {
         } else if (mv !== 'stomp') {
           // Ranged aim and charge direction track the player for the first part of the wind-up, then lock.
           const lockAt = CHARGES[mv] ? 0.7 : mv === 'spear' ? d.spear.lock : 0.55;
+          if (CHARGES[mv] && this.stateT <= this.windT * lockAt) this._commit();
           if (this.stateT > this.windT * lockAt && playerTarget) {
             const aim = mv === 'spear' ? this._spearAim() : toP;
             this.face = aim;
@@ -448,6 +561,7 @@ export class ExploreEnemy {
           const u = Math.random() * (this.curLen || 1);
           sc.fx.burst({ x: this.x + this.aimDir.x * u, y: -0.3, z: this.z + this.aimDir.z * u }, { color: '#b86f50', color2: '#e4a672', count: 2, speed: 0.6, up: 1.2, life: 0.35, size: 2 / 32, gravity: 5 });
         }
+        if (mv === 'stomp' && el >= this.windT * 0.4) this._commit();
         if (mv === 'stomp' && Math.random() < dt * 10) {
           const a = Math.random() * Math.PI * 2, r = Math.random() * d.elite.stomp.radius;
           sc.fx.burst({ x: this.x + Math.cos(a) * r, y: -0.3, z: this.z + Math.sin(a) * r }, { color: '#b86f50', color2: '#e4a672', count: 1, speed: 0.4, up: 1.4, life: 0.35, size: 2 / 32, gravity: 6 });
@@ -497,10 +611,36 @@ export class ExploreEnemy {
         break;
       }
       case 'recover': {
+        if (this.openT > 0) {
+          // Open (POISE.punish): its attack missed and it stands spent, panting - your moment.
+          move = null;
+          this.pantT = (this.pantT || 0) - dt;
+          if (this.pantT <= 0) {
+            this.pantT = POISE.pant.every;
+            sc.fx.burst({ x: this.x + this.face.x * this.radius * 0.5, y: this.vis.userData.vis.height * 0.7, z: this.z + this.face.z * this.radius * 0.5 }, { color: POISE.pant.color, count: 1, speed: 0.5, up: 0.9, life: 0.35, size: 2 / 32, gravity: -0.5 });
+          }
+        } else if (d.dart && d.speed > 0 && playerTarget) { move = { x: -toP.x, z: -toP.z }; speed = d.speed; }   // the Skitter darts back out
         // Back off (the hop-back carries it out of your face), then rejoin the circle.
-        if (d.speed > 0 && playerTarget && LUNGES[this.mv]) { move = { x: -toP.x, z: -toP.z }; speed = d.speed * 0.3; }
+        else if (d.speed > 0 && playerTarget && LUNGES[this.mv]) { move = { x: -toP.x, z: -toP.z }; speed = d.speed * 0.3; }
         else if (d.speed > 0 && !playerTarget) { move = { x: -toP.x, z: -toP.z }; speed = d.speed * 0.4; }
         if (this.stateT <= 0) this.state = 'chase';
+        break;
+      }
+      case 'guard': {
+        // It turns (slowly) to keep its guard on you: a roll round it gets you its side or back.
+        if (playerTarget) {
+          const a = Math.atan2(this.face.z, this.face.x), b = Math.atan2(toP.z, toP.x), da = wrapA(b - a), tr = 3.2 * dt;
+          const na = a + Math.max(-tr, Math.min(tr, da));
+          this.face = { x: Math.cos(na), z: Math.sin(na) };
+        }
+        // a glint runs along the raised blade
+        if (Math.random() < dt * 6) sc.fx.flash({ x: this.x + this.face.x * this.radius * 0.7, y: this.vis.userData.vis.height * (0.4 + Math.random() * 0.4), z: this.z + this.face.z * this.radius * 0.7 }, { color: '#ffffff', size: 5 / 32, life: 0.06 });
+        if (this.stateT <= 0) {
+          this._endGuard();
+          // ...and thrusts out of it.
+          if (playerTarget && this.los && dist <= d.reach + 1.2 && this._takeToken(true)) this._startWindup(toP, dist, 'lunge');
+          else this.state = 'chase';
+        }
         break;
       }
     }
@@ -614,6 +754,14 @@ export class ExploreEnemy {
     return Math.hypot(p.pos.x + v.x * t - this.x, p.pos.z + v.z * t - this.z);
   }
 
+  /** Is it inside the view (Stage 9: ranged attacks start only from on screen)? m: margin, share of the half-view. */
+  _onScreen(m = 0.9) {
+    const cam = this.scene.camera;
+    if (!cam) return true;
+    const v = (this._sv ||= new THREE.Vector3()).set(this.x, 0.5, this.z).project(cam);
+    return Math.abs(v.x) < m && Math.abs(v.y) < m;
+  }
+
   _spearFree() {
     return !this.scene.enemies.some((e) => e !== this && !e.dead && e.mv === 'spear' && (e.state === 'windup' || e.state === 'attack'));
   }
@@ -632,7 +780,7 @@ export class ExploreEnemy {
   _wantSpear(dist) {
     const S = this.def.spear;
     const A = CONFIG.expedition.attackers;
-    if (this.spearCd > 0 || this.cd > 0 || !this.los || dist > S.range || dist < S.min) return false;
+    if (this.spearCd > 0 || this.cd > 0 || !this.los || dist > S.range || dist < S.min || !this._onScreen()) return false;
     const p = this.scene.player.pos;
     const inBrush = this.scene.world.brushAt(Math.floor(p.x), Math.floor(p.z)) > 0;
     return this.stuckT > A.stuck || (inBrush && dist > S.brushDist);
@@ -656,9 +804,10 @@ export class ExploreEnemy {
     return P.holders.size < max && now - P.last >= A.gap && now - (P.hitAt ?? -1e9) >= A.afterHit;
   }
 
-  _takeToken() {
+  /** force: a counter / a thrust out of a guard (POISE) - past the cap and the post-hit pause, but not the grant gap. */
+  _takeToken(force = false) {
     if (this.token) return true;
-    if (!this._tokenFree()) return false;
+    if (force ? this._now() - this._pool().last < CONFIG.expedition.attackers.gap * 0.5 : !this._tokenFree()) return false;
     const P = this._pool();
     P.holders.add(this);
     P.last = this._now();
@@ -749,8 +898,10 @@ export class ExploreEnemy {
     const sc = this.scene;
     this.mv = mv;
     this.state = 'windup';
+    this.committed = false;
+    this.openT = 0;
     let wt = this.windup;
-    if (mv === 'thrust2') wt = d.thrust2.delay;
+    if (mv === 'thrust2') wt = d.thrust2.delay * nightTune('enemyWindup', this.night);
     else if (mv === 'spear') wt = d.spear.windup;
     else if (mv === 'stomp') wt = d.elite.stomp.windup;
     else if (mv === 'charge2') wt = d.elite.reaim;
@@ -845,6 +996,8 @@ export class ExploreEnemy {
     const sc = this.scene;
     const mv = this.mv;
     this.state = 'attack';
+    if (LUNGES[mv] || CHARGES[mv] || mv === 'stomp') this._commit();
+    this.landed = false;
     const tele = this.tele;
     this.tele = null;
     setAnim(this.vis, 'attack', true);
@@ -910,7 +1063,7 @@ export class ExploreEnemy {
     const dx = p.pos.x - this.x, dz = p.pos.z - this.z, d = Math.hypot(dx, dz) || 1e-4;
     if (!p.dead && d < S.radius + p.r * 0.5) {
       const dmg = Math.round(S.damage * nightTune('enemyDamage', this.night) * CONFIG.expedition.elite.damageMult);
-      if (p.hurt(dmg, dx / d, dz / d, this.def.name)) { this._pool().hitAt = this._now(); p.kb.x += (dx / d) * S.knock; p.kb.z += (dz / d) * S.knock; }
+      if (p.hurt(dmg, dx / d, dz / d, this.def.name, 'stomp')) { this.landed = true; this._pool().hitAt = this._now(); p.kb.x += (dx / d) * S.knock; p.kb.z += (dz / d) * S.knock; }
     }
     for (let i = 0; i < 18; i++) {
       const a = (i / 18) * Math.PI * 2;
@@ -939,8 +1092,9 @@ export class ExploreEnemy {
       const kind = CHARGES[this.mv] ? 'charge' : 'melee';
       if (p.tryDeflect?.(this, kind, this.x, this.z)) { this.hitDone = true; return; }
       const dmg = this.mv === 'thrust2' ? Math.round(this.damage * this.def.thrust2.damage) : this.damage;
-      if (p.hurt(dmg, this.aimDir.x, this.aimDir.z, this.def.name)) {
+      if (p.hurt(dmg, this.aimDir.x, this.aimDir.z, this.def.name, this.mv)) {
         this.hitDone = true;
+        this.landed = true;
         this._pool().hitAt = this._now();
         if (this.def.bleed) p.bleed?.(this.def.bleed);
       } else if (p.dodging) this.hitDone = true;
@@ -951,12 +1105,17 @@ export class ExploreEnemy {
     const A = CONFIG.expedition.attackers;
     this.state = 'recover';
     this.stateT = 0.35;
+    // A lunge / charge / stomp that missed you leaves it open for `recover` s (POISE.punish; elites recover faster);
+    // the Skitter then darts back out for a moment.
+    const miss = (LUNGES[this.mv] || CHARGES[this.mv] || this.mv === 'stomp') && !this.landed && this.def.recover > 0;
+    this.openT = miss ? this.def.recover * (this.elite ? 0.6 : 1) : 0;
+    if (miss) this.stateT = this.openT + (this.def.dart ? 0.45 : 0);
     if (this.token) this.tokenUntil = this._now() + this.stateT + A.release;
     this.cd = cd * (0.85 + Math.random() * 0.3);
     this.bestD = Infinity;
     this.stuckT = 0;
-    // A melee attacker hops back out of your face after its lunge (critic I #2).
-    if (LUNGES[this.mv] && A.hopBack > 0) {
+    // A melee attacker that hit you hops back out of your face after its lunge (critic I #2).
+    if (LUNGES[this.mv] && A.hopBack > 0 && !miss) {
       const p = this.scene.player.pos;
       const dx = this.x - p.x, dz = this.z - p.z, l = Math.hypot(dx, dz) || 1;
       this.kb.x += (dx / l) * A.hopBack * 9; this.kb.z += (dz / l) * A.hopBack * 9;   // kb decays at e^-9t
@@ -1154,7 +1313,7 @@ export class ExploreEnemy {
     this.atkAnimSpeed = 1.2;
     this.atkAnimT = 0.4;
     if (!p.dead && Math.hypot(p.pos.x - at.x, p.pos.z - at.z) < d.ring + p.r * 0.5) {
-      if (p.hurt(this.damage, 0, 0, d.name)) { p.root?.(d.root); this._pool().hitAt = this._now(); }
+      if (p.hurt(this.damage, 0, 0, d.name, 'erupt')) { p.root?.(d.root); this._pool().hitAt = this._now(); }
     }
     fx.burst({ x: at.x, y: -0.2, z: at.z }, { color: '#5a4430', color2: '#8f563b', count: 18, speed: 3, up: 3.2, life: 0.55, size: 2 / 32, gravity: 9 });
     fx.burst({ x: at.x, y: 0.2, z: at.z }, { color: '#c23a3a', color2: '#2a5628', count: 12, speed: 2.6, up: 2.6, life: 0.6, size: 2 / 32, aspect: 2, gravity: 5, drag: 2 });
@@ -1204,6 +1363,7 @@ export class ExploreEnemy {
     setFacing(v, this.face.x, this.face.z);
     this.atkAnimT = (this.atkAnimT || 0) - dt;
     if (this.state === 'windup') { setAnim(v, 'windup'); setAnimSpeed(v, this.windAnimSpeed || 1); }
+    else if (this.state === 'guard') { setAnim(v, 'windup'); setAnimSpeed(v, 0); }   // guard up: the wind-up's first pose, held
     else if (this.state === 'attack' || ((this.state === 'recover' || this.state === 'exposed' || this.state === 'chase') && this.atkAnimT > 0)) { setAnim(v, 'attack'); setAnimSpeed(v, this.atkAnimSpeed || 1); }
     else if (this.state === 'stunned') setAnimSpeed(v, 1);
     else {

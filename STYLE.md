@@ -32,11 +32,17 @@ Two generations of art live side by side:
   has a 1-texel outline — near-black on open ground, cyan `#5fc8d8` only while a card actually covers its body (the body
   box is sampled against the opaque texels of the cards in front, with hysteresis: `ATMOS.playerOutline.body/hits`).
   Night towers get the same outline in their type colour.
-- UI font: Tiny5, with the digits 0–9 (4 px wide on a 5-px advance: Tiny5's 3-wide "8", "0", "6" and "9" blobbed
-  together, critic M), `% / + ~` and the UI symbols (▸ ◂ ▾ ▲ ▼ ▶ ♥ → ϟ ○ ● ☠ ⚠ ✓ ✘ ⚙ ➤ ◆ ★ ☂ ≋ ☀ ❚ …) overridden by
-  `src/ui/fonts/vr-glyphs.ttf`, and the HUD clock's Silkscreen Bold "4" by `src/ui/fonts/vr-clock.ttf` (both built by
-  `tools/make_glyph_font.py` on the 8-unit grid; edit the bitmaps there, re-run, and add new code points to the
-  `unicode-range` in style.css). A symbol not in the font falls back to a blurry system glyph: add it to the script.
+- UI body font: our own `src/ui/fonts/vr-glyphs.ttf` ('VR Glyphs', Stage 9 "text slightly easier to read"), all of
+  printable ASCII on Tiny5's 8-unit grid and 9-unit line box (ascent 7, descent 2): caps 6 tall, x-height 5,
+  ascenders 6 (i / j dots 7), descenders 2, the common letters 4 wide on a 5-px advance, serifed I (I / l / 1 / |
+  differ), word space 3. Tiny5's lowercase was 3 × 4 with 1-px descenders; the new face runs ~20% wider at the same
+  font-size, so sizes stay where they were (16 px at 720p, 24 px at 1080p) and line heights don't move. Digits 0–9 are
+  4 wide on a 5-px advance (Tiny5's 3-wide "8", "0", "6" and "9" blobbed together, critic M), with `% / + ~` and the UI
+  symbols (▸ ◂ ▾ ▲ ▼ ▶ ♥ → ϟ ○ ● ☠ ⚠ ✓ ✘ ⚙ ➤ ◆ ★ ☂ ≋ ☀ ❚ …) in the same file. Tiny5 stays behind it in `--font` for
+  anything outside its unicode-range (Latin-1 letters; no UI string uses one); Silkscreen keeps headlines and small
+  uppercase labels. The HUD clock's Silkscreen Bold "4" comes from `src/ui/fonts/vr-clock.ttf`. Both are built by
+  `tools/make_glyph_font.py` (edit the bitmaps there, re-run, and add new code points to the `unicode-range` in
+  style.css). A character not in the font falls back to Tiny5 or a blurry system glyph: add it to the script.
   `npm run check:glyphs` (`tools/check_glyphs.py`) fails when a UI string uses a character neither Tiny5 nor the glyph
   font draws, or when GLYPHS and the unicode-range disagree.
 - **UI text on whole pixels** (critic M2): layout lengths are `round(calc(var(--u) * N), 1px)` (font sizes keep their
@@ -79,7 +85,13 @@ Two generations of art live side by side:
 - **Props and water**: no foliage card stands within a tile in front of a container, pylon or spore pod (`GROUND.propFront`);
   the same decal never repeats within `DECALS.spacing` tiles. An activated pylon throws a stepped light pool and a beam
   above the canopy (`PYLON_GLOW`). Characters in shallow water are clipped at a waterline `WATER.line` texels above the
-  feet with a looping `fx_ripple` under them and an `fx_splash` on entry. Spore pods use `spore_pod` (idle / swell) and
+  feet with a looping `fx_ripple` under them and an `fx_splash` on entry (never on a bridge deck). **Bridges** (Stage 9,
+  `BRIDGE_LOOK`, TerrainBaker `drawBridge`, baked into the ground texel by texel, AO'd like it): warm plank decks
+  (Endesga wood ramp `#3e2731 → #c28569`) across the dark deep channel — planks with dark gaps, a lit leading edge,
+  grain, the odd old mossy plank and one broken corner; an edge log down each side (lit / mid / dark), posts drawn up
+  the screen 14 texels like a card would show them, a sagging `#e4a672` rope between them, the deck's south face and
+  pile stubs with foam, and a down-right shadow on the water. Map: decks are plank-striped strips; the wayfinding marker
+  is a 5 × 5 plank-bridge glyph. Spore pods use `spore_pod` (idle / swell) and
   burst into 6–8 instanced `spore_puff_*` sprites (`SPORE_LOOK`).
 - **The night board** (`DEFENSE_VIEW`, critic H §4, K §4.3): the same world after dark, at the day's pixel rules — whole
   zoom steps, 32 px per tile, every texel k × k screen pixels (checked: 99.9 % uniform 2 × 2 blocks at 1080p). The jungle's

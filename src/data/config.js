@@ -11,7 +11,7 @@ export const CONFIG = {
   // derived from that), kept low so sprites standing behind a wall only lose their feet.
   pixel: { pitch: 55, ppu: 32, wallFrontPx: 16, blockFrontPx: 12 },
 
-  // DOM UI. fontGrid: the em size (device px) the pixel fonts Tiny5 / Silkscreen are drawn on —
+  // DOM UI. fontGrid: the em size (device px) the pixel fonts (VR Glyphs, Tiny5, Silkscreen) are drawn on —
   // UI font sizes snap to whole multiples of it (Game.fit → --fq).
   // sceneClickGuard: seconds after a scene switch during which mouse clicks on the new UI are swallowed
   // (a click that dismissed the last screen must not land on a button of the next one).
@@ -37,7 +37,7 @@ export const CONFIG = {
     stopAccel: 64,       // …when you let go (a ~0.25-tile stop instead of a slide)
     // Move-speed multipliers while acting: charging a chop · a swing at a creature · a swing that only meets
     // plants (cutting keeps you moving, critic I #4) · winding up a machete throw.
-    actSlow: { charge: 0.42, swing: 0.3, plants: 0.75, throw: 0.5 },
+    actSlow: { charge: 0.42, swing: 0.3, plants: 0.75, throw: 0.5, heal: 0.45 },
     // Corner nudge (JungleWorld.moveBody, critic I #10): walking into a trunk / rock / ruin footprint (input within
     // `cone`° of its surface normal) whose edge is within `edge` tiles of your centre to one side steers you round it at up to
     // `speed` × your speed; brush tiles use `tileEdge` (12 texels).
@@ -55,6 +55,7 @@ export const CONFIG = {
     maxMeds: 2,
     medHeal: 25,
     medCooldown: 0.6,
+    medTime: 0.7,        // s to apply a med kit (Stage 9: walking slowly, a hit or a roll stops it and keeps the kit)
     aimAssist: 0.1,      // radians: shots snap to an enemy this close to the aim line
     shotHeight: 0.55,    // world height of bullets / aim plane
   },
@@ -106,7 +107,8 @@ export const CONFIG = {
     // gentle on-ramp: fewer, weaker enemies and lightly guarded objectives; nights 4–6 stay tense.
     byNight: {
       enemyHp:      [0.85, 0.92, 1.0, 1.1, 1.2, 1.3],   // exploration enemy HP multiplier
-      enemyDamage:  [0.75, 0.85, 1.0, 1.0, 1.05, 1.1], // exploration enemy damage multiplier
+      enemyDamage:  [0.7, 0.85, 1.0, 1.05, 1.1, 1.15], // exploration enemy damage multiplier
+      enemyWindup:  [1.2, 1.1, 1.0, 1.0, 1.0, 1.0],     // × creature wind-ups (Stage 9: day 1 telegraphs are slower — it teaches)
       extraEnemies: [-0.4, -0.1, 0.5, 0.85, 1.2, 1.5],  // extra enemies per room (fractional = chance; negative removes)
       rangedCap:    [1, 1, 2, 2, 3, 3],                 // Spitters + Rival Scavengers per room
       chargerCap:   [1, 1, 1, 1, 2, 2],                 // Razorbacks per room (the elite room has none besides the elite)
@@ -149,10 +151,12 @@ export const CONFIG = {
     //   slotTurn: rad/s a slot follows the aim · hopBack: tiles a melee attacker hops away after its lunge.
     // No-path fallback (critic I #5): a walker that makes no progress toward you for `stuck` s throws (Ferals, if
     //   it can see you) or hacks one brush tile toward you every `hackEvery` s.
+    // Stage 9: gap 0.2 → 0.4 (a pack attacks in a rhythm you can roll through one by one), afterHit 1.0 → 0.5 (getting hit
+    //   is followed up: a mistake costs more than one hit), max 3 from night 4.
     // predict: a melee creature starts its wind-up when you're within reach *or* will be by the end of it (your
     //   walking velocity × wind-up × predict), so running past one gets met by the lunge (critic I #1, kiting).
     attackers: {
-      max: [2, 2, 2, 2, 3, 3], gap: 0.2, afterHit: 1.0, release: 0.3, holdDist: 2.4, circleSpeed: 0.75, predict: 1.0,
+      max: [2, 2, 2, 3, 3, 3], gap: 0.4, afterHit: 0.5, release: 0.3, holdDist: 2.4, circleSpeed: 0.75, predict: 1.0,
       circleCd: 0.3, flank: [120, 180], backArc: [150, 180], slotTurn: 2.2, hopBack: 0.7,
       stuck: 1.5, hackEvery: 0.8,
     },
@@ -257,6 +261,27 @@ export const DEFLECT = {
   riposte: { time: 1.0, mult: 2.5, stagger: 0.5, range: 0.5, lunge: 1.5 },
   glob: 25, sidestep: 0.6, chargeDamage: 15, chargeStun: 0.8,
   ring: '#ffffff', spark: '#fee761', ringRadius: 1.2,
+};
+
+// Poise, commitment and punishing (Stage 9: "make the interactions skillful" — face-trading must lose).
+//   tell: the commit flash — when a melee / charge wind-up stops aiming (EXPLORE_ENEMIES.*.track / the lock) the whole
+//     sprite blinks `color` for `time` s and a red "!" pops: from then on it can't be stopped by the blade (roll / deflect).
+//   lightKb: × knockback of a hit that doesn't flinch the creature (below its poise, outside an opening) — your slashes
+//     don't shove it out of reach any more, so it hits back.
+//   counter: a creature you hit while it walks at you (within its reach + `reach`) starts its attack at once, ignoring
+//     its cooldown and the token cap (at most once per `cooldown` s): hitting first doesn't mean it can't hit back.
+//   punish: hits on a creature that is open (standing spent after an attack that missed you, or stunned / staggered)
+//     deal × `mult` and print a bigger gold number (a riposte keeps its own × instead). `pant`: puffs over an open one.
+//   flinch: getting hit stops your swing / chop / throw and you can't attack for `time` s (you can still roll): a hit
+//     taken mid-combo costs you the combo too.
+export const POISE = {
+  tell: { color: '#ff2e2e', time: 0.3, blink: 0.07 },
+  lightKb: 0.3,
+  counter: { reach: 0.6, cooldown: 2.2 },
+  punish: { mult: 1.5, color: '#fee761' },
+  pant: { color: '#ead4aa', every: 0.12 },
+  flinch: { time: 0.28 },
+  guardColor: '#c0cbdc', guardTint: '#a8b8d8',   // a Feral's raised guard: block sparks / text, and its body tint while it holds
 };
 
 // Status effects on the player (critic I §9F). sap: standing in a Spitter's puddle slows you, and a roll that starts

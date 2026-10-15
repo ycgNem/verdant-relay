@@ -53,7 +53,7 @@ export const TIPS = {
   beacon: { range: 10 },                          // the first dead beacon this close
   sunset: { lead: 60 },                           // s of daylight left
   text: {
-    roll: '{roll}: roll <b>through</b> the attack',
+    roll: '<b>Red flash = roll!</b> {roll} through it, then hit it while it\'s open',   // (Stage 9: committed attacks)
     deflect: 'Tap <b>right-click</b> just before it hits to <b>deflect</b>, then slash back',
     bramble: 'Thorny bramble: hold <b>right-click</b> for a heavy chop',
     throw: '{throw}: throw your machete. It flies through plants and comes back',
@@ -102,14 +102,14 @@ export const WORDS = {
 //   burnShare / bombletShare  Napalm / Cluster extra damage counted per shell (share of its full value)
 //   protocols                 each Relay Protocol this run has as a damage-equivalent (dps + perNight × night),
 //                             × protocolUse (nobody casts perfectly), over the last protocolReach tiles of each lane
-//   lossScale                 calibration of the predicted loss against the balance sim (the raw replay
-//                             over-predicts ~1.55×: 72 sim runs, 380 nights, sum of losses matched at 0.65)
+//   lossScale                 calibration of the predicted loss against the balance sim (Stage 7: the raw replay
+//                             over-predicted ~1.55×, 0.65; Stage 9 with free placement and the harder curve: 0.54)
 //   band                      the shown range: [loss × band[0] − 2, loss × band[1] + 3]
 //   dots                      a path's leak share (Relay damage it lets through ÷ its threat) at or below these
 //                             gives ●●● / ●●○ / ●○○ (above: ○○○; a path no tower reaches is always ○○○)
 //   weakShare                 predicted loss ≥ this share of the Relay's current health → "Too weak: expect heavy
-//                             damage" (Start asks). Sim: 5 L1 towers on night 3 lose ~46 of 100 (reads weak 7/9);
-//                             no night fell below a scaled forecast of ~0.65 × health
+//                             damage" (Start asks). Stage 9 sim: at 0.5 every night that fell read weak, and ~85% of
+//                             the nights that cost half the Relay or more
 //   strongLoss / strongShare  predicted loss ≤ max(strongLoss, Relay max × strongShare), with every path ●●○ or
 //                             better → "Looks strong"; anything else is "Risky"
 // Calibration (Stage 7 sim, .playwright-mcp/nightmech): see DESIGN.md §5.
@@ -125,10 +125,10 @@ export const READINESS = {
     flare: { dps: 4 },
   },
   protocolUse: 0.6, protocolReach: 9,
-  lossScale: 0.65,
+  lossScale: 0.54,   // (Stage 9 build anywhere + harder nights: 0.65 × 0.83, 108 sim runs / 979 nights)
   band: [0.6, 1.4],
   dots: [0.05, 0.2, 0.5],
-  weakShare: 0.35,
+  weakShare: 0.5,    // (Stage 9: at 0.35 a typical build read weak on ~1 night in 3; 0.5 still flags every sim fall)
   strongLoss: 2, strongShare: 0,   // (critic K2 #8: never "strong" with a predicted loss worse than −2)
 };
 

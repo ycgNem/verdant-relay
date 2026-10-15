@@ -21,12 +21,15 @@
 //     relicCaches / shrines / loreSpots   site features (siteFeatures: relic strongboxes at lost majors, a
 //                     shrine per landmark, data logs); sites[].name / .kind = place names (src/data/lore.js)
 //     deep            Uint8Array(W²)      1 = deep water: impassable for everyone (GROUND.deepFrom)
-//     ford            Uint8Array(W²)      1 = a shallow crossing through a river (trail fords + a few extra)
-//     reach           { targets, unreachable, fords, removed, passes } — the reachability check's report
+//     ford            Uint8Array(W²)      bridge deck tiles (1 = over shallow water, 2 = over deep water): walkable,
+//                     no wading (Stage 9; the old name stays: the fords became bridges)
+//     bridges         [{ id, kind: 'trail' | 'extra' | 'fix', axis: 'ns' | 'ew', x0, z0, x1, z1 }]  plank decks (tiles,
+//                     x1 / z1 exclusive), drawn by TerrainBaker drawBridge
+//     reach           { targets, unreachable, bridges, shallow, removed, passes, left } — the reachability report
 //
 // Generation order: regions → water (rivers, ponds) → sites → trails between them → base ground →
-// level smoothing (banks) → deep water + fords → undergrowth → trees → site dressing (ruins, paving) →
-// containers → reachability (every site, pylon and container walkable from the Relay; fixed with fords or by
+// level smoothing (banks) → deep water + bridges → undergrowth → trees → site dressing (ruins, paving) →
+// containers → reachability (every site, pylon and container walkable from the Relay; fixed with bridges or by
 // removing the objects in the way).
 // Everything is deterministic for (seed, districtKeys).
 
@@ -262,11 +265,13 @@ export function generateWorld(seed, districtKeys, opts = {}) {
     return pts;
   };
   const trailPts = [];   // [x, z, region] samples along the trails (dead-end spurs branch off them)
+  const trailLines = [];  // every laid trail polyline (bridges go where they cross deep water)
   for (const [a, b] of edges) {
     const path = route(nodes[a].x, nodes[a].z, nodes[b].x, nodes[b].z);
     if (!path) continue;
     const half = J.trailWidth[0] + rng.next() * (J.trailWidth[1] - J.trailWidth[0]);
     const pts = lay(path, half);
+    trailLines.push(pts);
     for (let k = 0; k < pts.length; k += 8) trailPts.push(pts[k]);
   }
   // Dead ends: spurs that leave a trail and fade out in the brush.
@@ -283,7 +288,7 @@ export function generateWorld(seed, districtKeys, opts = {}) {
       if (trailPts.some(([x, z]) => Math.hypot(ex - x, ez - z) < 9)) continue;
       const path = route(px, pz, ex, ez);
       if (!path) continue;
-      lay(path, J.trailWidth[0] + trng.next() * 0.3);
+      trailLines.push(lay(path, J.trailWidth[0] + trng.next() * 0.3));
       k++;
     }
   }
@@ -353,44 +358,97 @@ export function generateWorld(seed, districtKeys, opts = {}) {
     if (trailVerts[z * V + x] < trailHalf[z * V + x] + 0.3) world.trail[i] = 1;
     for (const s of sites) if (Math.hypot(tx - s.x, tz - s.z) < s.r * J.siteClear) { world.site[i] = s.idx; break; }
   }
-  // ---------------------------------------------------------------- deep water + fords
-  // Deep: well inside the water (the tile's mean depth below the shore line > deepFrom). Trails cross it at fords; each river
-  // gets a few extra fords. Ford tiles stay shallow (wading speed) and are drawn with stepping stones.
-  const G = GROUND;
-  const deep = world.deep, ford = world.ford;
+  // ---------------------------------------------------------------- deep water + bridges
+  // Deep: well inside the water (the tile's mean depth below the shore line > deepFrom): nobody crosses it. Rivers are
+  // crossed on BRIDGES (Stage 9): straight plank decks, GROUND.bridge.width tiles wide, N–S or E–W (tile-aligned, so
+  // the walkable crossing is exactly the drawn deck), spanning bank to bank. One where each trail crosses deep water
+  // (its axis the trail's, a short dirt landing joining the trail on each bank) and a few extra per river (across its
+  // flow, with a short landing). The deck's tiles are world.ford (1 over shallow water, 2 over deep); world.bridges lists
+  // the decks. Reachability (ensureReachable) may add more.
+  const G = GROUND, BR = G.bridge;
+  const deep = world.deep;
+  world.bridges = [];
   for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
     const i = z * V + x;
     if ((water[i] + water[i + 1] + water[i + V] + water[i + V + 1]) / 4 > G.deepFrom && tileLevelAvg(x, z) === 0) deep[z * W + x] = 1;
   }
-  const makeFord = (x, z, r) => {
-    for (let tz = Math.floor(z - r); tz <= Math.floor(z + r); tz++) for (let tx = Math.floor(x - r); tx <= Math.floor(x + r); tx++) {
-      if (tx < 0 || tz < 0 || tx >= W || tz >= W || Math.hypot(tx + 0.5 - x, tz + 0.5 - z) > r) continue;
-      const i = tz * W + tx;
-      if (deep[i] || tileLevelMin(tx, tz) === LEVEL.water) ford[i] = 1;
-      deep[i] = 0;
+  const landing = new Uint8Array(W * W);   // bridge landings: kept free of undergrowth, trees and props
+  // A dirt band (half-width h) from (ax, az) to (bx, bz): trail tiles, levels lowered to dirt where they are drier.
+  const paintPath = (ax, az, bx, bz, h) => {
+    const L2 = (bx - ax) ** 2 + (bz - az) ** 2 || 1;
+    const dSeg = (x, z) => { const t = Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (z - az) * (bz - az)) / L2)); return Math.hypot(x - ax - (bx - ax) * t, z - az - (bz - az) * t); };
+    for (let z = Math.max(0, Math.floor(Math.min(az, bz) - h - 1)); z <= Math.min(W, Math.ceil(Math.max(az, bz) + h + 1)); z++) {
+      for (let x = Math.max(0, Math.floor(Math.min(ax, bx) - h - 1)); x <= Math.min(W, Math.ceil(Math.max(ax, bx) + h + 1)); x++) {
+        if (x < W && z < W && dSeg(x + 0.5, z + 0.5) < h + 0.3 && !deep[z * W + x] && !world.ford[z * W + x]) { world.trail[z * W + x] = 1; landing[z * W + x] = 1; }
+        const v = z * V + x, wob = (nB.value(x * 0.4, z * 0.4) - 0.5) * 0.6;
+        if (dSeg(x, z) < h + wob && L[v] > LEVEL.dirt) L[v] = LEVEL.dirt;
+      }
     }
   };
-  for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
-    if (!deep[z * W + x]) continue;
-    let near = false;
-    for (const [dx, dz] of [[0, 0], [1, 0], [0, 1], [1, 1]]) { const v = (z + dz) * V + x + dx; if (trailVerts[v] < trailHalf[v] + 0.3) near = true; }
-    if (near) makeFord(x + 0.5, z + 0.5, G.fordPad);   // the trail itself crosses here
+  // Landings at both ends of a bridge: toward `ends` ([[x, z], [x, z]] trail points on either bank) or straight out.
+  const land = (b, ends) => {
+    const ns = b.axis === 'ns', mx = (b.x0 + b.x1) / 2, mz = (b.z0 + b.z1) / 2;
+    // No reeds or ferns on the banks right beside the deck or just south of it (their cards would hide its edge).
+    for (let z = b.z0 - 1; z < b.z1 + 2; z++) for (let x = b.x0 - 1; x < b.x1 + 1; x++) if (x >= 0 && z >= 0 && x < W && z < W) landing[z * W + x] = 1;
+    const tips = ns ? [[mx, b.z0], [mx, b.z1]] : [[b.x0, mz], [b.x1, mz]];
+    tips.forEach(([ex, ez], k) => {
+      const out = k ? 1 : -1;
+      const sx = ex + (ns ? 0 : out * 0.6), sz = ez + (ns ? out * 0.6 : 0);
+      let tx = ex + (ns ? 0 : out * BR.landing), tz = ez + (ns ? out * BR.landing : 0);
+      if (ends) {   // the trail point on this bank (the nearer of the two)
+        const e = ends.reduce((p, q) => (Math.hypot(q[0] - ex, q[1] - ez) < Math.hypot(p[0] - ex, p[1] - ez) ? q : p));
+        if (Math.hypot(e[0] - ex, e[1] - ez) < BR.landing * 3) { tx = e[0]; tz = e[1]; }
+      }
+      paintPath(sx, sz, tx, tz, BR.width / 2);
+    });
+  };
+  const clashes = (p, gap) => world.bridges.find((q) => p.x0 < q.x1 + gap && q.x0 < p.x1 + gap && p.z0 < q.z1 + gap && q.z0 < p.z1 + gap);
+  // Trails: each run of a trail polyline over wet tiles that touches deep water gets a bridge along the trail.
+  const wetT = (x, z) => { const tx = Math.floor(x), tz = Math.floor(z); return tx >= 0 && tz >= 0 && tx < W && tz < W && tileLevelMin(tx, tz) === LEVEL.water; };
+  const deepT = (x, z) => { const tx = Math.floor(x), tz = Math.floor(z); return tx >= 0 && tz >= 0 && tx < W && tz < W && deep[tz * W + tx] === 1; };
+  for (const pts of trailLines) {
+    for (let k = 0; k < pts.length; k++) {
+      if (!deepT(pts[k][0], pts[k][1])) continue;
+      let a = k, b = k;
+      while (a > 0 && wetT(pts[a - 1][0], pts[a - 1][1])) a--;
+      while (b < pts.length - 1 && wetT(pts[b + 1][0], pts[b + 1][1])) b++;
+      k = b;
+      const A = pts[Math.max(0, a - 1)], B = pts[Math.min(pts.length - 1, b + 1)];
+      const mx = (A[0] + B[0]) / 2, mz = (A[1] + B[1]) / 2;
+      const pref = Math.abs(B[0] - A[0]) >= Math.abs(B[1] - A[1]) ? 'ew' : 'ns';
+      // The deck centred on the run's middle (or on its deepest sample when the middle is dry).
+      let cx0 = mx, cz0 = mz;
+      if (!wetT(mx, mz)) { const m = pts[Math.round((a + b) / 2)]; cx0 = m[0]; cz0 = m[1]; }
+      const plan = planBridge(world, cx0, cz0, { pref }) || planBridge(world, cx0, cz0, { pref, maxLen: BR.fixLen });
+      if (!plan) continue;
+      const far = (i, dir) => pts[Math.max(0, Math.min(pts.length - 1, i + dir * BR.reach))];
+      // A bridge already stands close by (another trail crossing here): this trail joins it instead of a twin bridge.
+      const near = clashes(plan, BR.trailGap);
+      if (near) { land(near, [far(a - 1, -1), far(b + 1, 1)]); continue; }
+      land(layBridge(world, plan, 'trail'), [far(a - 1, -1), far(b + 1, 1)]);
+    }
   }
+  // Extra bridges on each river, across its flow, at least `spacing` tiles from any other.
   const frng = makeRng(subSeed(seed, 'fords'));
   for (const line of riverLines) {
-    const cand = frng.shuffle(line.filter(([x, z]) => deep[Math.floor(z) * W + Math.floor(x)]));
+    const cand = frng.shuffle(line.map((p, i) => [p[0], p[1], i]).filter(([x, z]) => deep[Math.floor(z) * W + Math.floor(x)]));
     let n = 0;
-    for (const [x, z] of cand) {
-      if (n >= G.extraFords) break;
-      let clash = false;
-      for (let tz = Math.floor(z - G.fordSpacing); tz <= z + G.fordSpacing && !clash; tz += 2) for (let tx = Math.floor(x - G.fordSpacing); tx <= x + G.fordSpacing; tx += 2) {
-        if (tx >= 0 && tz >= 0 && tx < W && tz < W && ford[tz * W + tx] && Math.hypot(tx - x, tz - z) < G.fordSpacing) { clash = true; break; }
-      }
-      if (clash) continue;
-      makeFord(x, z, G.fordRadius);
+    for (const [x, z, i] of cand) {
+      if (n >= BR.extra) break;
+      if (world.bridges.some((q) => Math.hypot((q.x0 + q.x1) / 2 - x, (q.z0 + q.z1) / 2 - z) < BR.spacing)) continue;
+      const p0 = line[Math.max(0, i - 2)], p1 = line[Math.min(line.length - 1, i + 2)];
+      const pref = Math.abs(p1[0] - p0[0]) >= Math.abs(p1[1] - p0[1]) ? 'ns' : 'ew';   // across the flow
+      const plan = planBridge(world, x, z, { pref });
+      if (!plan || clashes(plan, BR.gap)) continue;
+      land(layBridge(world, plan, 'extra'), null);
       n++;
     }
   }
+  // Nothing tall right beside a deck or in front of it (south: the camera's side), where its card would hide the deck.
+  const nearBridge = (x, z, side, front) => world.bridges.some((b) => x > b.x0 - side && x < b.x1 + side && z > b.z0 - 1 && z < b.z1 + front);
+  // Landings lowered some vertices to dirt: keep neighbours within one level, paving only on real dirt.
+  smoothLevels(L, V);
+  for (let i = 0; i < V * V; i++) if (L[i] !== LEVEL.dirt) world.pave[i] = 0;
 
   // Distance (tiles) to the nearest trail or open clearing: the deep jungle away from them grows denser.
   const openDist = new Float32Array(W * W).fill(999);
@@ -425,13 +483,14 @@ export function generateWorld(seed, districtKeys, opts = {}) {
         b = hash2(x, z, 7) < p ? (hash2(x, z, 8) < 0.55 ? BRUSH.fern : BRUSH.thicket) : BRUSH.none;
       }
       if (tileLevelMin(x, z) === LEVEL.mud && b > BRUSH.fern) b = BRUSH.fern;   // reeds, not thickets, on banks
-      B[i] = b;
+      B[i] = landing[i] ? BRUSH.none : b;   // bridge landings stay open
     }
   }
   // ---------------------------------------------------------------- trees (jittered grid)
   let oid = 0;
   const objects = world.objects;
   const occupied = new Uint8Array(W * W);   // tiles under a collider (no containers / spawns here)
+  for (let i = 0; i < W * W; i++) if (landing[i] || world.ford[i]) occupied[i] = 1;   // (nothing on a bridge or its landings)
   const markCircle = (x, z, r) => {
     for (let tz = Math.floor(z - r); tz <= Math.floor(z + r); tz++) for (let tx = Math.floor(x - r); tx <= Math.floor(x + r); tx++) {
       if (tx >= 0 && tz >= 0 && tx < W && tz < W) occupied[tz * W + tx] = 1;
@@ -458,6 +517,8 @@ export function generateWorld(seed, districtKeys, opts = {}) {
       if (Math.hypot(x - cx, z - cz) < J.relayClearing + 1) continue;
       if (tileLevelMin(tx, tz) <= LEVEL.mud) continue;
       if (occupied[i]) continue;
+      // No canopy over a bridge: no trunk beside it or within GROUND.bridge.treeFront tiles south of it (the camera's side).
+      if (nearBridge(x, z, BR.treeSide, BR.treeFront)) continue;
       const dens = nA.fbm(x * 0.05 + 300, z * 0.05, 3);
       if (rng.next() > J.treeChance * (0.6 + dens * 0.8)) continue;
       const look = REGION_LOOK[regionKey(world.region[i])] || REGION_LOOK.overgrown_market;
@@ -488,7 +549,7 @@ export function generateWorld(seed, districtKeys, opts = {}) {
         const o = { id: `o${oid}`, kind: 'ruin', type: look.hero.replace('ruin_', ''), x, z, r: 0, flip: false, site: s.idx, hero: true };
         const f = footprint(o);
         if (f && inFootprint(f, s.x, s.z, 2)) continue;
-        if (objects.some((q) => q.kind === 'ruin' && Math.hypot(q.x - x, q.z - z) < 5)) continue;
+        if (objects.some((q) => q.kind === 'ruin' && Math.hypot(q.x - x, q.z - z) < 5) || nearBridge(x, z, BR.ruinSide, BR.ruinFront)) continue;
         oid++;
         objects.push(o);
         markCircle(x, z, 2);
@@ -502,7 +563,7 @@ export function generateWorld(seed, districtKeys, opts = {}) {
         const d = s.type === 'landmark' ? 0 : s.r * (0.55 + rng.next() * 0.35);
         const x = Math.round((s.x + Math.cos(a) * d) * 32) / 32, z = Math.round((s.z + Math.sin(a) * d) * 32) / 32;
         const type = s.type === 'landmark' ? rng.pick(['statue', 'mast', 'greenhouse']) : rng.pick(look.ruins).replace('ruin_', '');
-        if (objects.some((o) => o.kind === 'ruin' && Math.hypot(o.x - x, o.z - z) < (o.hero ? 4.5 : 3))) continue;
+        if (objects.some((o) => o.kind === 'ruin' && Math.hypot(o.x - x, o.z - z) < (o.hero ? 4.5 : 3)) || nearBridge(x, z, BR.ruinSide, BR.ruinFront)) continue;
         objects.push({ id: `o${oid++}`, kind: 'ruin', type, x, z, r: 0, flip: rng.chance(0.5), site: s.idx });
         markCircle(x, z, 1.5);
         markFoot(objects[objects.length - 1], 0.5);
@@ -517,7 +578,7 @@ export function generateWorld(seed, districtKeys, opts = {}) {
   for (let k = 0; k < 140; k++) {
     const x = 3 + rng.next() * (W - 6), z = 3 + rng.next() * (W - 6);
     const tx = Math.floor(x), tz = Math.floor(z), i = tz * W + tx;
-    if (world.trail[i] || world.site[i] >= 0 || occupied[i] || tileLevelMin(tx, tz) <= LEVEL.mud) continue;
+    if (world.trail[i] || world.site[i] >= 0 || occupied[i] || tileLevelMin(tx, tz) <= LEVEL.mud || nearBridge(x, z, BR.treeSide, BR.treeFront)) continue;
     if (Math.hypot(x - cx, z - cz) < J.relayClearing + 2) continue;
     // A lone stump deep in the brush read as forage that did nothing (critic N §2): the pick stays (the main stream
     // draws the same numbers, so every seed keeps its world) but a 'stump' becomes a fallen log. Old stumps now
@@ -990,12 +1051,13 @@ function siteFeatures(world, seed, occupied, B, wet) {
  * Reachability (Stage 6): every site, pylon and container must be walkable from the Relay. Brush counts as
  * passable (it can be cut); deep water and object footprints (SOLID.kind, the largest art of each type, so
  * the runtime colliders are never bigger) don't. A tile is walkable when its centre is >= GROUND.reachPad from
- * every footprint. Anything unreachable is fixed along the cheapest path from the reachable area: deep water on
- * it becomes a ford, objects on it are removed. Returns a report.
+ * every footprint. Anything unreachable is fixed along the cheapest path from the reachable area: where it
+ * crosses deep water a bridge is laid (planBridge, up to GROUND.bridge.fixLen long; failing that the deep tiles
+ * there turn shallow, which reads as wadeable), objects on it are removed. Returns a report.
  */
 export function ensureReachable(world) {
   const G = GROUND, W = world.size;
-  const report = { targets: 0, unreachable: 0, fords: 0, removed: 0, passes: 0, left: 0 };
+  const report = { targets: 0, unreachable: 0, bridges: 0, shallow: 0, removed: 0, passes: 0, left: 0 };
   const targets = [
     ...world.sites.map((s) => ({ x: s.x, z: s.z, r: 2 })),
     ...world.pylons.map((p) => ({ x: p.x, z: p.z, r: 2 })),
@@ -1004,14 +1066,15 @@ export function ensureReachable(world) {
   ];
   report.targets = targets.length;
   const sx = Math.floor(world.center.x + DAY.startOffset[0]), sz = Math.floor(world.center.z + DAY.startOffset[1]);
-  for (let pass = 0; pass <= 5; pass++) {
+  const MAXP = 8;
+  for (let pass = 0; pass <= MAXP; pass++) {
     const { blocked, owners } = blockGrid(world);
     const reached = floodTiles(W, blocked, sx, sz);
     const bad = targets.filter((t) => !nearReached(W, reached, t));
     if (pass === 0) report.unreachable = bad.length;
     report.passes = pass;
     report.left = bad.length;
-    if (!bad.length || pass === 5) return report;
+    if (!bad.length || pass === MAXP) return report;
     // Cheapest repair path from the start to each unreachable target.
     const cost = (i) => (blocked[i] === 2 ? G.fixDeep : blocked[i] === 1 ? G.fixObject : 1);
     const { dist, from } = dijkstraTiles(W, cost, sx, sz);
@@ -1020,12 +1083,20 @@ export function ensureReachable(world) {
       let best = -1;
       forTilesNear(W, t, (i) => { if (dist[i] < Infinity && (best < 0 || dist[i] < dist[best])) best = i; });
       for (let i = best; i >= 0 && !reached[i]; i = from[i]) {
-        if (blocked[i] === 2) {
+        if (blocked[i] === 2 && world.deep[i]) {
+          // A bridge across here, along the path's heading (the next pass checks it and clears its ends).
           const x = i % W, z = (i - x) / W;
+          const j = from[i] >= 0 ? from[i] : i, jx = j % W, jz = (j - jx) / W;
+          const pref = Math.abs(jx - x) >= Math.abs(jz - z) ? 'ew' : 'ns';
+          const plan = planBridge(world, x + 0.5, z + 0.5, { pref, maxLen: G.bridge.fixLen });
+          // (Right beside another bridge: wait for the next pass, which may find this target reached through it.)
+          const gap = G.bridge.gap, near = plan && world.bridges.some((q) => plan.x0 < q.x1 + gap && q.x0 < plan.x1 + gap && plan.z0 < q.z1 + gap && q.z0 < plan.z1 + gap);
+          if (plan && near && pass < MAXP - 2) break;
+          if (plan) { layBridge(world, plan, 'fix'); report.bridges++; break; }
           for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
             if (x + dx < 0 || z + dz < 0 || x + dx >= W || z + dz >= W) continue;
-            const j = (z + dz) * W + x + dx;
-            if (world.deep[j]) { world.deep[j] = 0; world.ford[j] = 1; report.fords++; }
+            const k = (z + dz) * W + x + dx;
+            if (world.deep[k]) { world.deep[k] = 0; report.shallow++; }
           }
         } else if (blocked[i] === 1) for (const o of owners.get(i) || []) if (!o.pylon) kill.add(o);
       }
@@ -1036,6 +1107,61 @@ export function ensureReachable(world) {
     }
   }
   return report;
+}
+
+/** Is tile (tx, tz) wet: deep, or any corner at the water level. */
+function wetTile(world, tx, tz) {
+  const W = world.size, V = W + 1, L = world.level;
+  return world.deep[tz * W + tx] === 1 || Math.min(L[tz * V + tx], L[tz * V + tx + 1], L[(tz + 1) * V + tx], L[(tz + 1) * V + tx + 1]) === LEVEL.water;
+}
+
+/**
+ * The best straight bridge through point (x, z): a deck GROUND.bridge.width tiles wide, axis 'ns' (runs along z) or
+ * 'ew', over every wet row from bank to bank (the rows beyond both ends are dry). Lateral shifts of up to `shift`
+ * tiles are tried. Score = length + shift × shiftCost + `turn` if not along `pref`. Must cross deep water and be at
+ * most `maxLen` tiles long. Returns { axis, x0, z0, x1, z1 } (tiles, x1 / z1 exclusive) or null.
+ */
+export function planBridge(world, x, z, { pref = null, maxLen = GROUND.bridge.maxLen } = {}) {
+  const BR = GROUND.bridge, W = world.size, bw = BR.width;
+  let best = null;
+  for (const axis of ['ns', 'ew']) {
+    const ns = axis === 'ns';
+    const lat = ns ? x : z, r0 = Math.floor(ns ? z : x);
+    const at = (c, r) => (ns ? wetTile(world, c, r) : wetTile(world, r, c));
+    const dp = (c, r) => (ns ? world.deep[r * W + c] : world.deep[c * W + r]) === 1;
+    for (let off = -BR.shift; off <= BR.shift; off++) {
+      const c0 = Math.round(lat - bw / 2) + off;
+      if (c0 < 1 || c0 + bw > W - 1 || r0 < 2 || r0 > W - 3) continue;
+      const rowWet = (r) => { for (let c = c0; c < c0 + bw; c++) if (at(c, r)) return true; return false; };
+      if (!rowWet(r0)) continue;
+      let a = r0, b = r0;
+      while (a > 1 && rowWet(a - 1)) a--;
+      while (b < W - 2 && rowWet(b + 1)) b++;
+      if (rowWet(a - 1) || rowWet(b + 1) || b - a + 1 > maxLen) continue;
+      let deepN = 0;
+      for (let r = a; r <= b; r++) for (let c = c0; c < c0 + bw; c++) if (dp(c, r)) deepN++;
+      if (!deepN) continue;
+      const score = b - a + 1 + Math.abs(off) * BR.shiftCost + (pref && axis !== pref ? BR.turn : 0);
+      if (!best || score < best.score) {
+        best = ns ? { score, axis, x0: c0, x1: c0 + bw, z0: a, z1: b + 1 } : { score, axis, x0: a, x1: b + 1, z0: c0, z1: c0 + bw };
+      }
+    }
+  }
+  return best;
+}
+
+/** Lay a planned bridge: its tiles become deck (world.ford 2 over deep water, 1 over shallow), never deep. */
+export function layBridge(world, p, kind) {
+  const W = world.size;
+  if (!world.bridges) world.bridges = [];
+  for (let tz = p.z0; tz < p.z1; tz++) for (let tx = p.x0; tx < p.x1; tx++) {
+    const i = tz * W + tx;
+    world.ford[i] = world.deep[i] || world.ford[i] === 2 ? 2 : 1;
+    world.deep[i] = 0;
+  }
+  const b = { id: `br${world.bridges.length}`, kind, axis: p.axis, x0: p.x0, z0: p.z0, x1: p.x1, z1: p.z1 };
+  world.bridges.push(b);
+  return b;
 }
 
 /** Tiles blocked for walking (1 object footprint within reachPad, 2 deep water) and the objects on each. */
