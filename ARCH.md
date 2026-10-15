@@ -281,7 +281,10 @@ Module functions (import from `../core/Assets.js`):
   `sc._lastSpear` + `attackers.spearGap`). `Player.hurt(…, who)` logs the attacker (`who`) and `t` (`scene.dayT`) for
   `deathNote()` (`DEATH_NOTE`: last direct blow, brawl lesson). `JungleScene._rewardSafe()`: a done quest's reward
   survives going down (`rewardAtDelivery`, or nights ≤ `expedition.keepRewardThrough`); `_finish` grants a failed-but-
-  extracted quest its skill point from `expedition.failedQuestPointFrom`.
+  extracted quest its skill point from `expedition.failedQuestPointFrom`. Duels: `JungleScene._inDuel(x, z)` is true within
+  `POP.duel.radius` of a live `POP.duel.kills` objective target (its enemy once spawned); the chunk spawner skips those
+  spots, the elite gets no `eliteSupport`, and in `ExploreEnemy` chase other wildlife leaves `sc._engaged` and circles at
+  the radius while the player is inside.
 - `Ambience(scene3d, world).update(dt, cx, cz, dusk)`: pollen, falling leaves, fireflies (emissive, drawn over the
   foliage), light shafts.
 - Persistent state: `run.world` (`run.worldState(size, cell)` decodes it, `run.storeWorld(state)` stores it; bitsets in base64).
@@ -396,8 +399,13 @@ Module functions (import from `../core/Assets.js`):
   cards on nights 1–2 with fewer than 2 towers), footer. The bar shows in prep / lulls unless a tower is selected;
   `sideMode` 'preview' | 'placing' (`_renderPlacing`) | 'tower'. The side carries `.df-inprep` in prep (lulls let the
   body shrink further so Call next push fits at 720p). `_provoke()` (DEFENSE.provoke: the button shows in prep while
-  readiness reads "Looks strong"; rebuilds the wave like `_sabotage()`). The readiness footer names the weakest path's
-  top leaker and its `DEFENSE_ENEMIES[type].counter` line.
+  readiness reads "Looks strong"; again as the Double dare from `double.fromNight`; rebuilds the wave like `_sabotage()` and
+  re-reads `this.hpMult` from `run.nightHpMult()`), `_swap(from)` (DEFENSE.swap). The readiness footer names
+  `_uncoveredSpecial()` first (a `DEFENSE_ENEMIES[type].needs` enemy on a path no tower of those kinds covers), else the
+  weakest path's top leaker and its `counter` line. `_tryStartWave` skips the weak-night confirm when
+  `_canSpendAnything()` is false. `_keepFootIn()` (from `_fitBody`) adds `df-tight1` (preview may shrink to nothing) then
+  `df-tight2` (trade / swap rows hidden) until the footer fits; `_updateHints()` starts no tip while placing and the
+  side's `df-placing` class hides a docked one.
 - **NightCamera(scene, fit, bounds):** integer zoom k (`ks` = the allowed steps, `kDefault`), internal res = floor(window / k)
   rounded to even through `game.setInternalRes`; the board viewport is `DEFENSE_VIEW.view` (UI units, panel on the right).
   Default k = the largest that fits `fit` (the field), or 2 when only 1 fits, the day scale is ≥ 3 and 2 shows ≥
@@ -640,8 +648,10 @@ Fields: `seed night phase relayHp relayMax playerHp meds weapon res{scrap,circui
   `spec.onHit?.(target)` per thing struck and cuts brush out to `spec.cutRange || spec.range`.
 - Relay: `repairAmount()`, `repairCost()` (prorated), `repair()`, `beginPrep()` (one-time per-night bonuses; returns notes), `emergencyPatch()`.
 - Intel (night prep): `decryptCost()`, `decrypt(game)` → Research; `sabotageCost()`, `sabotageBlocked()`, `sabotage()` → wave −10% once per night.
-- Provoke (night prep, `DEFENSE.provoke`): `provokeBlocked()`, `provoke()` → `tonight.provoked` (+Scrap now; `waveCountMult()` × enemies,
-  `bountyMult()` × bounty). `beginPrep()` also pays `CONFIG.relay.stipendParts` (a Circuit and a Biofiber each night from night 3).
+- Provoke (night prep, `DEFENSE.provoke`): `provokeBlocked()` (not after Disrupt; `sabotageBlocked()` refuses after a
+  Provoke), `provoke()` → `tonight.provoked` 1 (+Scrap now; `waveCountMult()` × enemies, `nightHpMult()` × hp,
+  `bountyMult()` × bounty) or 2 (the Double dare: × double.enemies, + double.give). `swapBlocked(from)`, `swap(from)`
+  (DEFENSE.swap: rate of one component → 1 of the other). `beginPrep()` also pays `CONFIG.relay.stipendParts` (a Circuit and a Biofiber each night from night 3).
 - Wave size: `waveCountMult()` = `tonight.enemyCount` floored at `CONFIG.waveSizeFloor` (0.8); `waveCutCapped()`.
 - Expedition: `applyExpedition(result, game)` with
   `{ district, extracted, died, carried:{…}, objectiveDone, objectiveSecured, objectiveFailed, boon, optionals:[{key,name,flag?,research?}], events:[{key,name,flag?}], bossesKilled:[area], weather, skillPointsEarned, medsLeft, playerHp, kills, relics:[id] }`.
@@ -736,7 +746,7 @@ centre is free for banners, the quest card and an area boss's bar.
 new JungleQuest(scene)`, built in `_buildHud` (`build(h)` returns its nodes), driven from `_updateHud` by
 `quest.update(dt, { ot, ex, homeNow, cc, rects })` (tracker text, edge arrows `_edge` for quest / crate / home, ◆ ▼
 markers over on-screen targets, the orbit pointer, `PixelGlow` light pool + beam per target); `showCard()` /
-`toggleCard()` (the quest card in the banner lane; `enter()` shows it; the `quest` key action, `src/data/controls.js`, default J, toggles it), `onStep(prev)`
+`toggleCard()` (the quest card `.j-qcard`, top-anchored in the banner lane, not a text-lane banner; `enter()` shows it; the `quest` key action, `src/data/controls.js`, default J, toggles it), `onStep(prev)`
 (from `_advanceStep`: the ✔ tick), `complete()` (from `completeObjective`: QUEST COMPLETE banner + burst), `bigHtml()`
 (the big map's quest panel), `targets()` (live targets of the current step). `stepText(step, site)` fills a label's
 `{at}` with the site's place name; `stepVerb(step)` is the prompt text. Pixel art: `src/ui/questArt.js`
@@ -747,7 +757,10 @@ the world's texel size in CSS px (HUD pixel icons scale by it); `--hudfade` = `J
 `_updateFord(target)` sets `this._ford` from two whole-map walk fields to the target (`_walkField(gx, gz, noDecks)`:
 steps from every tile, deep water / props block, brush doesn't; with and without bridge decks), only when the shortest
 walk goes over a deck and land is impossible or > `QUEST.ford.landSlack` × longer — the first deck down that walk (the middle of the bridge: a `ford` marker — the plank-bridge glyph — on
-both maps, the tracker's "cross at the bridge").
+both maps, the tracker's "cross at the bridge"). While `_ford` is set, `JungleQuest.update` leads with it: the quest
+edge arrow, the ◆ ▼ marker (`_placeMarks(tg, lead, rects)`: returns whether the lead is on screen; markers step
+sideways off HUD boxes) and the orbit pointer go to the bridge (`QUEST.mark.bridgeTop`), the badge shows both distances.
+BriefingScene re-anchors its coach box on window resize (`_hintSpot()` + `_fitHint(n)`).
 DefenseScene `_readiness()` (→ `READINESS`) drives the "Your defense" line and `_tryStartWave()`'s confirm.
 `ui.shownResources(res)` / `resRow` hide zero currencies (Scrap always shows); `resChip(k, n, {short})` = icon + number.
 

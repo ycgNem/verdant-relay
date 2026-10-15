@@ -42,6 +42,8 @@ export const DEFENSE_ENEMIES = {
     name: 'Burrower', role: 'Ambusher', hp: 58, speed: 1.6, coreDamage: 6, bounty: 1, size: 0.7,
     note: 'Tunnels under part of its route. Bullet towers can\'t hit it there; arcs, mortars and snares can.', color: '#e4a672', gap: 1.4,
     counter: 'Bullets can\'t hit Burrowers underground: use an Arc Spire or a Snare Vine (or a beacon\'s light).',
+    // needs: tower kinds that answer it; when a path brings it and none of these covers that path, prep warns first.
+    needs: ['chain', 'mortar', 'snare'], uncovered: 'only Arc Spires and Snare Vines reach them underground, and none covers that path',
     // Underground for this fraction of its route: bullet towers can't target it there.
     burrow: [0.2, 0.55],
   },
@@ -60,6 +62,7 @@ export const DEFENSE_ENEMIES = {
     name: 'Ruin Guard', role: 'Elite', hp: 190, speed: 1.0, coreDamage: 10, bounty: 2, size: 1.05,
     note: 'Its shield halves kinetic damage (Turrets, Thorns). Use arcs, mortars or Piercer turrets.', color: '#0099db', gap: 4,
     counter: 'Ruin Guard shields halve Turret and Thorn damage: use Arc Spires.',
+    needs: ['chain', 'mortar'], uncovered: 'their shields halve Turret and Thorn damage, and no Arc Spire covers that path',
     resist: { kinetic: 0.5 },   // shield halves kinetic damage
   },
   colossus: {

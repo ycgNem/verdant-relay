@@ -47,7 +47,7 @@ export const QUEST = {
   tick: 1.4,
   done: 3.8,
   arrow: { size: 25, glow: 2, scale: 2, dirs: 8, margin: 2, bob: 2, gap: 2 },
-  mark: { lift: 0.3, near: 1.6 },
+  mark: { lift: 0.3, near: 1.6, bridgeTop: 0.4 },
   orbit: { minDist: 22, calm: 8, radius: 44, size: 13 },
   // "cross at the bridge" (JungleScene._updateFord, critic Q): rechecked every `every` frames; the walk fields from the
   // target rebuilt when it moves more than `move` tiles (at most every `refield` s); no hint when a land-only route is at

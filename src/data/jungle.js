@@ -344,7 +344,12 @@ export const POP = {
   targetRegion: 1.2,         // today's district is busier
   group: [1, 3],
   campSize: [2, 3],          // ferals at a camp (+1 from night campGrowFrom)
-  campGrowFrom: 4,           // (fix wave, critic Q #1: was night 3 — a 5-Feral camp on day 3 snowballed)
+  campGrowFrom: 4,
+  // A duel, not a brawl (Stage 9 fix wave 2, critic R2: 3 of 4 typical day-5 deaths were attrition from adds at the
+  // elite Razorback): no wildlife spawns within `radius` tiles of a live `kills` quest target, calm wildlife there leaves
+  // when it appears, it brings no support creatures (byNight.eliteSupport), and while you stand in that ring other
+  // wildlife holds `radius` tiles off you (ExploreEnemy chase: no attacks, no spears).
+  duel: { kills: ['razorback'], radius: 8 },           // (fix wave, critic Q #1: was night 3 — a 5-Feral camp on day 3 snowballed)
   spawnRadius: 2,            // chunks around the player whose wildlife is live
   despawnDist: 46,           // tiles: un-alerted wildlife this far away goes back into the bush
   minSpawnDist: 15,          // never pop in closer than this to the player (view half-diagonal ≈ 11.5 tiles + look-ahead + margin)

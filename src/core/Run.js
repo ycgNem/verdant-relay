@@ -203,7 +203,7 @@ export class Run {
   }
 
   /** Enemy health multiplier tonight: the night curve (healthMult, which grows past night 6) × Overgrowth. */
-  nightHpMult(night = this.night) { return healthMult(night) * this.mod('hpMult'); }
+  nightHpMult(night = this.night) { return healthMult(night) * this.mod('hpMult') * (this.tonight?.provoked && night === this.night ? DEFENSE.provoke?.hp ?? 1 : 1); }
 
   // ---------------------------------------------------------------- relics (src/data/relics.js)
 
@@ -899,6 +899,7 @@ export class Run {
   /** Why Sabotage can't be used right now, or null. */
   sabotageBlocked() {
     if (this.tonight.sabotaged) return 'Already used tonight';
+    if (this.tonight.provoked) return 'Not on a night you Provoked';
     if (this.waveCutCapped()) return `Wave cuts are already at the −${Math.round((1 - CONFIG.waveSizeFloor) * 100)}% cap`;
     return this.missing(this.sabotageCost());
   }
@@ -918,7 +919,7 @@ export class Run {
    */
   waveCountMult() {
     return Math.max(CONFIG.waveSizeFloor ?? 0, this.tonight.enemyCount ?? 1) * this.mod('enemyCount')
-      * (this.tonight.provoked ? DEFENSE.provoke?.enemies ?? 1 : 1);
+      * (this.tonight.provoked ? DEFENSE.provoke?.enemies ?? 1 : 1) * (this.tonight.provoked >= 2 ? DEFENSE.provoke?.double?.enemies ?? 1 : 1);
   }
 
   /** Why Provoke can't be used now, or null (DEFENSE.provoke: from its night, once a night). */
@@ -926,15 +927,35 @@ export class Run {
     const P = DEFENSE.provoke;
     if (!P) return 'Off';
     if (this.night < P.fromNight) return `From night ${P.fromNight}`;
-    if (this.tonight.provoked) return 'Already provoked tonight';
+    if (this.tonight.sabotaged) return 'Not on a night you Disrupted';
+    if (this.tonight.provoked >= 2 || (this.tonight.provoked && !(P.double && this.night >= P.double.fromNight))) return 'Already provoked tonight';
     return null;
   }
 
-  /** Dare a bigger wave tonight: DEFENSE.provoke.enemies × its size, +scrap now, kill bounties × bounty. */
+  /**
+   * Dare a bigger wave tonight (tonight.provoked 1): DEFENSE.provoke.enemies × its size and hp × health, +scrap now, kill
+   * bounties × bounty. Again from double.fromNight (tonight.provoked 2): another double.enemies × for double.give.
+   */
   provoke() {
     if (this.provokeBlocked()) return false;
-    this.tonight.provoked = true;
-    this.add({ scrap: DEFENSE.provoke.scrap });
+    const P = DEFENSE.provoke;
+    if (this.tonight.provoked) { this.tonight.provoked = 2; this.add(P.double.give); }
+    else { this.tonight.provoked = 1; this.add({ scrap: P.scrap }); }
+    return true;
+  }
+
+  /** Why the component swap (DEFENSE.swap: `rate` of `from` → 1 of the other) can't be used now, or null. */
+  swapBlocked(from) {
+    const S = DEFENSE.swap;
+    if (!S) return 'Off';
+    if (this.night < S.fromNight) return `From night ${S.fromNight}`;
+    return (this.res[from] || 0) < S.rate ? `Needs ${S.rate} ${from === 'circuits' ? 'Circuits' : 'Biofiber'}` : null;
+  }
+
+  swap(from) {
+    if (this.swapBlocked(from)) return false;
+    this.res[from] -= DEFENSE.swap.rate;
+    this.add({ [from === 'circuits' ? 'biofiber' : 'circuits']: 1 });
     return true;
   }
 

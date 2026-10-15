@@ -239,7 +239,7 @@ export function forecastNight(scene) {
   });
   const hp = run.relayHp;
   const lo = Math.max(0, Math.round(lost * R.band[0] - 2));
-  const hi = Math.max(0, Math.round(lost * R.band[1] + 3));
+  const hi = Math.max(0, Math.round((lost * R.band[1] + 3) * (scene.night <= 1 ? R.firstNightHi ?? 1 : 1)));
   let level = 'risky';
   if (lost >= hp * R.weakShare || !scene.towers.length) level = 'weak';
   else if (lost <= Math.max(R.strongLoss, run.relayMax * R.strongShare) && laneOut.every((l) => l.dots >= 2)) level = 'strong';

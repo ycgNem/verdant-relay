@@ -119,15 +119,19 @@ export class Goals {
     const self = this;
     const npc = this.npc = {
       pos: new THREE.Vector3(p.x, 0, p.z), vel: { x: 0, z: 0 }, kb: { x: 0, z: 0 }, aim: { x: 0, z: 1 }, r: G.radius,
-      hp: G.hp, maxHp: G.hp, dead: false, dodging: false, iframes: 0, following: false, crumbs: [], vis, stuckT: 0,
+      hp: 0, maxHp: 0, dead: false, dodging: false, iframes: 0, following: false, crumbs: [], vis, stuckT: 0,
       delivered: false, waiting: false, face: { x: 0, z: 1 },
       // ExploreEnemy calls these on its target (the ward stands in for the player).
-      hurt(dmg, dx = 0, dz = 0) { return self._hurtNpc(dmg, dx, dz); },
+      hurt(dmg, dx = 0, dz = 0, src, move) { return self._hurtNpc(dmg, dx, dz, move); },
     };
+    // His health grows with the night, like the hits he takes (GOALS.escort.hpPerNight, critic Q2).
+    npc.hp = npc.maxHp = G.hp + G.hpPerNight * Math.max(0, (sc.game.run.night || 1) - 1);
+    // Creatures close to him when you'd pick him up: "clear them first" (still allowed).
+    const crowded = () => sc.enemies.some((e) => !e.dead && Math.hypot(e.x - npc.pos.x, e.z - npc.pos.z) < G.nearWarn);
     this._makeBar(npc, G.bar);
     const it = sc._addInteractable({
       kind: 'primary', step: si, prop: 'engineer', x: p.x, z: p.z, site: s, radius: 1.7, hold: step.hold || 1, keepProgress: true,
-      verb: () => 'Lead the engineer home (he follows you)',
+      verb: () => (crowded() ? 'Lead him home (creatures nearby: clear them first)' : 'Lead the engineer home (he follows you)'),
       enabled: () => si === sc.objStep,
       onComplete: (t) => {
         t.done = true;
@@ -135,6 +139,7 @@ export class Goals {
         npc.crumbs = [];
         this.game.sfx.play('escort_go');
         sc.fx.text(npc.pos, '"Lead the way!"', { color: '#63c74d', y: 2.2, life: 1.4 });
+        if (crowded()) sc.toast('Creatures nearby: clear them first, or they go for him', 'bad', 3);
         sc._advanceStep(si);
         sc.later(0.8, () => sc.toast(`Lead him to the Relay or a ${WORDS.pylon} you switched on. Creatures will go for him.`, 'amber', 3.6));
       },
@@ -142,10 +147,12 @@ export class Goals {
     sc.objTargets.push(it);
   }
 
-  _hurtNpc(dmg, dx, dz) {
-    const n = this.npc, sc = this.scene;
+  _hurtNpc(dmg, dx, dz, move) {
+    const n = this.npc, sc = this.scene, G = GOALS.escort;
     if (!n || n.dead || n.delivered || n.iframes > 0) return false;
-    dmg = Math.max(1, Math.round(dmg));
+    // A charge (a Razorback's lane) does × chargeMult to him, and no hit takes more than maxHit (critic Q2).
+    if (move === 'charge' || move === 'charge2') dmg *= G.chargeMult;
+    dmg = Math.max(1, Math.min(G.maxHit, Math.round(dmg)));
     n.hp -= dmg;
     n.iframes = GOALS.escort.hurtIframes;
     const l = Math.hypot(dx, dz) || 1;
@@ -171,7 +178,7 @@ export class Goals {
     n.vis = null;
     n.barBg.visible = n.barFill.visible = false;
     for (const e of sc.enemies) if (e.ward === n) e.ward = null;
-    this._fail('The engineer went down', 'He didn\'t make it. The goal can\'t be finished today, but the jungle is still yours to loot');
+    this._fail('The engineer went down', 'He didn\'t make it. The quest can\'t be finished today, but the jungle is still yours to loot');
   }
 
   _fail(title, sub) {
@@ -180,7 +187,7 @@ export class Goals {
     sc.objectiveFailed = true;
     for (const t of sc.objTargets) t.done = true;
     for (const it of sc.interactables) if (it.kind === 'primary') it.done = true;
-    sc._banner('GOAL FAILED', sub);
+    sc._banner('QUEST FAILED', sub);
     this.game.sfx.play('goal_fail');
     sc.toast(title, 'bad', 3);
   }

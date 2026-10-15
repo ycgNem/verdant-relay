@@ -220,6 +220,9 @@ the finisher interrupted any wind-up, and a full combo (54) killed most things b
   - **Med kit:** Q mid-swing / chop / throw / roll waits 0.45 s and heals once you're free (beats a buffered slash);
     otherwise "Can't heal now". Occluded creatures are drawn in pale bone, not red: red is the commit flash.
   - **Spore-nest quest:** a nest's puff lands a tile beyond you (not on the nest): step in toward the nest to hit it.
+  - **Elite Razorback quest is a duel** (`POP.duel`): nothing spawns within 8 tiles of its site, calm wildlife there
+    leaves when it appears, it brings no support creatures, and while you're within 8 tiles of it other wildlife holds
+    off at the ring's edge. The elite itself is unchanged.
 
 **Wildlife** (`POP`): rolled per 16 × 16 chunk per day, denser further from the Relay and in today's district,
 scaled by night. It appears ≥ 15 tiles away (off screen), despawns far behind you, and stays dead for the day once killed.
@@ -322,7 +325,7 @@ place name), and the tracker carries a live note (his health, time left, nests p
 
 | Goal (sentence) | How it plays | Reward tonight |
 |---|---|---|
-| Bring the stranded engineer home | Find him (hold E 1 s); he then follows your trail at 4.2 t/s, 1.8 tiles behind (14+ tiles back he stops and the strip says "go back for him"; wedged, he hops to your trail). 60 HP, green outline. Half of the melee/charge creatures that come within 9 tiles of him go for him instead of you. The drone takes him within 5.6 tiles of the Relay or a beacon you switched on. If he dies the goal **fails** (strip ✘, summary "failed", no reward; the day goes on) | +20 Scrap and two free tower upgrades (stands even if you go down after the drone takes him) |
+| Bring the stranded engineer home | Find him (hold E 1 s); he then follows your trail at 4.2 t/s, 1.8 tiles behind (14+ tiles back he stops and the strip says "go back for him"; wedged, he hops to your trail). 60 HP + 15 per night after the first, green outline; no hit takes more than 14 from him and a Razorback charge does half (critic Q2). Half of the melee/charge creatures that come within 9 tiles of him go for him instead of you. Picking him up with creatures within 10 tiles: "Creatures nearby: clear them first" (toast + prompt). The drone takes him within 5.6 tiles of the Relay or a beacon you switched on. If he dies the goal **fails** (strip ✘, summary "failed", no reward; the day goes on) | +20 Scrap and two free tower upgrades (stands even if you go down after the drone takes him) |
 | Hold the uplink until it comes online | Start it (hold E 1 s): today's area beacon if it's still off (its own switch waits), else a terminal at a site. 45 s of booting that only counts while you stand within 7 m (a cyan ring, blinking when you're out); packs of 3 / 4 / 5 at 0 / 15 / 30 s from 11–15 tiles out, half of them go for the uplink and each hit costs it 3 s. Done: the beacon comes on too | +20 Scrap and 15% fewer enemies |
 | Track down the Alpha and kill it | Three sets of tracks (footprints, bones, twigs; they glint within 12 tiles), each 20–30 m on from the last in roughly the same direction (best of 40 seeded tries); walking within 1.7 tiles reads one ("Claw marks on the bark: it went north-east"). The Alpha waits 10–16 m past the last: the area's biggest beast (Razorback / Feral / Crawler), elite × 1.5 HP | A rare relic (dropped by the Alpha), +20 Scrap and towers 10% stronger |
 | Carry a generator core home | Pick it up (hold E 0.8 s): ×0.75 speed, no rolling, no swinging; E sets it down in front of you (fight, then hold E 0.5 s to pick it back up). The drone takes it within 3.2 tiles of home | +50 Scrap and 2 Circuits (banked when the drone takes it) |
@@ -336,7 +339,8 @@ the North path slowed, power cell +20 and +10% fire rate, Razorback +45 Scrap). 
 obvious"; `src/scenes/JungleQuest.js`, tuning `QUEST` in `src/data/hud.js`, art `src/ui/questArt.js`):
 - **Quest card** at the day's start (the guided day too): a panel in the top-centre banner lane — ◆ QUEST · the area,
   the name, its `brief` (multi-step quests only), every step ☐, "★ Reward: …" (`boon.short`), "+1 skill point when it
-  is done", "Follow the amber arrow · J this card · Tab map". On screen at least 2.5 s, gone once you walk 1.5 tiles
+  is done", "Follow the amber arrow · J this card · Tab map". It hangs from a fixed top (`.j-qcard`, at most 72% of
+  the screen tall; under 660 px high the brief is dropped) so it is never cut off at 1024×600 (critic Q2). On screen at least 2.5 s, gone once you walk 1.5 tiles
   (else after 8 s); the quest key (**J**, rebindable in Settings → Controls as "Quest card") opens / closes it again. The card is left-aligned (whole pixels). The big map (Tab) shows the
   same: QUEST + name, every step ✔ / ☐ with counts, the reward.
 - **Tracker** (bottom centre, where the GOAL strip was): three lines with an amber spine — ◆ QUEST · name · ↗ N m; ☐ the
@@ -353,9 +357,11 @@ obvious"; `src/scenes/JungleQuest.js`, tuning `QUEST` in `src/data/hud.js`, art 
   the nearest spot clear of every HUD box, the quest card, banners and the boss bar (in a crowded corner it goes round to
   the other edge). Of a shift along the edge and one straight in from it, the smaller wins: a target due south puts the
   arrow just above the tracker on its true bearing, not in a far corner (critic Q). When the quest's target is home (lead
-  him / carry it home) and the cyan Home arrow is up, only the Home arrow shows. The guided day's crate ("◆ Crate N m") and home ("Home N m", cyan) arrows use the same art.
+  him / carry it home) and the cyan Home arrow is up, only the Home arrow shows. While "cross at the bridge" is up (a
+  crossing is really needed), the arrow, the ◆ ▼ marker and the orbit pointer lead to the **bridge**, the badge reading
+  "Bridge N m · quest M m"; the light beam stays on the quest (critic Q2). The guided day's crate ("◆ Crate N m") and home ("Home N m", cyan) arrows use the same art.
 - **On screen:** a bobbing ◆ ▼ over each target of the current step (hidden within 1.6 tiles: the prompt takes over;
-  under the corner HUD), and an amber light pool + light column over each target (like a switched-on beacon's, visible
+  under the corner HUD it steps out sideways), and an amber light pool + light column over each target (like a switched-on beacon's, visible
   above the canopy; hidden within 5 tiles). A small 8-way pointer orbits the player toward a quest 22 m+ away and off
   screen, unless a creature is after you within 8 tiles.
 - **The quest wins E** (critic Q: at Platform 7 E opened a strongbox, a crate, a data log and a chest first): a quest
@@ -551,7 +557,9 @@ tower are cleared. Square slab decals are kept off the night field (they read as
 amber when your own towers of that type raised it); its tooltip has the numbers and the repeat-build surcharge ("Each
 Scrap Turret you own adds +6 Scrap to the next one's price"). On nights 1–2, until you own two towers, a line under the
 cards says how ("Pick a tower, then click free ground beside a path"); the first-night coach hint docks just above the
-bar (over the board's bottom-left corner when the panel has no room). Pick one (click or its key): a **ghost** of the
+bar (over the board's bottom-left corner when the panel has no room). No coach tip shows while you place a tower. The
+footer (Start Wave, Call next push) always stays in the panel: on a crowded 720p prep the wave preview shrinks to its
+"▾ more" line first, then the Scrap trade and swap rows step aside. Pick one (click or its key): a **ghost** of the
 tower follows the cursor snapped to the tiles, green where it can go and red with the reason where it can't, with its
 range ring, **a dot on every stretch of path it would cover** and a tag "Covers 12 tiles · North" (a Pulse Totem:
 "Boosts 3 towers"); pale corner ticks with an ink edge mark every free tile (drawn over the grass). Click to build (the new tower is selected: Upgrade / Sell),
@@ -592,9 +600,15 @@ the preview's Rewards box says it plainly: "Wave −20% tonight (your cuts add u
 (critic J2 C3), and Sabotage is greyed out once the cap applies. Intel's Read / Disrupt and the Scrap trades sit in one
 compact block just above the build bar (outside the scroller, so they never hide under "▾ more").
 **Provoke** (from night 2, prep, once a night; `DEFENSE.provoke`): while the readiness check reads "Looks strong" a
-button offers a dare — "Provoke: +25% enemies, +30 Scrap": tonight's wave grows 25%, you get 30 Scrap at once and kills
-pay 50% more Scrap. It can't be undone; the forecast and the preview count the bigger wave ("Provoked: …" under Also
-tonight). It gives a strong player's easy early nights a lever without making them harder for anyone else (critic P #2).
+button offers a dare — "Provoke: +50% enemies, +40 Scrap": tonight's wave grows 50% and its enemies are 15% tougher, you
+get 40 Scrap at once and kills pay 50% more Scrap. From night 4, if it still reads "Looks strong", the same button
+offers a **Double dare**: another +30% enemies for 1 Circuit and 1 Biofiber. Provoke and Disrupt exclude each other on
+a night. It can't be undone; the forecast and the preview count the bigger, tougher wave ("Provoked: …" under Also
+tonight). It gives a strong player's easy nights a lever without making them harder for anyone else (critic P #2;
+round 3, critic R2: at +25% and no health bump, 9 provoked skilled nights cost 0 Relay).
+**Swap** (prep, from night 2, once you hold 2 of either): 2 Biofiber → 1 Circuit or 2 Circuits → 1 Biofiber, as often as
+you like, in a row under the Scrap trade (`DEFENSE.swap`; critic R2: skilled runs ended with 7–11 Biofiber while Circuits
+blocked level 3).
 Kills pay small fractional bounties (½ Scrap for a Crawler or Skitter, 1½ for a Razorback, 2 for a Ruin Guard), paid as whole Scrap.
 The Relay pays a **stipend** at the start of each prep: +15 / 25 / 35 / 45 / 55 Scrap on nights 2–6 (`CONFIG.relay.stipend`;
 was 10 / 15 / 20 / 25 / 30), and from night 3 also 1 Circuit and 1 Biofiber (`stipendParts`: components, not Scrap, kept
@@ -614,7 +628,12 @@ every path ●●○ or better (critic K2 #8: never "strong" when −3 or worse 
 ●○○ or ○○○ names its top leaker ("South ●○○ Razorbacks"; every path's in its tooltip) and, once you have towers, what
 beats it in amber (`DEFENSE_ENEMIES[type].counter`: "Bullets can't hit Burrowers underground: use an Arc Spire or a
 Snare Vine (or a beacon's light)"; critic P: a Turret build lost night 5 holding 7 unspent Circuits), and the line says
-the Relay zap is counted. The expected-loss band is ×0.6 – ×1.5 of the prediction (was ×1.4, critic Q). The short
+the Relay zap is counted. A special enemy that no tower on its path can answer is named first (`needs` / `uncovered` in
+`DEFENSE_ENEMIES`): "Burrowers on the South path: only Arc Spires and Snare Vines reach them underground, and none covers
+that path" (a beacon's light counts; critic Q2: 6 Burrowers cost a newcomer −36 on a path with no Spire). The
+expected-loss band is ×0.6 – ×1.5 of the prediction (was ×1.4, critic Q), and night 1's top is ×1.25 more (critic Q2).
+With nothing left to buy (no tower, upgrade or repair affordable) a weak night starts without the confirm ("Nothing left
+to buy: the Relay holds what it can"). The short
 labels are "Too weak" / "No towers yet" / "Risky" / "Looks strong" (the full sentence in the tooltip). The "Also tonight"
 list says "Enemies get tougher every night: about 4× night 1's health" (was "+470% health tonight", critic Q). Starting a weak night asks first: the button becomes **Start anyway** for 8 s,
 and only that button or **Shift+Space** starts it (a plain Space double-tap can't skip the warning).
@@ -706,13 +725,39 @@ nights bite a good build without killing a thin one.
   lane facing tonight's area (the board's lane-facing helper).
 - **Long Night** (nights past 6): `waveFor(night, variant)` reuses nights 4–6's patterns in turn without their boss, counts
   +10% per night past 6, health ×1.2 per night, and a Colossus in the last push every 3rd night (night 9, 12, …).
-- Enemy health ×1.6 / 4.4 / 6.2 / 10.2 / 11.9 / 16.5 for N1–N6 (`HEALTH_MULT`; Stage 9 round 2, was ×1.5 / 4.3 / 6.0 /
-  9.2 / 10.8 / 14.4 in Stage 9 and ×1.25 / 3.5 / 4.7 / 6.8 / 7.3 / 9.2 before it; the boss uses its own ×5, was ×6), ×
+- Enemy health ×1.6 / 4.7 / 6.9 / 11.0 / 12.6 / 17.2 for N1–N6 (`HEALTH_MULT`; Stage 9 round 3, was ×1.6 / 4.4 / 6.2 /
+  10.2 / 11.9 / 16.5 in round 2, ×1.5 / 4.3 / 6.0 / 9.2 / 10.8 / 14.4 in Stage 9 and ×1.25 / 3.5 / 4.7 / 6.8 / 7.3 / 9.2
+  before it; the boss uses its own ×5, was ×6), ×
   the map's `hpMult` (Twin Paths 0.95, Crossing 1.07, Ford 1.18: maps where one spot sees both trails get tougher
   enemies, so the three layouts play alike). Night 5's Crawler and Skitter groups were trimmed (45 / 40 / 50 → 36 / 34 /
-  38 enemies) so N4 → N5 is a climb, not a cliff. Total wave health (variant A, no threat, ×1 map): ~840 / 2800 / 9200 /
-  15200 / 23500 / 22800 + the 5100-HP Colossus (each night ~+55–65% on the last). Arc Discharge and the Relay's zap scale
+  38 enemies) so N4 → N5 is a climb, not a cliff. Total wave health (variant A, no threat, ×1 map): ~840 / 3000 / 10300 /
+  16300 / 24900 / 23800 + the 5100-HP Colossus (each night ~+50–60% on the last). Arc Discharge and the Relay's zap scale
   with the same curve. District threats (extra groups, added to the second push) are half size on night 1 and 60% on night 2.
+- **Balance, Stage 9 round 3** (critics R2 / Q2 on the round-2 build, real inputs: the real typical banked ~57 Scrap a
+  day, upgraded to level 3, had 4–6 skills and won 5/5 — the round-2 sim's typical, with level 2 at most and 4 picks,
+  had under-rated it; skilled runs lost 0 Relay on 15 of 18 nights, every provoked night free; the careless player still
+  fell on night 3; a newcomer lost on night 5 by attrition, unwarned about Burrowers on a path with no Spire). Profiles
+  now: **typical** 80–110 on day 1 then 50–65, ~0.7 C / B, 5 picks, level 2 then the level-3 branch A, repairs under
+  70%; **newcomer** as before but repairs under 70% (critic Q2 did); median and strong as in round 2 (strong takes Provoke
+  and the Double dare whenever it reads strong). Changes: health +7 / +11 / +8 / +6 / +4% on nights 2–6, Provoke ×1.5
+  enemies at ×1.15 health for 40 Scrap (+ the Double dare, exclusive with Disrupt), the component swap, the newcomer
+  warnings. A 20-Scrap repair was tried (sim newcomers held ~20 idle Scrap with the Relay low): it moved their falls from
+  night 4 to 5 but lifted the typical to 83%, so repair stays 25. 36 runs per profile ("before" = the round-2 tuning with
+  these profiles):
+
+  | Profile | Wins | Falls | N1 | N2 | N3 | N4 | N5 | N6 | Boss killed |
+  |---|---|---|---|---|---|---|---|---|---|
+  | newcomer, before | 0/36 | N3 ×5, N4 ×16, N5 ×15 | −8 | −27 | −61 | −86 | −81 | — | — |
+  | newcomer, now | 0/36 | N3 ×4, N4 ×18, N5 ×14 | −7 | −25 | −64 | −87 | −83 | — | — |
+  | median, before | 11/36 (31%) | N4 ×2, N5 ×17, N6 ×6 | 0 | −16 | −23 | −47 | −72 | −73 | 2/17 |
+  | median, now | 7/36 (19%) | N4 ×3, N5 ×22, N6 ×4 | 0 | −16 | −28 | −53 | −79 | −72 | 2/11 |
+  | typical, before | 28/36 (78%) | N5 ×4, N6 ×4 | 0 | −9 | −15 | −26 | −48 | −59 | 19/32 |
+  | typical, now | **24/36 (67%)** | N5 ×5, N6 ×7 | 0 | −10 | −19 | −33 | −56 | −67 | 15/31 |
+  | strong, before | 36/36 | — | 0 | −3 | −1 | −6 | −7 | −8 | 36/36 |
+  | strong, now | 36/36 | — | 0 | −5 | −7 | −11 | −9 | −10 | 36/36 |
+
+  Provoked strong nights cost −10 on average (were −1). The forecast stays honest (actual / predicted 1.06 over 769
+  nights; all 77 falls read "Too weak"). The newcomer mostly reaches night 4 or 5 (32/36 hold night 3).
 - **Balance, Stage 9 round 2** (critics P / Q / R played the build-anywhere nights with real inputs: nights 1–3 still a
   cakewalk for a thoughtful player, a wall at night 4 for anyone below the sim's income, night 5 a cliff, no real typical
   run won; real players bank ~45–65 Scrap a day after the guided day, not the sim's 85, and 0–3 components by night 5).

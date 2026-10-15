@@ -141,6 +141,9 @@ export const PRIMARY_KEYS = Object.keys(PRIMARY);
 //           breadcrumb spacing) and stops once he is `wait` tiles behind (and says so); `share` of the creatures
 //           that come for you within `range` tiles of him go for him instead; `deliver` = how close to the Relay
 //           (or a switched-on beacon) he must get; `outline` / `silhouette` = his look (green = friendly).
+//           Critic Q2 (he died 17 s after pickup at N4: a flat 60 HP against −24 hits): `hp` + `hpPerNight` × (night − 1),
+//           at most `maxHit` per hit, a charge (Razorback) × `chargeMult`; picking him up with a creature within
+//           `nearWarn` tiles of him says "Creatures nearby: clear them first" (the prompt and a toast; still allowed).
 //   uplink  `time` s to boot while you stay within `radius` tiles (outside it the clock stops); `waves`: creature
 //           packs at `at` s (spawned `spawnDist` tiles out); `share` of them go for the uplink, and each hit
 //           costs it `hitCost` s; `types` weights the packs.
@@ -156,7 +159,7 @@ export const PRIMARY_KEYS = Object.keys(PRIMARY);
 //           cloud (ring telegraph `puffFuse` s) every `puffEvery` s while you are within `puffRange`; `time` s to
 //           pop them all once the first one goes; `tint` = the nest's sickly spore colour.
 export const GOALS = {
-  escort: { hp: 60, speed: 4.2, radius: 0.3, follow: 1.8, crumb: 0.6, wait: 14, share: 0.5, range: 9, deliver: 5.6,
+  escort: { hp: 60, hpPerNight: 15, maxHit: 14, chargeMult: 0.5, nearWarn: 10, speed: 4.2, radius: 0.3, follow: 1.8, crumb: 0.6, wait: 14, share: 0.5, range: 9, deliver: 5.6,
     sprite: 'npc_engineer', outline: '#141019', silhouette: '#63c74d', bar: '#63c74d', hurtIframes: 0.4 },
   uplink: {
     time: 45, radius: 7, hitCost: 3, share: 0.5, spawnDist: [11, 15],

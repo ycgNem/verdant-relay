@@ -13,8 +13,8 @@
 // authored. Fewer, tougher enemies from night 2 (a leak costs its own Relay damage however weak the defense,
 // so a thin build's worst case stays bounded while a good one still feels the tanks), and the Relay's own zap
 // (RELAY_ZAP, below) gives every defense the same flat backstop. Total wave HP (no district threat), variant A:
-// N1 ≈ 840, N2 ≈ 2800, N3 ≈ 9200 (tank-heavy: Razorbacks), N4 ≈ 15200, N5 ≈ 23500 (Ruin Guards, 1 per group),
-// N6 ≈ 22800 support + the 5100-HP Colossus (1020 × BOSS_HP 5), then × the map's hpMult (defenseMap.js:
+// N1 ≈ 840, N2 ≈ 3000, N3 ≈ 10300 (tank-heavy: Razorbacks), N4 ≈ 16300, N5 ≈ 24900 (Ruin Guards, 1 per group),
+// N6 ≈ 23800 support + the 5100-HP Colossus (1020 × BOSS_HP 5), then × the map's hpMult (defenseMap.js:
 // Twin Paths 0.95, Crossing 1.07, Ford 1.18).
 // Relay damage per leak: Crawler 5, Skitter 3, Razorback 9, Spitter 4 (+ up to 8 × 2 sap), Burrower 6,
 // Seed Carrier 6, Seedling 1, Ruin Guard 10. The Colossus never "leaks": it besieges the Relay from the plaza
@@ -51,7 +51,15 @@
 //   median    5/36 · 0 / −14 / −24 / −41 / −59 / −63 · reaches N5 34/36       (old: 0/36)
 //   typical  23/36 (64%) · 0 / −8 / −15 / −30 / −41 / −54 · boss killed 16/32  (old: 8/36)
 //   strong   36/36 (takes Provoke whenever it reads strong) · 0 / −1 / −2 / −6 / −8 / −8
-export const HEALTH_MULT = [1.6, 4.4, 6.2, 10.2, 11.9, 16.5];
+// Stage 9 round 3 (critics R2 / Q2: real typical players banked ~57 a day, upgraded to level 3 and won 5/5; skilled runs
+// lost 0 Relay on 15 of 18 nights): +7 / +11 / +8 / +6 / +4% on nights 2–6 (was [1.6, 4.4, 6.2, 10.2, 11.9, 16.5]),
+// Provoke ×1.5 enemies at ×1.15 health for 40 Scrap (+ a Double dare from N4). Sim profiles now play like the critics'
+// (typical 50–65 a day, 5 picks, level 3 branch A; the newcomer repairs under 70%), 36 runs each (DESIGN §5):
+//   newcomer 0/36 · −7 / −25 / −64 / −87 · falls N3 4, N4 18, N5 14       (before: N3 5, N4 16, N5 15)
+//   median    7/36 · 0 / −16 / −28 / −53 / −79 / −72 · reaches N5 33/36   (before 11/36)
+//   typical  24/36 (67%) · 0 / −10 / −19 / −33 / −56 / −67                (before 28/36, 78%)
+//   strong   36/36 · 0 / −5 / −7 / −11 / −9 / −10; provoked nights −10 (were −1)
+export const HEALTH_MULT = [1.6, 4.7, 6.9, 11.0, 12.6, 17.2];
 
 /** Enemy health multiplier for a night (past night 6: ×1.2 per extra night, for the Long Night). */
 export function healthMult(night) {
@@ -86,9 +94,15 @@ export const DEFENSE = {
   // at most `max` times a night from night `fromNight`, shown once you hold at least `showAt` Scrap.
   exchange: { scrap: 35, max: 2, showAt: 60, fromNight: 2, gives: ['circuits', 'biofiber'] },
   // Provoke (Stage 9 round 2, critic P #2): a dare for a defense that already looks strong. In prep from `fromNight`, once
-  // a night and for good: `enemies` × tonight's wave size, `scrap` Scrap at once, kill bounties × `bounty`. The button
-  // shows only while the readiness check reads "Looks strong"; the forecast counts the bigger wave.
-  provoke: { fromNight: 2, enemies: 1.25, scrap: 30, bounty: 1.5 },
+  // a night and for good: `enemies` × tonight's wave size, `hp` × their health, `scrap` Scrap at once, kill bounties ×
+  // `bounty`. Not on a night you Disrupted (and Disrupt is off once provoked). From `double.fromNight`, while it still
+  // reads "Looks strong", the same button offers a Double dare: another `double.enemies` × for `double.give`. The button
+  // shows only while the readiness check reads "Looks strong"; the forecast counts the bigger, tougher wave.
+  // (Round 3, critic R2: at ×1.25 and no health bump 9 provoked skilled nights cost 0 Relay: free money.)
+  provoke: { fromNight: 2, enemies: 1.5, hp: 1.15, scrap: 40, bounty: 1.5, double: { fromNight: 4, enemies: 1.3, give: { circuits: 1, biofiber: 1 } } },
+  // Component swap in the trade row (critic R2: skilled runs ended with 7–11 Biofiber while Circuits blocked level 3):
+  // `rate` of one component for 1 of the other, prep only, from `fromNight`, any number of times.
+  swap: { rate: 2, fromNight: 2 },
   // The Long Night (endless mode, nights past 6): health ×hpGrowth a night, counts ×(1 + countGrowth ×
   // nights past 6), a Colossus every `bossEvery` nights (its health × bossHp × that night's growth).
   longNight: { hpGrowth: 1.2, countGrowth: 0.1, bossEvery: 3, bossHp: 5.0 },

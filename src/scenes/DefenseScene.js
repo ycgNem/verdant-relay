@@ -1614,6 +1614,13 @@ export class DefenseScene {
     if (this.phase !== 'prep') return;
     const r = this._readiness();
     const armed = this.startArmed && this.game.time < this.startArmed;
+    // Nothing left to buy (critic Q2: "Too weak · Start anyway" with 4 Scrap): no confirm, just say so.
+    if (r.level === 'weak' && !armed && !this._canSpendAnything()) {
+      toast(this.game.ui, 'Nothing left to buy: the Relay holds what it can. Good luck!', 'amber', 2.6);
+      this.startArmed = 0;
+      this.startWave();
+      return;
+    }
     if (r.level === 'weak' && (!armed || how === 'space')) {
       if (!armed) this.startArmed = this.game.time + DEFENSE.startGuard.confirm;
       this.game.sfx.play('error');
@@ -1625,6 +1632,36 @@ export class DefenseScene {
     }
     this.startArmed = 0;
     this.startWave();
+  }
+
+  /**
+   * The first special enemy tonight (DEFENSE_ENEMIES[type].needs) on a path that no tower of the needed kinds covers
+   * (a beacon's light counts for a Burrower): { type, lane, short } or null.
+   */
+  _uncoveredSpecial() {
+    const lit = this._beaconLit();
+    for (let li = 0; li < this.lanes.length; li++) {
+      for (const type of this.wave.perLane[li]?.keys() || []) {
+        const need = DEFENSE_ENEMIES[type]?.needs;
+        if (!need) continue;
+        if (type === 'burrower' && BEACON_LIGHT.surface && lit[li]) continue;
+        const ok = this.towers.some((t) => need.includes(t.def.kind) && this._coverFor(t.rec.type, t.rec.x, t.rec.y)[li] > 0);
+        if (!ok) return { type, lane: li, short: this.lanes[li].short };
+      }
+    }
+    return null;
+  }
+
+  /** Something in prep still worth Scrap: a tower, an upgrade, or a repair (the "Start anyway" guard needs one). */
+  _canSpendAnything() {
+    const run = this.run;
+    if (run.availableTowers(this.game.meta).some((k) => run.canAfford(run.buildCost(k)))) return true;
+    for (const t of this.towers) {
+      if (t.rec.level >= 3) continue;
+      const brs = run.upgradeBranches(t.rec);
+      for (const b of brs ? Object.keys(brs) : [undefined]) { const c = run.upgradeCost(t.rec, b); if (c && run.canAfford(c)) return true; }
+    }
+    return run.relayHp < run.relayMax && run.canAfford(run.repairCost());
   }
 
   /** Fraction of tonight's enemies resolved (killed or leaked), counting spawns not yet made. */
@@ -1687,6 +1724,7 @@ export class DefenseScene {
     this._watchSide();
     b.style.flex = ''; b.style.height = ''; b.style.marginBottom = '';
     this._floatHintIfCramped();
+    this._keepFootIn();
     const H = b.clientHeight;
     if (b.scrollHeight <= H + 1) { this._sideMore(); return; }
     const cs = this._moreCue && getComputedStyle(this._moreCue, '::before');
@@ -1751,6 +1789,18 @@ export class DefenseScene {
       Object.assign(n.style, { left: 'round(calc(var(--u) * 12), 1px)', bottom: 'round(calc(var(--u) * 10), 1px)' });
       this.game.ui.append(n);
     }
+  }
+
+  /**
+   * The footer (Start Wave, Call next push) never leaves the panel (critic Q2: clipped at 720p with Read / Disrupt /
+   * Trade / Swap and a counter tip): step by step the wave preview may shrink to nothing (`df-tight1`), then the Scrap
+   * trade and swap rows step aside (`df-tight2`).
+   */
+  _keepFootIn() {
+    const side = this.side;
+    side.classList.remove('df-tight1', 'df-tight2');
+    const over = () => this.sideFoot.getBoundingClientRect().bottom > side.getBoundingClientRect().bottom - (parseFloat(getComputedStyle(side).paddingBottom) || 0) + 1;
+    for (const c of ['df-tight1', 'df-tight2']) { if (!over()) return; side.classList.add(c); }
   }
 
   /** Re-fit the body (one per frame) when the side panel or its docked hint changes size. */
@@ -2263,7 +2313,10 @@ export class DefenseScene {
       const capped = t.enemyCount <= (CONFIG.waveSizeFloor ?? 0) + 1e-6;
       mods.push(`${Math.round(Math.abs(1 - wm) * 100)}% ${wm < 1 ? 'fewer' : 'more'} enemies${capped ? ` (−${Math.round((1 - CONFIG.waveSizeFloor) * 100)}% is the most)` : ''}`);
     }
-    if (t.provoked) mods.push(`Provoked: ${Math.round((DEFENSE.provoke.enemies - 1) * 100)}% more enemies, kills pay +${Math.round((DEFENSE.provoke.bounty - 1) * 100)}% Scrap`);
+    if (t.provoked) {
+      const PV = DEFENSE.provoke, more = Math.round((PV.enemies * (t.provoked >= 2 ? PV.double.enemies : 1) - 1) * 100);
+      mods.push(`${t.provoked >= 2 ? 'Double dare' : 'Provoked'}: ${more}% more enemies${PV.hp > 1 ? `, ${Math.round((PV.hp - 1) * 100)}% tougher` : ''}, kills pay +${Math.round((PV.bounty - 1) * 100)}% Scrap`);
+    }
     if (t.enemySpeed !== 1) mods.push(`Enemies move ${Math.round(Math.abs(t.enemySpeed - 1) * 100)}% ${t.enemySpeed > 1 ? 'faster' : 'slower'}`);
     if (t.laneSlow) mods.push(`${(this.lanes[t.laneSlow.lane]?.name || 'Path').replace(/lane/i, 'path')}: enemies ${Math.round((1 - t.laneSlow.mult) * 100)}% slower`);
     if (t.towerRate !== 1) mods.push(`Towers attack ${Math.round((t.towerRate - 1) * 100)}% faster`);
@@ -2318,14 +2371,36 @@ export class DefenseScene {
         el('span', {}, costLine({ scrap: X.scrap }, run.res), el('span.df-arrow', '→'), costLine({ [k]: 1 })),
         () => this._exchange(k), { cls: 'df-half', title: `Trade ${X.scrap} Scrap for 1 ${k === 'circuits' ? 'Circuit' : 'Biofiber'} (${run.exchangeLeft()} trade${run.exchangeLeft() === 1 ? '' : 's'} left tonight).` }))));
     }
+    // Component swap (DEFENSE.swap): 2 of one for 1 of the other, shown once you hold enough of either.
+    const SW = DEFENSE.swap;
+    if (SW && this.phase === 'prep' && this.sideMode === 'preview' && run.night >= SW.fromNight && ['circuits', 'biofiber'].some((k) => !run.swapBlocked(k))) {
+      const nm = (k) => (k === 'circuits' ? 'Circuits' : 'Biofiber');
+      acts.append(el('div.df-intel.df-exchange', {}, el('span.df-xlbl', 'Swap'), ['biofiber', 'circuits'].map((from) => {
+        const to = from === 'circuits' ? 'biofiber' : 'circuits';
+        const why = run.swapBlocked(from);
+        return button(el('span', {}, costLine({ [from]: SW.rate }, run.res), el('span.df-arrow', '→'), costLine({ [to]: 1 })), () => this._swap(from), {
+          cls: 'df-half', disabled: !!why, title: `Swap ${SW.rate} ${nm(from)} for 1 ${to === 'circuits' ? 'Circuit' : 'Biofiber'}.${why ? ` ${why}.` : ''}`,
+        });
+      })));
+    }
     // Provoke (DEFENSE.provoke): a dare, offered only while the defense already looks strong (critic P #2).
     const PV = DEFENSE.provoke;
     if (PV && this.phase === 'prep' && this.sideMode === 'preview' && !run.provokeBlocked() && this.towers.length && this._readiness().level === 'strong') {
-      const more = Math.round((PV.enemies - 1) * 100), bty = Math.round((PV.bounty - 1) * 100);
-      acts.append(button(el('span', {}, `Provoke: +${more}% enemies, `, el('span.good', `+${PV.scrap} Scrap`)), () => this._provoke(), {
-        cls: 'df-wide df-provoke',
-        title: `A dare for a strong defense: ${more}% more enemies tonight. You get ${PV.scrap} Scrap now and kills pay ${bty}% more Scrap. Once a night; it can't be undone.`,
-      }));
+      const bty = Math.round((PV.bounty - 1) * 100), tough = Math.round(((PV.hp || 1) - 1) * 100);
+      if (!run.tonight.provoked) {
+        const more = Math.round((PV.enemies - 1) * 100);
+        acts.append(button(el('span', {}, `Provoke: +${more}% enemies, `, el('span.good', `+${PV.scrap} Scrap`)), () => this._provoke(), {
+          cls: 'df-wide df-provoke',
+          title: `A dare for a strong defense: ${more}% more enemies tonight${tough ? `, each ${tough}% tougher` : ''}. You get ${PV.scrap} Scrap now and kills pay ${bty}% more Scrap. Not with Disrupt; it can't be undone.`,
+        }));
+      } else {
+        // The Double dare (from DEFENSE.provoke.double.fromNight): the same button once more while it still looks strong.
+        const more = Math.round((PV.double.enemies - 1) * 100);
+        acts.append(button(el('span', {}, `Double dare: +${more}% more, `, costLine(PV.double.give)), () => this._provoke(), {
+          cls: 'df-wide df-provoke',
+          title: `Dare again: another ${more}% more enemies tonight, for ${Object.entries(PV.double.give).map(([k, v]) => `${v} ${k === 'circuits' ? 'Circuit' : 'Biofiber'}`).join(' and ')} now. It can't be undone.`,
+        }));
+      }
     }
     if (acts.childNodes.length) this.actsRow.append(acts);
     // Repair and Emergency Patch: side by side as half buttons when both show (keeps the footer short
@@ -2390,15 +2465,18 @@ export class DefenseScene {
       // Two short lines (critic M P1-6, was one run-on): the weakest path, its dots and what gets through it (else every
       // path's dots), then the expected Relay loss. Every path's dots and damage stay in the tooltips.
       const worst = r.lanes.reduce((w, l) => (l.top && l.dots <= 1 && (!w || l.lost > w.lost) ? l : w), null);
+      const uncovered = r.level !== 'strong' && this.towers.length ? this._uncoveredSpecial() : null;
       const laneTip = (l) => `${l.name}: about ${l.lost} Relay damage from this path${l.top ? `, most of it from ${leakName(l.top, true)}` : ''}`;
       if (showRd) foot.append(el('div.small.df-rd-lanes', {},
         worst
           ? el('div.df-rd-lane', { title: r.lanes.map((l) => `${l.short} ${dots(l.dots)}`).join(' · ') + `\n${laneTip(worst)}` },
             `${worst.short} `, el(`b.df-rd-dots.d${worst.dots}`, dots(worst.dots)), el('span.bad', ` ${leakName(worst.top, true)}`))
           : el('div', {}, r.lanes.map((l, i) => el('span.df-rd-lane', { title: laneTip(l) }, i ? ' · ' : '', `${l.short} `, el(`b.df-rd-dots.d${l.dots}`, dots(l.dots))))),
-        // …and what beats it (critic P #6: "Burrowers" alone left 7 Circuits unspent; DEFENSE_ENEMIES[type].counter).
-        worst && r.level !== 'strong' && this.towers.length && DEFENSE_ENEMIES[worst.top === 'sap' ? 'spitter' : worst.top]?.counter
-          ? el('div.df-rd-counter', DEFENSE_ENEMIES[worst.top === 'sap' ? 'spitter' : worst.top].counter) : null,
+        // …and what beats it (critic P #6: "Burrowers" alone left 7 Circuits unspent; DEFENSE_ENEMIES[type].counter). A special
+        // enemy that no tower on its path can answer comes first (critic Q2: 6 Burrowers −36 on a path with no Spire).
+        uncovered ? el('div.df-rd-counter', `${DEFENSE_ENEMIES[uncovered.type].name}s on the ${uncovered.short} path: ${DEFENSE_ENEMIES[uncovered.type].uncovered}.`)
+          : worst && r.level !== 'strong' && this.towers.length && DEFENSE_ENEMIES[worst.top === 'sap' ? 'spitter' : worst.top]?.counter
+            ? el('div.df-rd-counter', DEFENSE_ENEMIES[worst.top === 'sap' ? 'spitter' : worst.top].counter) : null,
         el('div.muted', expect)));
       foot.append(button(el('span', {}, armed ? '▶ Start anyway' : '▶ Start Wave'), () => this._tryStartWave('button'), { hotkey: armed ? 'Shift+Space' : 'Space', cls: `primary big df-wide df-start${armed ? ' df-armed' : ''}` }));
     } else if (this.phase === 'lull') {
@@ -2439,6 +2517,18 @@ export class DefenseScene {
     if (!run.exchange(kind)) { this.game.sfx.play('error'); toast(this.game.ui, run.exchangeLeft() ? run.missing({ scrap: DEFENSE.exchange.scrap }) : 'No more trades tonight', 'bad'); return; }
     this.game.sfx.play('trade');
     toast(this.game.ui, `Traded ${DEFENSE.exchange.scrap} Scrap for 1 ${kind === 'circuits' ? 'Circuit' : 'Biofiber'}`, 'good', 2);
+    this._saveBuild();
+    this.sideDirty = true;
+    this._refreshTop();
+  }
+
+  /** Swap DEFENSE.swap.rate of a component for 1 of the other (prep). */
+  _swap(from) {
+    const run = this.run;
+    if (this.phase !== 'prep') return;
+    const why = run.swapBlocked(from);
+    if (why || !run.swap(from)) { this.game.sfx.play('error'); toast(this.game.ui, why || 'Can\'t swap now', 'bad'); return; }
+    this.game.sfx.play('trade');
     this._saveBuild();
     this.sideDirty = true;
     this._refreshTop();
@@ -2607,9 +2697,11 @@ export class DefenseScene {
     if (why || !run.provoke()) { game.sfx.play('error'); toast(game.ui, why || 'Can\'t provoke now', 'bad'); return; }
     const before = this.wave.total;
     this.wave = buildWave(run, this._waveOpts());
+    this.hpMult = run.nightHpMult() * (this.map.hpMult ?? 1);   // (DEFENSE.provoke.hp)
     run.save('prep');
     game.sfx.play('sabotage');
-    toast(game.ui, `Provoked: ${this.wave.total - before} more enemies tonight, +${DEFENSE.provoke.scrap} Scrap`, 'amber', 2.6);
+    toast(game.ui, run.tonight.provoked >= 2 ? `Double dare: ${this.wave.total - before} more enemies tonight`
+      : `Provoked: ${this.wave.total - before} more enemies tonight, +${DEFENSE.provoke.scrap} Scrap`, 'amber', 2.6);
     this.sideDirty = true;
     this._refreshTop(true);
   }
@@ -3704,8 +3796,12 @@ export class DefenseScene {
     const short = this.hintDock && this.phase !== 'prep' && (this.side?.clientHeight || 0) / (this.game.u || 1) < (DEFENSE_VIEW.dockMinPanel || 0);
     if (short && this._curHint?.isConnected && this.hintDock.contains(this._curHint)) { this._curHint.remove(); this._curHint = null; }
     this.side?.classList.toggle('df-nodock', !!short);
+    // While placing a tower the placing panel says what to do: no coach tips there (critic Q2: stale "Click a tower to
+    // upgrade it" / "The right panel lists…" inside it); a docked one waits hidden (CSS .df-placing), none starts.
+    this.side?.classList.toggle('df-placing', !!this.placing);
     if (this._curHint && this._curHint.isConnected) return;
     this._curHint = null;
+    if (this.placing) return;
     for (let i = 0; i < this._hintQueue.length; i++) {
       const h = this._hintQueue[i];
       // (No room to dock: only a `float` hint — the boss's — shows, over the board's corner.)

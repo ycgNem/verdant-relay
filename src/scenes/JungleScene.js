@@ -279,7 +279,7 @@ export class JungleScene {
     this.world.addCollider({ kind: 'prop', type: 'relay', x: c.x, z: c.z, r: 1.3 });
     this.relayIt = this._addInteractable({
       kind: 'extract', x: c.x, z: c.z, radius: DAY.relayRadius, hold: DAY.extractHold, keepProgress: false, objectiveHold: true,
-      verb: () => (this.objectiveDone ? 'Head home (keep your loot)' : 'Head home early (quest not done)'),
+      verb: () => (this.objectiveDone ? 'Head home (keep your loot)' : this.objectiveFailed ? 'Head home (quest failed)' : 'Head home early (quest not done)'),
       // Not offered at the drop-off right away: only once there is something to bring home (or a reason to leave).
       hidden: () => !this._homeOffered(),
       onComplete: (it) => { it.done = false; this._extract(); },
@@ -293,7 +293,7 @@ export class JungleScene {
       const it = this._addInteractable({
         kind: on ? 'extract' : 'pylon', pylon: p, x: p.x, z: p.z, vis: v, radius: DAY.pylonRadius,
         hold: on ? DAY.extractHold : DAY.pylonHold, keepProgress: !on, objectiveHold: on,
-        verb: () => (it.kind === 'extract' ? (this.objectiveDone ? `Head home from this ${WORDS.pylon}` : `Head home early from this ${WORDS.pylon}`) : `Switch on this ${WORDS.pylon} (a way home)`),
+        verb: () => (it.kind === 'extract' ? (this.objectiveDone || this.objectiveFailed ? `Head home from this ${WORDS.pylon}` : `Head home early from this ${WORDS.pylon}`) : `Switch on this ${WORDS.pylon} (a way home)`),
         onComplete: (t) => this._completePylon(t),
       });
       p.it = it;
@@ -1119,6 +1119,7 @@ export class JungleScene {
       for (const s of this._chunkPop(cx, cz)) {
         if (this.killed.has(s.id) || this.spawned.has(s.id)) continue;
         if (Math.hypot(s.x - pl.x, s.z - pl.z) < POP.minSpawnDist) continue;
+        if (this._inDuel(s.x, s.z)) continue;   // (POP.duel: no wildlife round a live elite-duel target)
         const e = this.spawnEnemy(s.key, s.x, s.z, { id: s.id, guard: s.guard, site: s.site });
         this.spawned.set(s.id, e);
       }
@@ -1164,6 +1165,18 @@ export class JungleScene {
     }
   }
 
+  /** Is (x, z) inside a live duel quest's ring (POP.duel: the elite Razorback is fought alone, not in a brawl)? */
+  _inDuel(x, z) {
+    const D = POP.duel;
+    if (!D) return false;
+    for (const t of this.objTargets) {
+      if (!t.kill || !D.kills.includes(t.kill) || t.step < this.objStep || t.enemy?.dead || this.objectiveDone) continue;
+      const c = t.enemy && !t.enemy.dead ? t.enemy : t;   // (the ring moves with the beast once it's out)
+      if (Math.hypot(c.x - x, c.z - z) < D.radius) return true;
+    }
+    return false;
+  }
+
   /** Objective kill targets appear when you get near their site. */
   _updateObjectiveSpawns() {
     const pl = this.player.pos;
@@ -1173,10 +1186,17 @@ export class JungleScene {
       t.spawned = true;
       const e = this.spawnEnemy(t.kill, t.x, t.z, { elite: true, objective: true });
       e.objStep = t.step;
+      // A duel (POP.duel, Stage 9 fix wave 2): calm wildlife already round it slips back into the bush.
+      if (POP.duel?.kills.includes(t.kill)) {
+        for (const w of this.enemies) {
+          if (w === e || w.dead || !w.id || w.alerted || Math.hypot(w.x - t.x, w.z - t.z) > POP.duel.radius) continue;
+          w.dead = true; w.despawned = true; this.spawned.delete(w.id);
+        }
+      }
       t.enemy = e;
       t.onSpawn?.(e);   // (the Alpha, JungleGoals.js)
       const sup = X().elite.supportTypes;
-      const n = nightTune('eliteSupport', this.game.run.night);
+      const n = POP.duel?.kills.includes(t.kill) ? 0 : nightTune('eliteSupport', this.game.run.night);   // (a duel: no adds)
       for (let i = 0; i < n; i++) {
         const p = this._openSpot(t.x, t.z, 2.5, 4);
         if (p) this.spawnEnemy(this.rng.weighted(sup), p.x, p.z, {});

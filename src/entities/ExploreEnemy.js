@@ -28,7 +28,7 @@ import { setAnim, setFacing, updateVisual, flashVisual, setBaseColor, animLength
 import { shade } from '../core/Fx.js';
 import { rayLength, castRay } from '../world/collide.js';
 import { nightTune } from '../data/config.js';
-import { CROWD, BRUSH, SPORES } from '../data/jungle.js';
+import { CROWD, BRUSH, SPORES, POP } from '../data/jungle.js';
 import { inFootprint } from '../world/Solid.js';
 
 let barTex = null;
@@ -500,9 +500,13 @@ export class ExploreEnemy {
         const waiting = dist < A.holdDist + 1.2 && (this.cd > A.circleCd || choking || !this._tokenFree());
         // The brawl cap (fix wave, critic O #1): only `attackers.engagedMax` creatures fight you at once; the rest hold
         // off at `engageWait` tiles (a Feral may still throw its spear) and step in when a place frees up.
-        if (!this._engage(dist)) {
-          if (d.spear && !choking && dist > d.spear.min && this._wantSpear(dist, true) && this._spearFree()) { this._startWindup(toP, dist, 'spear'); break; }
-          if (d.speed > 0) { move = dist < A.engageWait + 1.5 ? this._circle(toP, dist, dt, A.engageWait) : this._pathTo(p.pos.x, p.pos.z); speed *= A.circleSpeed; }
+        // A duel (POP.duel): while you fight the elite Razorback in its ring, other wildlife keeps out, past the ring.
+        const duel = !this.objective && !this.minion && !this.lordOf && sc._inDuel?.(p.pos.x, p.pos.z);
+        if (duel) sc._engaged?.delete(this);
+        if (duel || !this._engage(dist)) {
+          const hold = duel ? POP.duel.radius : A.engageWait;
+          if (!duel && d.spear && !choking && dist > d.spear.min && this._wantSpear(dist, true) && this._spearFree()) { this._startWindup(toP, dist, 'spear'); break; }
+          if (d.speed > 0) { move = dist < hold + 1.5 ? this._circle(toP, dist, dt, hold) : this._pathTo(p.pos.x, p.pos.z); speed *= A.circleSpeed; }
           this.stuckT = 0; this.bestD = Infinity;
           break;
         }

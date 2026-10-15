@@ -350,7 +350,16 @@ PixelLab: up to 500 more generations for this stage (balance 2275.9 at the start
       4-wide letters, on Tiny5's grid and line box) replaces Tiny5 for body text at the same sizes; research heads
       name + count / line, workbench footer stock as icon + number, summary card 650 wide, title menu clear of its
       hotkey chips, big map footer wraps (shots `.playwright-mcp/text9/before_*` / `after_*`)
-- [ ] Critic round on a frozen build + fixes
+- [x] Critic round on a frozen build + fixes. Round 1 (all real-input play-throughs, balance lens): `critique/critic_O`
+      (day combat: skill 7, fairness 5, difficulty 4), `P` (nights: build UI 7, difficulty 5), `Q` (newcomer: quests 8,
+      arrow 8, text 8.5, fairness 4), `R` (full runs: 0/4 typical wins, death spiral, N5 cliff). Round 2: `Q2` (quests /
+      arrow / bridges 8.5, combat feel 8, night UI 8, newcomer fairness 6.5), `R2` (fairness 6 → 8, economy 3 → 7,
+      typical 5/5 wins → nights tightened again). Day fix waves: brawl cap (`attackers.engagedMax`), reactable Feral
+      second thrust, 56-HP Crawlers, gentler day curve, dawn HP 90, better death salvage, finished quests keep their
+      reward on N1–3, failed-quest skill point from N3, last-blow death note, buffered med kit, pale x-ray silhouettes,
+      the elite-Razorback quest as a duel (`POP.duel`). Quest fix waves: bridge hint only when a crossing is needed
+      (and the arrow leads to the bridge), the quest wins E, big map quest marks, one home arrow, escort engineer HP by
+      night, layout fixes at 1024×600
   - [x] Night fix wave (critics P / Q / R): curve 1.6 / 4.4 / 6.2 / 10.2 / 11.9 / 16.5 with night 5 trimmed to ~36
         enemies, Colossus ×5 and 7 slams of 6, stipend 15–55 + a Circuit and a Biofiber from N3, Relay zap 16, beacons
         +35% on 7 tiles and Burrowers surface in the light, Provoke (a dare from N2 while the defense looks strong); sim
@@ -358,6 +367,11 @@ PixelLab: up to 500 more generations for this stage (balance 2275.9 at the start
         Read / Disrupt / trades above the build bar, Call next push always fits, the build hint above the bar, names on
         the build cards, "Barely sees a path" asks first, brighter free-tile ticks, no slab decals, "In front of path",
         the surcharge in the card tooltip, a plain "tougher every night" line, the weakest path's counter
+  - [x] Night fix wave 2 (critics R2 / Q2): health +7–11% on N2–N6 (1.6 / 4.7 / 6.9 / 11.0 / 12.6 / 17.2), Provoke ×1.5
+        enemies ×1.15 health for 40 Scrap + a Double dare from N4 (not with Disrupt), a 2-for-1 component swap, an
+        "uncovered Burrowers / Ruin Guards" warning, no "Start anyway" with nothing to buy, night 1's forecast top +25%,
+        the footer always in the panel, no coach tips while placing; sim profiles re-fit to the critics (typical 67%
+        wins, newcomer out on N4–N5, strong 36/36; DESIGN §5)
 
 ### Next (deferred from the round-2 critics — start here)
 Economy and pacing

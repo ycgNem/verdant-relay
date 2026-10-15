@@ -185,14 +185,18 @@ export class BriefingScene {
         const n = showHint(game, 'briefing_districts',
           'Pick where to go today. Finish an area\'s <b>quest</b> for a <b style="color:#63c74d">reward</b> tonight; every area also adds its <b style="color:#ff6b6b">danger</b> to tonight\'s attack.',
           { style: this._hintSpot(), time: 14 });
-        // Never over the footer (critic M: with the larger type the cards are taller and it covered "Menu").
-        const foot = n && this.root.querySelector('.scr-foot');
-        if (foot) {
-          const over = n.getBoundingClientRect().bottom - (foot.getBoundingClientRect().top - 6 * game.u);
-          if (over > 0) n.style.top = `${Math.round(parseFloat(n.style.top) - over)}px`;
-        }
+        this._fitHint(n);
       }
     }, 500);
+    // Re-anchor the hint when the window is resized (critic Q2: it kept its old pixel spot, over "Tonight's attack").
+    const onResize = () => requestAnimationFrame(() => {
+      const n = game.ui.querySelector('.hint'), st = n && game.scene === this ? this._hintSpot() : null;
+      if (!st) return;
+      Object.assign(n.style, st);
+      this._fitHint(n);
+    });
+    window.addEventListener('resize', onResize);
+    this.bag.add(() => window.removeEventListener('resize', onResize));
   }
 
   /**
@@ -219,6 +223,14 @@ export class BriefingScene {
   }
 
   /** Free space next to (one card) or under (two cards) the district cards: close to them, covering nothing. */
+  /** Never over the footer (critic M: with the larger type the cards are taller and the hint covered "Menu"). */
+  _fitHint(n) {
+    const foot = n && this.root.querySelector('.scr-foot');
+    if (!foot) return;
+    const over = n.getBoundingClientRect().bottom - (foot.getBoundingClientRect().top - 6 * this.game.u);
+    if (over > 0) n.style.top = `${Math.round(parseFloat(n.style.top) - over)}px`;
+  }
+
   _hintSpot() {
     const cards = [...this.game.ui.querySelectorAll('.district-card')];
     if (!cards.length) return null;

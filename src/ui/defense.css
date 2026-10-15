@@ -543,3 +543,8 @@
 .df-actsrow .btn { padding-top: round(calc(var(--u) * 2), 1px); padding-bottom: round(calc(var(--u) * 2), 1px); min-height: 0; line-height: 1.15; }
 /* While a coach hint is docked (it times out), the wave preview may shrink to make room for it above the build bar. */
 .df-side:has(.df-hintdock .hint) .df-body { min-height: round(calc(var(--u) * 40), 1px); }
+/* No coach tips while placing a tower (critic Q2: stale tips inside the placing panel). */
+.df-side.df-placing .df-hintdock { display: none; }
+/* Last-resort fit so the footer stays in the panel (DefenseScene._keepFootIn). */
+.df-side.df-tight1 .df-body { min-height: 0; }
+.df-side.df-tight2 .df-actsrow .df-exchange { display: none; }

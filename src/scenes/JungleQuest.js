@@ -115,7 +115,8 @@ export class JungleQuest {
     // The track goal's three "follow" steps read as one line on the card.
     const shown = def.steps.some((s) => s.type === 'track') ? steps.filter((_, i) => def.steps[i].type !== 'track' || i === 0) : steps;
     const key = (code) => el('span.key', keyLabel(code));
-    const node = el('div.x-banner.j-qcard', {},
+    // (not an .x-banner: those are centred on 22% of the height; the card is anchored from the top, jungle.css)
+    const node = el('div.j-qcard', {},
       el('div.j-qc-head', {}, cloneCanvas(diamondCanvas(9), 'j-qicon'), el('span', 'QUEST'), el('span.j-qc-area', `· ${sc.D.name}`)),
       el('div.j-qc-name', def.name),
       def.brief && def.steps.length > 1 ? el('div.j-qc-brief', def.brief) : null,   // (one step says it all)
@@ -302,24 +303,31 @@ export class JungleQuest {
     // ---- in the world: markers over on-screen targets, the edge arrows, the pointer, the beams
     const tg = this.targets();
     const hidden = sc.mapOpen || sc.ending;
-    const onScreen = this._placeMarks(hidden ? [] : tg);
+    // A river in the way (the bridge hint is up): the arrow, marker and pointer lead to the bridge first (critic Q2 §4).
+    const pp = sc.player.pos;
+    const via = sc._ford && o.ot && !done && !failed
+      ? { x: sc._ford.x, z: sc._ford.z, d: Math.hypot(sc._ford.x - pp.x, sc._ford.z - pp.z), top: QUEST.mark.bridgeTop } : null;
+    const lead = via || o.ot;
     // The HUD boxes (+ a banner, the quest card or an area boss's bar in the top centre), a little inflated so a badge
     // never touches one.
     const st = this.game.stage.getBoundingClientRect(), pad = Math.round(3 * this.game.u);
-    const rects = [...o.rects, ...[...h.root.querySelectorAll(':scope > .x-banner, :scope > .j-bossbar')].filter((n) => n.style.display !== 'none').map((n) => {
+    const rects = [...o.rects, ...[...h.root.querySelectorAll(':scope > .x-banner, :scope > .j-qcard, :scope > .j-bossbar')].filter((n) => n.style.display !== 'none').map((n) => {
       const r = n.getBoundingClientRect();
       return { l: r.left - st.left, t: r.top - st.top, r: r.right - st.left, b: r.bottom - st.top };
     })].map((r) => ({ l: r.l - pad, t: r.t - pad, r: r.r + pad, b: r.b + pad }));
+    const onScreen = this._placeMarks(hidden ? [] : via ? [via, ...tg] : tg, via, rects);
     // One arrow at a time: when the quest's target is home (lead him / carry it home) and the cyan Home arrow is up,
     // only the Home arrow shows (critic Q: two arrows, same target).
-    const homeArrow = !hidden && o.homeNow && ex.d > 6;
     const homes = [sc.relayPos, ...sc.data.pylons.filter((py) => sc.state.pylons.has(py.id))];
     const questHome = !!o.ot && homes.some((q) => Math.hypot(o.ot.x - q.x, o.ot.z - q.z) < 4);
-    const qa = this._edge(this.edges.quest, hidden || o.cc || !o.ot || (homeArrow && questHome) ? null : o.ot, rects, `${Math.round(o.ot?.d || 0)} m`);
+    // (going home over a bridge: the amber bridge arrow, not a cyan one straight across the water)
+    const homeArrow = !hidden && o.homeNow && ex.d > 6 && !(via && questHome);
+    const qLabel = via ? `Bridge ${Math.round(via.d)} m · quest ${Math.round(o.ot.d)} m` : `${Math.round(o.ot?.d || 0)} m`;
+    const qa = this._edge(this.edges.quest, hidden || o.cc || !o.ot || (homeArrow && questHome) ? null : lead, rects, qLabel);
     const rc = this._edge(this.edges.crate, hidden ? null : o.cc, qa ? [...rects, qa] : rects,
       o.cc ? `Crate ${Math.round(Math.hypot(o.cc.x - sc.player.pos.x, o.cc.z - sc.player.pos.z))} m` : '');
     this._edge(this.edges.home, homeArrow ? ex : null, [...rects, qa, rc].filter(Boolean), `${ex.name} ${Math.round(ex.d)} m`);
-    this._updateOrbit(hidden || o.cc || onScreen ? null : o.ot, rects);
+    this._updateOrbit(hidden || o.cc || onScreen ? null : lead, qa ? [...rects, qa] : rects);   // (never on the big arrow or its badge)
     this._updateBeams(tg);
   }
 
@@ -349,14 +357,15 @@ export class JungleQuest {
   }
 
   /** ◆ + ▼ over every on-screen target (pooled). Returns true when the nearest one is on screen. */
-  _placeMarks(tg) {
+  _placeMarks(tg, lead = null, rects = []) {
     const sc = this.sc;
     const v = new THREE.Vector3(), tx = this._tx();
     let n = 0, nearestOn = false, nd = Infinity;
     for (const t of tg) {
       const pr = this.game.project(v.set(t.x, 0.5, t.z), sc.camera);
       const on = this._onScreen(pr);
-      if (t.d < nd) { nd = t.d; nearestOn = on; }
+      // (returns whether the lead target, the bridge when one is set, else the nearest target, is on screen)
+      if (lead ? t === lead : t.d < nd) { nd = t.d; nearestOn = on; }
       if (!on || t.d < QUEST.mark.near) continue;
       const top = this.game.project(v.set(t.x, t.top + QUEST.mark.lift, t.z), sc.camera);
       const m = this._mark(n++);
@@ -364,7 +373,11 @@ export class JungleQuest {
       if (!m._wh?.[0] || m._tx !== tx) { m._tx = tx; m._wh = [m.offsetWidth, m.offsetHeight]; }
       // (kept on screen: a target near the top edge gets its marker clamped down over it)
       const y = Math.max(Math.round(top.y), m._wh[1] + Math.round(2 * tx));
-      m.style.transform = `translate(${Math.round(top.x) - Math.round(m._wh[0] / 2)}px, ${y - m._wh[1]}px)`;
+      let x = Math.round(top.x) - Math.round(m._wh[0] / 2);
+      // (a target under a HUD box, e.g. the minimap: the marker steps out sideways, toward the screen centre)
+      const r = rects.find((q) => x + m._wh[0] > q.l && x < q.r && y > q.t && y - m._wh[1] < q.b);
+      if (r) x = r.l + r.r > this.game.stage.clientWidth ? Math.round(r.l) - m._wh[0] : Math.round(r.r);
+      m.style.transform = `translate(${x}px, ${y - m._wh[1]}px)`;
     }
     for (let i = n; i < this.marks.length; i++) this.marks[i].style.display = 'none';
     return tg.length > 0 && nearestOn;

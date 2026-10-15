@@ -172,7 +172,8 @@ export const CONFIG = {
     light: { hemi: 2.4, sun: 2.0 },
   },
 
-  // Repair: repairScrap buys repairAmount HP; a partial repair near max pays only for the HP restored
+  // Repair: repairScrap buys repairAmount HP (kept at 25 in Stage 9 round 3: 20 moved the sim newcomer's falls from night 4
+  // to 5 but lifted the typical to 83% wins); a partial repair near max pays only for the HP restored
   // (rounded up), so Relay health is never cheaper than towers.
   // fullRepairScrap: an engineer's free repair on a full Relay is paid out as this much Scrap instead.
   // stipend: Scrap the Relay pays at the start of each night's prep (index = night − 1; the last entry

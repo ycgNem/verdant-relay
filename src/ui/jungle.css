@@ -137,14 +137,21 @@
 /* A bottom-anchored hint (hints.js: 80 units up) never sits on a tall tracker either. */
 .jungle-ui .hint[style*="bottom"] { bottom: max(round(calc(var(--u) * 80), 1px), calc(var(--qh, 0px) + round(calc(var(--u) * 6), 1px))) !important; }
 
-/* ---- the quest card (the day's start / the quest key): a panel in the banner lane (centred at 22% of the height) */
-/* Left-aligned (whole pixels: centred lines in a box of the other parity sat on x.5, critic M2 P1-3). */
-.jungle-ui .x-banner.j-qcard {
+/* ---- the quest card (the day's start / the quest key): a panel in the banner lane, anchored from the top (critic Q2:
+   centred at 22% its top left a 600 px screen), at most the upper 3/4 of the screen. Left-aligned (whole pixels:
+   centred lines in a box of the other parity sat on x.5, critic M2 P1-3). */
+.jungle-ui .j-qcard {
+  position: absolute; left: 50%; top: round(calc(var(--u) * 44), 1px); transform: translateX(-50%); z-index: 22; pointer-events: none;
+  width: max-content; max-width: min(92%, round(calc(var(--u) * 410), 1px)); max-height: 72%; overflow: hidden; box-sizing: border-box;
+  transition: opacity 0.6s;
   display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: round(calc(var(--u) * 3), 1px);
   min-width: round(calc(var(--u) * 260), 1px); padding: round(calc(var(--u) * 7), 1px) round(calc(var(--u) * 14), 1px) round(calc(var(--u) * 8), 1px);
   background: rgba(24, 20, 37, 0.92); border: round(calc(var(--u) * 2), 1px) solid var(--amber); box-shadow: 0 0 0 calc(var(--u) * 1) #181425;
   border-radius: round(calc(var(--u) * 3), 1px); font-size: var(--hud-f); line-height: 1.3; text-shadow: var(--ol); white-space: normal;
 }
+.jungle-ui .j-qcard.out { opacity: 0; }
+/* Short screens: the card drops its brief and the skill-point line. */
+@media (max-height: 660px) { .j-qc-brief, .j-qc-sp { display: none; } }
 .j-qc-head { display: flex; align-items: center; gap: round(calc(var(--u) * 5), 1px); color: var(--amber); }
 .j-qc-area { color: #c0cbdc; }
 .j-qc-name { color: #fff; font-size: max(calc(var(--fq) * 2), round(calc(var(--u) * 24 - 0.01px), var(--fq))); line-height: 1.1; animation: x-in 0.35s ease-out; }
@@ -294,3 +301,6 @@
 /* Paused: the quest arrows and markers dim and stop with the world. */
 .x-hud.paused .j-qedge, .x-hud.paused .j-qmark, .x-hud.paused .j-qorbit { opacity: 0.35; }
 .x-hud.paused .j-qarr canvas, .x-hud.paused .j-qmark { animation: none; }
+/* Pause menu: the relics rows (JungleRelics.pauseLine) wrap as rows of tags with room, clear of Resume (critic Q2). */
+.x-pause .rl-pause { display: flex; flex-direction: column; gap: round(calc(var(--u) * 4), 1px); margin: round(calc(var(--u) * 2), 1px) 0 round(calc(var(--u) * 10), 1px); }
+.x-pause .rl-pause > div { display: flex; flex-wrap: wrap; align-items: center; gap: round(calc(var(--u) * 4), 1px); line-height: 1.3; }
